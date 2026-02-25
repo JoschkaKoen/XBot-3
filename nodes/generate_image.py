@@ -13,7 +13,7 @@ import requests
 from typing import List
 from datetime import datetime
 
-from config import TT_API_KEY, IMAGES_DIR, CONTROVERSIAL_MODE
+from config import TT_API_KEY, IMAGES_DIR, FUNNY_MODE
 from services.ai_client import get_ai_response
 from services.image_ranker import pick_best_image
 from utils.retry import retry_call, with_retry
@@ -144,7 +144,7 @@ def generate_image(state: dict) -> dict:
         "The composition should feel lived-in and immediate, as if the viewer just walked into the moment. "
     )
 
-    if CONTROVERSIAL_MODE and example_de:
+    if FUNNY_MODE and example_de:
         mj_req = (
             "Generate a Midjourney prompt for a photorealistic, cinematic image that is funny and aesthetically beautiful. "
             "The sentence below is a humorous observation — visually depict the joke. "

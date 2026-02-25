@@ -11,7 +11,7 @@ import logging
 import string
 from typing import Any, Optional
 
-from config import USE_TRENDS, SENTENCE_MODEL, AI_PROVIDER, CONTROVERSIAL_MODE
+from config import USE_TRENDS, SENTENCE_MODEL, AI_PROVIDER, FUNNY_MODE
 from services.ai_client import get_ai_response
 from services.get_article import get_article
 from services.x_trends import get_germany_trends
@@ -146,7 +146,7 @@ def _build_tweet_prompt(
         "No markdown. No explanation. Just the JSON."
     )
 
-    if CONTROVERSIAL_MODE:
+    if FUNNY_MODE:
         prompt += (
             "\n\n## Tone (overrides the focus instruction above)\n"
             "Give the example sentence a funny, ironic, or self-aware twist"

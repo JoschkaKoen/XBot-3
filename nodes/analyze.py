@@ -14,7 +14,7 @@ import logging
 import os
 from datetime import datetime, timezone
 
-from config import HISTORY_FILE, ANALYZE_LAST_N, STRATEGY_FILE, STRATEGY_HISTORY_FILE, STRATEGY_MODEL, AI_PROVIDER, CONTROVERSIAL_MODE
+from config import HISTORY_FILE, ANALYZE_LAST_N, STRATEGY_FILE, STRATEGY_HISTORY_FILE, STRATEGY_MODEL, AI_PROVIDER, FUNNY_MODE
 from services.ai_client import get_ai_response
 from nodes.score import _load_history
 
@@ -199,7 +199,7 @@ def _log_strategy_diff(old: dict, new: dict) -> bool:
 
 # ── analysis prompt ────────────────────────────────────────────────────────────
 
-def _build_analysis_prompt(history_slice: list, current_scaffold: str, controversial_mode: bool = False) -> str:
+def _build_analysis_prompt(history_slice: list, current_scaffold: str, funny_mode: bool = False) -> str:
     posts_summary = json.dumps(
         [
             {
@@ -225,7 +225,7 @@ def _build_analysis_prompt(history_slice: list, current_scaffold: str, controver
         'chosen from A1, A2, B1, B2, C1, C2, e.g. "A2, B1, C1"\n'
         '  "preferred_themes":  (string) comma-separated themes to focus on next, e.g. "food, travel, emotions"\n'
         '  "focus":             (string) a short instruction covering vocabulary style, theme, or CEFR preference — '
-        f"{'NOTE: tone/controversy is controlled externally — do NOT set focus to override tone direction (e.g. avoid instructions like use motivational or use uplifting). Focus on vocabulary themes and CEFR only.' if controversial_mode else 'e.g. use funnier sentences'}\n"
+        f"{'NOTE: tone/humour is controlled externally — do NOT set focus to override tone direction (e.g. avoid instructions like use motivational or use uplifting). Focus on vocabulary themes and CEFR only.' if funny_mode else 'e.g. use funnier sentences'}\n"
         '  "avoid_words":       (array)  list of German words recently used that should not be repeated\n\n'
         "Return ONLY the raw JSON object. No markdown, no explanation."
     )
@@ -260,7 +260,7 @@ def analyze_and_improve(state: dict) -> dict:
 
     history_slice = history[-ANALYZE_LAST_N:]
     current_scaffold = old_strategy.get("scaffold", _DEFAULT_SCAFFOLD)
-    prompt = _build_analysis_prompt(history_slice, current_scaffold, controversial_mode=CONTROVERSIAL_MODE)
+    prompt = _build_analysis_prompt(history_slice, current_scaffold, funny_mode=FUNNY_MODE)
 
     strategy_ai = _get_strategy_ai()
     model_label = "grok-reasoning" if (AI_PROVIDER == "grok" and STRATEGY_MODEL == "reasoning") else "default"

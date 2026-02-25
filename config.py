@@ -33,9 +33,9 @@ ANALYZE_LAST_N: int = int(os.getenv("ANALYZE_LAST_N", "10"))
 # When False (default), the AI picks the word freely. Currently: picking the word freely.
 USE_TRENDS: bool = os.getenv("USE_TRENDS", "false").lower().strip() == "true"
 
-# When True, the example sentence takes a mildly controversial or opinionated angle
-# to increase engagement. Set to "false" to use warm, neutral sentences instead.
-CONTROVERSIAL_MODE: bool = os.getenv("CONTROVERSIAL_MODE", "false").lower().strip() == "true"
+# When True, the example sentence takes a funny, ironic angle to increase engagement.
+# Set to "false" to use warm, neutral sentences instead.
+FUNNY_MODE: bool = os.getenv("FUNNY_MODE", "false").lower().strip() == "true"
 
 # Model used for strategy analysis ("reasoning" = grok-4-1-fast, "non-reasoning" = grok-4-1-fast-non-reasoning).
 # Only applies when AI_PROVIDER=grok. Scaleway always uses llama-3.3-70b.
