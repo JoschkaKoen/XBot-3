@@ -123,8 +123,21 @@ def _git_current_branch() -> str:
     return _git(["branch", "--show-current"]).stdout.strip()
 
 
-def _stash_exists() -> bool:
-    return bool(_git(["stash", "list"]).stdout.strip())
+def _parse_json_response(raw: str) -> dict:
+    """
+    Safely extract JSON from an AI response that may be wrapped in ```json ... ``` fences.
+    Uses line-by-line fence detection rather than str.strip(chars) to avoid stripping
+    valid JSON characters.
+    """
+    text = raw.strip()
+    # Remove opening fence (```json or ```)
+    lines = text.splitlines()
+    if lines and lines[0].strip().startswith("```"):
+        lines = lines[1:]
+    # Remove closing fence
+    if lines and lines[-1].strip() == "```":
+        lines = lines[:-1]
+    return json.loads("\n".join(lines))
 
 
 # ── requirements.txt re-install ────────────────────────────────────────────────
@@ -388,9 +401,12 @@ def phase_2_live_cycle(attempt: int) -> dict:
         terminal_path.write_text(terminal_content, encoding="utf-8")
         log_both(f"{_GRAY}    Exit code: {result.returncode}{_R}")
 
-    except subprocess.TimeoutExpired:
+    except subprocess.TimeoutExpired as exc:
         log_both(f"{_RED}❌  Live cycle timed out after 15 minutes{_R}", "error")
-        terminal_path.write_text("TIMEOUT: Live cycle exceeded 15 minutes", encoding="utf-8")
+        partial = (exc.stdout or "") + "\n--- STDERR ---\n" + (exc.stderr or "")
+        terminal_path.write_text(
+            f"TIMEOUT: Live cycle exceeded 15 minutes\n\n{partial}", encoding="utf-8"
+        )
         return {"success": False, "errors": ["timeout"]}
     except Exception as exc:
         log_both(f"{_RED}❌  Live cycle subprocess failed: {exc}{_R}", "error")
@@ -469,8 +485,7 @@ Pass if score >= 7.
             max_tokens=300,
             temperature=0.1,
         )
-        raw = raw.strip().strip("```json").strip("```").strip()
-        result = json.loads(raw)
+        result = _parse_json_response(raw)
         result.setdefault("pass", result.get("score", 0) >= 7)
         result.setdefault("issues", [])
         return result
@@ -532,13 +547,17 @@ Pass if score >= 7 AND all_stages_present is true AND no unhandled exceptions.
             max_tokens=400,
             temperature=0.1,
         )
-        raw = raw.strip().strip("```json").strip("```").strip()
-        result = json.loads(raw)
-        result.setdefault("pass", False)
+        result = _parse_json_response(raw)
         result.setdefault("score", 0)
         result.setdefault("all_stages_present", False)
         result.setdefault("errors_found", [])
         result.setdefault("summary", "")
+        # Enforce pass conditions in Python rather than trusting AI alone
+        result["pass"] = (
+            result["score"] >= 7
+            and result["all_stages_present"]
+            and not result["errors_found"]
+        )
         return result
     except Exception as exc:
         log_both(f"{_YELLOW}⚠️  Terminal output verification failed: {exc}{_R}", "warning")
@@ -623,13 +642,28 @@ def _ask_claude_code_to_fix(failure_report: dict, attempt: int, terminal_output:
             timeout=900,
         )
         output = (result.stdout + result.stderr).strip()
-        log_both(f"{_GRAY}    Claude Code response: {output[:200]}{_R}")
 
-        first_word = output.strip().split()[0].upper() if output.strip() else "NO_CHANGE"
-        if first_word in ("GIVE_UP", "FIXED", "NO_CHANGE"):
-            log_both(f"{_CYAN}🤖  Claude Code says: {first_word}{_R}")
-            return first_word
-        return "NO_CHANGE"
+        # Claude Code outputs extensive tool-use logs before its final response.
+        # Scan the LAST ~30 lines for the decision keyword rather than taking split()[0].
+        last_lines = [ln.strip() for ln in output.splitlines()[-30:] if ln.strip()]
+        log_both(f"{_GRAY}    Claude Code last line: {last_lines[-1] if last_lines else '(empty)'}{_R}")
+
+        decision = "NO_CHANGE"
+        for line in reversed(last_lines):
+            first = line.split()[0].upper() if line.split() else ""
+            if first in ("FIXED", "NO_CHANGE", "GIVE_UP"):
+                decision = first
+                break
+            # Also accept the keyword anywhere in a short line (≤ 40 chars)
+            for kw in ("GIVE_UP", "FIXED", "NO_CHANGE"):
+                if kw in line.upper() and len(line) <= 40:
+                    decision = kw
+                    break
+            if decision != "NO_CHANGE":
+                break
+
+        log_both(f"{_CYAN}🤖  Claude Code says: {decision}{_R}")
+        return decision
 
     except FileNotFoundError:
         log_both(f"{_RED}❌  Claude Code CLI not found — treating as NO_CHANGE{_R}", "error")
