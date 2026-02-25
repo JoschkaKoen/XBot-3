@@ -13,7 +13,7 @@ import requests
 from typing import List
 from datetime import datetime
 
-from config import TT_API_KEY, IMAGES_DIR
+from config import TT_API_KEY, IMAGES_DIR, CONTROVERSIAL_MODE
 from services.ai_client import get_ai_response
 from services.image_ranker import pick_best_image
 from utils.retry import retry_call, with_retry
@@ -111,8 +111,9 @@ def generate_image(state: dict) -> dict:
     stage_banner(4)
     logger.info("Node: generate_image")
 
-    example_en: str = state["example_sentence_en"]
-    article: str    = state.get("article", "")
+    example_en: str  = state["example_sentence_en"]
+    example_de: str  = state.get("example_sentence_de", "")
+    article: str     = state.get("article", "")
     german_word: str = state.get("german_word", "")
 
     # Build a gender hint so Midjourney shows the right sex when the word is
@@ -130,23 +131,67 @@ def generate_image(state: dict) -> dict:
         )
 
     # 1. Generate Midjourney prompt via LLM
-    mj_req = (
-        "The task is to generate a Midjourney prompt. Do not use hashtags or emojis. "
-        "The aspect ratio should be 16:9. There should not be text in the photo. "
-        "The prompt should create a beautiful and attractive photography "
-        f"that Twitter users would find visually appealing for this sentence: \"{example_en}\""
-        f"{gender_hint}"
+    _RULES = (
+        "\n\nRULES:\n"
+        "- Output ONLY the image description — no explanations, no preamble, no markdown\n"
+        "- Do NOT include any parameter flags (no --v, --q, --style, --ar, etc.) — they are added automatically\n"
+        "- Do NOT use double hyphens (--) anywhere in the text\n"
+        "- Do NOT use quotation marks in the output"
     )
+
+    _IMMERSIVE = (
+        "Frame the shot so the viewer feels placed directly inside the scene: "
+        "The composition should feel lived-in and immediate, as if the viewer just walked into the moment. "
+    )
+
+    if CONTROVERSIAL_MODE and example_de:
+        mj_req = (
+            "Generate a Midjourney prompt for a photorealistic, cinematic image that is funny and aesthetically beautiful. "
+            "The sentence below is a humorous observation — visually depict the joke. "
+            "Show the ironic situation with expressive faces or body language (proud smile, knowing look, deadpan stare). "
+            f"{_IMMERSIVE}"
+            "Warm, well-lit, natural setting. Photorealistic photography, NOT illustration or cartoon.\n\n"
+            f"Sentence: \"{example_en}\""
+            f"{gender_hint}"
+            f"{_RULES}"
+        )
+        system_prompt = (
+            "You are an expert Midjourney prompt engineer specialising in immersive, photorealistic funny scenes. "
+            "Prioritise compositions that place the viewer inside the scene. "
+            "No parameter flags. No double hyphens. Output only the description."
+        )
+    else:
+        mj_req = (
+            "Generate a Midjourney prompt for a beautiful, photorealistic 16:9 photography. "
+            f"{_IMMERSIVE}"
+            "No text in the image. Visually appealing for social media.\n\n"
+            f"Sentence: \"{example_en}\""
+            f"{gender_hint}"
+            f"{_RULES}"
+        )
+        system_prompt = (
+            "You are an expert Midjourney prompt engineer. "
+            "You create vivid, immersive, photorealistic prompts that place the viewer inside the scene. "
+            "Prioritise ground-level or eye-level framing with foreground depth. "
+            "No parameter flags. No double hyphens. Output only the description."
+        )
+
     midjourney_prompt: str = retry_call(
         get_ai_response,
         mj_req,
-        "You are an expert Midjourney prompt engineer. You create vivid, photorealistic, visually striking prompts optimized for 16:9 social media content.",
-        max_tokens=1200,
+        system_prompt,
+        max_tokens=400,
         temperature=0.8,
         label="mj_prompt",
     ).strip()
+
+    # Strip any --parameter flags the AI may have included despite instructions,
+    # and replace any curly/smart quotes with straight ones to avoid parsing issues.
+    import re
+    midjourney_prompt = re.sub(r"\s*--\w[\w\d]*.*$", "", midjourney_prompt).strip()
+    midjourney_prompt = midjourney_prompt.replace("\u2018", "'").replace("\u2019", "'").replace("\u201c", "").replace("\u201d", "")
     logger.debug("Midjourney prompt: %s", midjourney_prompt)
-    info(f"Prompt: {midjourney_prompt[:90]}…" if len(midjourney_prompt) > 90 else f"Prompt: {midjourney_prompt}")
+    print(f"  Prompt: {midjourney_prompt}", flush=True)
 
     # 2. Generate images
     image_paths = retry_call(

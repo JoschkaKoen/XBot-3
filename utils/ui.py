@@ -40,11 +40,18 @@ _TOTAL = len(_STAGES)
 
 # ── Public helpers ─────────────────────────────────────────────────────────────
 
-def startup_banner():
+def startup_banner(model_lines: list = None):
     w = _w()
     print()
     print(f"{_CYAN}{_BOLD}{'═' * w}{_R}")
     print(f"{_CYAN}{_BOLD}  🇩🇪  GERMAN LEARNING X BOT{_R}")
+    if model_lines:
+        print(f"{_CYAN}{'─' * w}{_R}")
+        for label, model in model_lines:
+            if label.startswith("─"):
+                print(f"{_CYAN}{'─' * w}{_R}")
+            else:
+                print(f"{_CYAN}  🤖  {_BOLD}{label:<22}{_R}{_CYAN}{model}{_R}")
     print(f"{_CYAN}{_BOLD}{'═' * w}{_R}")
     print()
 

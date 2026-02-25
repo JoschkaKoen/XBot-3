@@ -14,7 +14,7 @@ import logging
 import os
 from datetime import datetime, timezone
 
-from config import HISTORY_FILE, ANALYZE_LAST_N, STRATEGY_FILE, STRATEGY_HISTORY_FILE, STRATEGY_MODEL, AI_PROVIDER
+from config import HISTORY_FILE, ANALYZE_LAST_N, STRATEGY_FILE, STRATEGY_HISTORY_FILE, STRATEGY_MODEL, AI_PROVIDER, CONTROVERSIAL_MODE
 from services.ai_client import get_ai_response
 from nodes.score import _load_history
 
@@ -37,11 +37,20 @@ _SYSTEM_PROMPT = (
 )
 
 
+_DEFAULT_SCAFFOLD = (
+    "#DeutschLernen [LEVEL]\n\n"
+    "🇩🇪  [ARTICLE] [GERMAN_WORD]\n"
+    "🇬🇧  [ENGLISH_TRANSLATION]  [EMOJI][EMOJI]\n\n"
+    "🇩🇪  [SHORT_FUNNY_GERMAN_SENTENCE]\n"
+    "🇬🇧  [ENGLISH_TRANSLATION_OF_SENTENCE]  [EMOJI][EMOJI]"
+)
+
 _DEFAULT_STRATEGY = {
     "preferred_cefr": "A1, A2, B1, B2, C1, C2",
     "preferred_themes": "food, travel, daily life, emotions, work, weather, relationships",
     "focus": "",
     "avoid_words": [],
+    "scaffold": _DEFAULT_SCAFFOLD,
 }
 
 
@@ -83,11 +92,58 @@ def _append_strategy_history(strategy: dict) -> None:
 
 # ── diff logging ───────────────────────────────────────────────────────────────
 
+_R     = "\033[0m"
+_BOLD  = "\033[1m"
+_GREEN = "\033[92m"
+_RED   = "\033[91m"
+_GRAY  = "\033[90m"
+_CYAN  = "\033[96m"
+_DIM   = "\033[2m"
+
+
+def _print_scaffold_diff(old_scaffold: str, new_scaffold: str) -> None:
+    """
+    Print a line-by-line diff of two scaffolds.
+    Lines only in old  → red   with  - prefix
+    Lines only in new  → green with  + prefix
+    Lines in both      → gray  with    prefix
+    """
+    old_lines = old_scaffold.splitlines()
+    new_lines = new_scaffold.splitlines()
+
+    # Build sets for quick membership checks
+    old_set = set(old_lines)
+    new_set = set(new_lines)
+
+    print(f"\n  {_CYAN}{_BOLD}📐  Scaffold updated:{_R}", flush=True)
+
+    # Show removed lines first (from old, not in new)
+    for line in old_lines:
+        if line not in new_set:
+            display = line if line.strip() else "(blank)"
+            print(f"  {_RED}- {display}{_R}", flush=True)
+
+    print(flush=True)
+
+    # Show new scaffold with added lines highlighted
+    for line in new_lines:
+        if line in old_set:
+            display = line if line.strip() else ""
+            print(f"  {_GRAY}  {display}{_R}", flush=True)
+        else:
+            display = line if line.strip() else "(blank)"
+            print(f"  {_GREEN}+ {display}{_R}", flush=True)
+
+    print(flush=True)
+
+
 def _log_strategy_diff(old: dict, new: dict) -> bool:
     """
     Print a human-readable diff to the terminal.
     Returns True if anything changed, False if identical.
     """
+    _Y    = "\033[93m"
+
     scalar_keys = ["preferred_cefr", "preferred_themes", "focus"]
     changed = False
     lines = []
@@ -97,36 +153,53 @@ def _log_strategy_diff(old: dict, new: dict) -> bool:
         new_val = str(new.get(key, "")).strip()
         if old_val != new_val:
             changed = True
-            lines.append(f"   {key:<20} \"{old_val}\"  →  \"{new_val}\"")
+            lines.append(
+                f"   {_GRAY}{key:<20}{_R} {_RED}\"{old_val}\"{_R}  →  {_GREEN}\"{new_val}\"{_R}"
+            )
 
     # avoid_words: show add/remove counts rather than the full list
     old_words = set(old.get("avoid_words") or [])
     new_words = set(new.get("avoid_words") or [])
-    added   = new_words - old_words
-    removed = old_words - new_words
-    if added or removed:
+    added_w   = new_words - old_words
+    removed_w = old_words - new_words
+    if added_w or removed_w:
         changed = True
         parts = []
-        if added:
-            parts.append(f"added {len(added)}")
-        if removed:
-            parts.append(f"removed {len(removed)}")
-        lines.append(f"   avoid_words            {', '.join(parts)}")
+        if added_w:
+            parts.append(f"{_GREEN}+{len(added_w)}{_R}")
+        if removed_w:
+            parts.append(f"{_RED}-{len(removed_w)}{_R}")
+        lines.append(f"   {_GRAY}{'avoid_words':<20}{_R} {', '.join(parts)}")
 
-    print("\n  📋  Strategy Update:", flush=True)
+    # Check scaffold before printing the summary so "No changes" is never printed
+    # when only the scaffold changed.
+    old_scaffold = old.get("scaffold", "")
+    new_scaffold = new.get("scaffold", "")
+    scaffold_changed = old_scaffold != new_scaffold and bool(new_scaffold)
+    if scaffold_changed:
+        changed = True
+
+    print(f"\n  {_BOLD}📋  Strategy Update:{_R}", flush=True)
     if changed:
         for line in lines:
             print(line, flush=True)
+        if not lines and scaffold_changed:
+            pass   # scaffold diff will be printed below
     else:
-        print("   No changes — keeping current approach.", flush=True)
+        print(f"   {_GRAY}No changes — keeping current approach.{_R}", flush=True)
     print(flush=True)
+
+    if scaffold_changed:
+        _print_scaffold_diff(old_scaffold, new_scaffold)
+    else:
+        print(f"  {_CYAN}📐  Scaffold:{_R} {_GRAY}unchanged{_R}\n", flush=True)
 
     return changed
 
 
 # ── analysis prompt ────────────────────────────────────────────────────────────
 
-def _build_analysis_prompt(history_slice: list) -> str:
+def _build_analysis_prompt(history_slice: list, current_scaffold: str, controversial_mode: bool = False) -> str:
     posts_summary = json.dumps(
         [
             {
@@ -151,7 +224,8 @@ def _build_analysis_prompt(history_slice: list) -> str:
         '  "preferred_cefr":    (string) comma-separated CEFR levels that performed best, '
         'chosen from A1, A2, B1, B2, C1, C2, e.g. "A2, B1, C1"\n'
         '  "preferred_themes":  (string) comma-separated themes to focus on next, e.g. "food, travel, emotions"\n'
-        '  "focus":             (string) a short additional instruction for the next post, e.g. "use funnier sentences"\n'
+        '  "focus":             (string) a short instruction covering vocabulary style, theme, or CEFR preference — '
+        f"{'NOTE: tone/controversy is controlled externally — do NOT set focus to override tone direction (e.g. avoid instructions like use motivational or use uplifting). Focus on vocabulary themes and CEFR only.' if controversial_mode else 'e.g. use funnier sentences'}\n"
         '  "avoid_words":       (array)  list of German words recently used that should not be repeated\n\n'
         "Return ONLY the raw JSON object. No markdown, no explanation."
     )
@@ -185,7 +259,8 @@ def analyze_and_improve(state: dict) -> dict:
         return {**state, "strategy": old_strategy}
 
     history_slice = history[-ANALYZE_LAST_N:]
-    prompt = _build_analysis_prompt(history_slice)
+    current_scaffold = old_strategy.get("scaffold", _DEFAULT_SCAFFOLD)
+    prompt = _build_analysis_prompt(history_slice, current_scaffold, controversial_mode=CONTROVERSIAL_MODE)
 
     strategy_ai = _get_strategy_ai()
     model_label = "grok-reasoning" if (AI_PROVIDER == "grok" and STRATEGY_MODEL == "reasoning") else "default"
@@ -203,8 +278,10 @@ def analyze_and_improve(state: dict) -> dict:
 
     new_strategy = _parse_strategy(raw_strategy)
 
-    # Merge with defaults so all keys are always present
+    # Merge with defaults so all keys are always present.
+    # Scaffold is locked — always keep the current scaffold unchanged.
     merged = {**_DEFAULT_STRATEGY, **new_strategy}
+    merged["scaffold"] = current_scaffold
 
     # Always accumulate avoid_words from the full history (last 30)
     recent_words = [r.get("german_word", "") for r in history[-30:] if r.get("german_word")]

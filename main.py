@@ -20,9 +20,37 @@ import logging
 os.environ.setdefault("PYTHONUNBUFFERED", "1")
 sys.stdout.reconfigure(line_buffering=True)
 
-from config import setup_logging
+from config import setup_logging, AI_PROVIDER, SENTENCE_MODEL, STRATEGY_MODEL, USE_TRENDS, CONTROVERSIAL_MODE
 from utils.ui import startup_banner, cycle_banner, cycle_summary, err, warn
 from services.image_ranker import warmup as _warmup_image_ranker
+
+
+def _model_lines() -> list:
+    """Build (label, model-name) pairs for the startup banner."""
+    if AI_PROVIDER == "grok":
+        _model_names = {
+            "flagship":      "grok-4  (flagship)",
+            "reasoning":     "grok-4-1-fast  (reasoning)",
+            "non-reasoning": "grok-4-1-fast-non-reasoning",
+        }
+        tweet_model    = _model_names.get(SENTENCE_MODEL, SENTENCE_MODEL)
+        strategy_model = _model_names.get(STRATEGY_MODEL, STRATEGY_MODEL)
+        trend_model    = "grok-4-1-fast  (reasoning)"
+        word_model     = "grok-4-1-fast-non-reasoning"
+    else:
+        tweet_model = strategy_model = trend_model = word_model = f"{AI_PROVIDER} (default)"
+
+    lines = [
+        ("Tweet generation:",  tweet_model),
+        ("Strategy analysis:", strategy_model),
+        ("Word selection:",    trend_model if USE_TRENDS else word_model),
+    ]
+    if USE_TRENDS:
+        lines.append(("  (trend filtering):", trend_model))
+    lines.append(("─" * 22, "─" * 30))   # visual separator
+    lines.append(("Use trends:",          "ON" if USE_TRENDS else "off"))
+    lines.append(("Controversial mode:",  "ON 🌶️" if CONTROVERSIAL_MODE else "off"))
+    return lines
 
 setup_logging()
 logger = logging.getLogger("german_bot.main")
@@ -60,7 +88,7 @@ def _initial_state() -> dict:
 def main():
     from graph import get_graph
 
-    startup_banner()
+    startup_banner(_model_lines())
     logger.info("German Learning X Bot starting …")
 
     # Start loading ImageReward in the background immediately so it is ready

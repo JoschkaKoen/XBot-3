@@ -6,12 +6,9 @@ class BotState(TypedDict, total=False):
     # ── Content ───────────────────────────────────────────────────────────────
     german_word: str                  # raw word selected by LLM, e.g. "Führerschein"
     article: str                      # "der" / "die" / "das" / "no known noun"
-    cefr_level: str                   # "A1" … "C1"
-    word_emoji: str                   # emoji for the word (doubled in tweet)
-    translated_word: str              # English translation of the word
+    cefr_level: str                   # "A1" … "C2"
     example_sentence_de: str          # German example sentence
     example_sentence_en: str          # English translation of example sentence
-    sentence_emoji: str               # emoji for the sentence (doubled in tweet)
     full_tweet: str                   # assembled final tweet text
 
     # ── Image ─────────────────────────────────────────────────────────────────

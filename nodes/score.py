@@ -16,6 +16,16 @@ from utils.ui import stage_banner, ok
 logger = logging.getLogger("german_bot.score")
 
 
+def get_top_tweets(history: list, n: int = 3) -> list:
+    """Return the N highest-scoring tweets from history, excluding score 0.0."""
+    qualifying = [
+        r for r in history
+        if r.get("engagement_score", 0.0) > 0.0 and r.get("full_tweet")
+    ]
+    qualifying.sort(key=lambda r: r.get("engagement_score", 0.0), reverse=True)
+    return qualifying[:n]
+
+
 def _compute_score(metrics: dict) -> float:
     """
     Weighted engagement score:
