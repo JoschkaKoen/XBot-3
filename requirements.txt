@@ -1,0 +1,20 @@
+langgraph>=1.0.0
+langgraph-checkpoint-sqlite>=3.0.0
+langchain-core>=1.0.0
+requests>=2.28.0
+python-dotenv>=1.0.0
+tweepy>=4.14.0
+openai>=1.0.0
+elevenlabs>=1.0.0
+moviepy>=2.0.0
+pydub>=0.25.0
+german-nouns>=1.0.0
+Pillow>=10.0.0
+# Image ranking (picks best Midjourney image automatically)
+image-reward>=1.5
+# CLIP is a required dependency of ImageReward not listed in its metadata
+git+https://github.com/openai/CLIP.git
+# ImageReward requires transformers <5.x
+transformers>=4.27.4,<5.0.0
+torch>=2.0.0
+torchvision>=0.15.0

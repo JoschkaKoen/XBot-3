@@ -1,0 +1,90 @@
+[
+  {
+    "timestamp": "2026-02-24T17:17:04.518952+00:00",
+    "preferred_cefr": "B1",
+    "preferred_themes": "decision-making",
+    "focus": "use more relatable, practical vocabulary",
+    "avoid_words": [
+      "Menschenverstand",
+      "Reise"
+    ]
+  },
+  {
+    "timestamp": "2026-02-24T17:21:34.051499+00:00",
+    "preferred_cefr": "B1",
+    "preferred_themes": "decision-making,food,travel",
+    "focus": "use more relatable and exciting sentences",
+    "avoid_words": [
+      "Menschenverstand",
+      "Zucker",
+      "Reise"
+    ]
+  },
+  {
+    "timestamp": "2026-02-24T17:39:27.427860+00:00",
+    "preferred_cefr": "B1",
+    "preferred_themes": "decision-making",
+    "focus": "use more relatable practical advice",
+    "avoid_words": [
+      "Menschenverstand",
+      "Zucker"
+    ]
+  },
+  {
+    "timestamp": "2026-02-24T17:41:07.784583+00:00",
+    "preferred_cefr": "B1",
+    "preferred_themes": "decision-making,practical advice",
+    "focus": "Create more relatable, practical sentences",
+    "avoid_words": [
+      "Menschenverstand",
+      "Zucker"
+    ]
+  },
+  {
+    "timestamp": "2026-02-24T17:52:59.862322+00:00",
+    "preferred_cefr": "B1",
+    "preferred_themes": "wisdom,food",
+    "focus": "use practical, helpful sentences",
+    "avoid_words": [
+      "Menschenverstand",
+      "Zucker",
+      "Abitur"
+    ]
+  },
+  {
+    "timestamp": "2026-02-24T17:53:41.843841+00:00",
+    "preferred_cefr": "B1",
+    "preferred_themes": "wisdom,food",
+    "focus": "address the reader directly with personal benefits like 'hilft dir'",
+    "avoid_words": [
+      "Menschenverstand",
+      "Zucker",
+      "Abitur"
+    ]
+  },
+  {
+    "timestamp": "2026-02-24T18:02:45.557314+00:00",
+    "preferred_cefr": "B1",
+    "preferred_themes": "wisdom,food",
+    "focus": "use personal motivational sentences",
+    "avoid_words": [
+      "Menschenverstand",
+      "Zucker",
+      "Abitur",
+      "Pipeline"
+    ]
+  },
+  {
+    "timestamp": "2026-02-24T18:12:16.378338+00:00",
+    "preferred_cefr": "B1,B2",
+    "preferred_themes": "wisdom,infrastructure",
+    "focus": "use emotional and relatable sentences",
+    "avoid_words": [
+      "Menschenverstand",
+      "Zucker",
+      "Abitur",
+      "Pipeline",
+      "Infrastruktur"
+    ]
+  }
+]

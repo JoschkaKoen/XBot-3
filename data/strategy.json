@@ -1,0 +1,12 @@
+{
+  "preferred_cefr": "B1,B2",
+  "preferred_themes": "wisdom,infrastructure",
+  "focus": "use emotional and relatable sentences",
+  "avoid_words": [
+    "Menschenverstand",
+    "Zucker",
+    "Abitur",
+    "Pipeline",
+    "Infrastruktur"
+  ]
+}

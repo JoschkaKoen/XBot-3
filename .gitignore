@@ -1,0 +1,32 @@
+# Secrets — never commit API keys
+.env
+
+# Python cache & venv
+__pycache__/
+*.pyc
+*.pyo
+venv/
+env/
+.venv/
+
+# Runtime data (logs, checkpoints, post history)
+data/bot.log
+data/checkpoints.sqlite*
+data/post_history.json
+
+# Big media — images, video, audio
+*.mp4
+*.mov
+*.avi
+*.webm
+*.wav
+*.mp3
+*.png
+
+# Exceptions: keep folder placeholders and the background music track
+!**/.gitkeep
+!"Background Music/music.mp3"
+
+# OS junk
+.DS_Store
+Thumbs.db
