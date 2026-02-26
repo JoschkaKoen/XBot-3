@@ -508,8 +508,11 @@ def phase_1_improve_code(original_branch: str) -> "str | None":
             cwd=str(PROJECT_DIR),
             capture_output=True, text=True
         )
-        if result.returncode != 0:
-            log_both(f"{_RED}❌  Import verification failed:{_R}", "error")
+        label = check.split("import ")[1].split(";")[0].strip()
+        if result.returncode == 0:
+            log_both(f"{_GREEN}    ✅  {label}{_R}")
+        else:
+            log_both(f"{_RED}❌  Import verification failed: {label}{_R}", "error")
             log_both(f"{_RED}    {result.stderr[:300]}{_R}", "error")
             _git(["checkout", original_branch])
             _git(["branch", "-D", branch_name], check=False)
