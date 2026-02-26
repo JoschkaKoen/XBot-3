@@ -249,8 +249,13 @@ def _pick_word_from_trends(avoid_words: list) -> Optional[str]:
             temperature=0.3,
             label="trend_pick",
         )
-        raw = raw.strip().strip("```json").strip("```").strip()
-        candidates: list = json.loads(raw)
+        text = raw.strip()
+        lines = text.splitlines()
+        if lines and lines[0].strip().startswith("```"):
+            lines = lines[1:]
+        if lines and lines[-1].strip() == "```":
+            lines = lines[:-1]
+        candidates: list = json.loads("\n".join(lines))
 
         if not isinstance(candidates, list) or not candidates:
             logger.warning("AI found no suitable trend candidates.")

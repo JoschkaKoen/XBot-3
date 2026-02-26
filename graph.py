@@ -11,14 +11,25 @@ each individual node is checkpointed; if the process crashes mid-cycle it
 resumes from the last completed node on the next run.
 """
 
+import os
 import sqlite3
+import sys
 import logging
+import subprocess
+import time
+from pathlib import Path
 
 from langgraph.graph import StateGraph, END
 from langgraph.checkpoint.sqlite import SqliteSaver
 
 from state import BotState
-from config import POST_INTERVAL_SECONDS, CHECKPOINT_DB, logger as root_logger
+from config import (
+    POST_INTERVAL_SECONDS,
+    CHECKPOINT_DB,
+    logger as root_logger,
+    ENABLE_SELF_IMPROVEMENT,
+    IMPROVEMENT_INTERVAL_CYCLES,
+)
 from nodes import (
     fetch_all_metrics,
     analyze_and_improve,
@@ -32,15 +43,51 @@ from nodes import (
 
 logger = logging.getLogger("german_bot.graph")
 
+_PROJECT_DIR = Path(__file__).parent.resolve()
+
 
 # ── wait node ─────────────────────────────────────────────────────────────────
 
 def wait_node(state: dict) -> dict:
-    """Sleep for POST_INTERVAL_SECONDS before the next cycle."""
+    """Optionally run self-improvement, then sleep before the next cycle."""
     from utils.ui import stage_banner, wait_countdown
+
+    # In single-cycle mode, skip everything — just return immediately
+    if "--single-cycle" in sys.argv:
+        logger.info("Single-cycle mode — skipping wait.")
+        return state
+
     stage_banner(9)
-    logger.info("Waiting %ds before next cycle …", POST_INTERVAL_SECONDS)
-    wait_countdown(POST_INTERVAL_SECONDS)
+
+    improvement_duration = 0
+
+    if ENABLE_SELF_IMPROVEMENT:
+        cycle = state.get("cycle", 0)
+        if cycle > 0 and cycle % IMPROVEMENT_INTERVAL_CYCLES == 0:
+            logger.info(
+                "Cycle %d: triggering self-improvement (every %d cycles) …",
+                cycle, IMPROVEMENT_INTERVAL_CYCLES,
+            )
+            try:
+                improvement_env = os.environ.copy()
+                improvement_env["OLD_BOT_PID"] = str(os.getpid())
+                t0 = time.time()
+                subprocess.run(
+                    [sys.executable, "improve_with_claude_code.py"],
+                    cwd=str(_PROJECT_DIR),
+                    env=improvement_env,
+                    timeout=3600,  # up to 1 hour for 3 attempts
+                )
+                improvement_duration = int(time.time() - t0)
+                logger.info("Self-improvement run completed in %ds.", improvement_duration)
+            except subprocess.TimeoutExpired:
+                logger.warning("Self-improvement timed out after 3600s — continuing.")
+            except Exception as exc:
+                logger.warning("Self-improvement failed: %s", exc)
+
+    remaining = max(POST_INTERVAL_SECONDS - improvement_duration, 60)
+    logger.info("Waiting %ds before next cycle …", remaining)
+    wait_countdown(remaining)
     logger.info("Wait complete.")
     return state
 

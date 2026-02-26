@@ -33,6 +33,18 @@ ANALYZE_LAST_N: int = int(os.getenv("ANALYZE_LAST_N", "10"))
 # When False (default), the AI picks the word freely. Currently: picking the word freely.
 USE_TRENDS: bool = os.getenv("USE_TRENDS", "false").lower().strip() == "true"
 
+# ── Self-Improvement Engine ────────────────────────────────────────────────────
+# When True, the improvement engine runs automatically after every
+# IMPROVEMENT_INTERVAL_CYCLES cycles during the wait period.
+ENABLE_SELF_IMPROVEMENT: bool = os.getenv("ENABLE_SELF_IMPROVEMENT", "false").lower().strip() == "true"
+
+# Run improvement every N cycles (default: every 5 cycles).
+IMPROVEMENT_INTERVAL_CYCLES: int = int(os.getenv("IMPROVEMENT_INTERVAL_CYCLES", "5"))
+
+# Only run improvement if the average engagement score of recent posts is below
+# this threshold. Set high (e.g. 9999) to always run. Use --force to override.
+IMPROVEMENT_SCORE_THRESHOLD: float = float(os.getenv("IMPROVEMENT_SCORE_THRESHOLD", "9999"))
+
 # When True, the example sentence takes a funny, ironic angle to increase engagement.
 # Set to "false" to use warm, neutral sentences instead.
 FUNNY_MODE: bool = os.getenv("FUNNY_MODE", "false").lower().strip() == "true"

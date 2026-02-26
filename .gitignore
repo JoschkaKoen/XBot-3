@@ -12,8 +12,12 @@ env/
 
 # Runtime data (logs, checkpoints, post history)
 data/bot.log
+data/improvement.log
 data/checkpoints.sqlite*
 data/post_history.json
+data/test_cycle_output.json
+data/test_cycle_terminal.txt
+data/new_bot_branch.txt
 
 # Big media — images, video, audio
 *.mp4

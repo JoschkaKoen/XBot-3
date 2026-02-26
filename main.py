@@ -5,11 +5,20 @@ Run with:
     source venv/bin/activate
     python main.py
 
+    python main.py --single-cycle   # run exactly one cycle then exit (used by improvement engine)
+
+- To commit and push changes:
     git add -A
     git commit -m "Improvements to the bot"
     git push
+
+- To merge with the main branch:
+    git checkout main
+    git merge dev
+    git push
 """
 
+import json
 import sys
 import os
 import time
@@ -137,5 +146,57 @@ def main():
     print("\nBot stopped.\n")
 
 
+def _single_cycle() -> None:
+    """
+    Run exactly ONE full cycle (including posting a real tweet), write results
+    to data/test_cycle_output.json, then exit.
+
+    Used by the self-improvement engine to verify that improved code works.
+    Uses a fresh UUID thread ID each time to avoid resuming a previous run's
+    checkpointed state.
+    """
+    import uuid
+    from graph import get_graph
+
+    setup_logging()
+    _warmup_image_ranker()
+
+    graph = get_graph()
+    thread_id = f"single_cycle_{uuid.uuid4().hex[:8]}"
+    config = {"configurable": {"thread_id": thread_id}}
+    state = _initial_state()
+
+    output_path = os.path.join(os.path.dirname(__file__), "data", "test_cycle_output.json")
+    os.makedirs(os.path.dirname(output_path), exist_ok=True)
+
+    try:
+        result = graph.invoke(state, config=config)
+        output = {
+            "success":             True,
+            "tweet_id":            result.get("tweet_id", ""),
+            "tweet_url":           result.get("tweet_url", ""),
+            "tweet_text":          result.get("full_tweet", ""),
+            "german_word":         result.get("german_word", ""),
+            "cefr_level":          result.get("cefr_level", ""),
+            "example_sentence_de": result.get("example_sentence_de", ""),
+            "image_path":          result.get("image_path", ""),
+            "midjourney_prompt":   result.get("midjourney_prompt", ""),
+            "video_path":          result.get("video_path", ""),
+            "errors":              [],
+        }
+        with open(output_path, "w", encoding="utf-8") as f:
+            json.dump(output, f, indent=2)
+        sys.exit(0)
+
+    except Exception as exc:
+        output = {"success": False, "errors": [str(exc)]}
+        with open(output_path, "w", encoding="utf-8") as f:
+            json.dump(output, f, indent=2)
+        sys.exit(1)
+
+
 if __name__ == "__main__":
-    main()
+    if "--single-cycle" in sys.argv:
+        _single_cycle()
+    else:
+        main()

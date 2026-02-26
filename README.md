@@ -213,6 +213,120 @@ of what your audience responds to.
 
 ---
 
+## Code Self-Improvement Pipeline
+
+The bot can automatically improve its own **code** using Claude Code CLI,
+triggered during the wait period after posting.
+
+### How it works (4 phases, up to 3 live verification attempts)
+
+```
+PHASE 1 — Code Improvement
+  • Creates a git branch: auto-improve/YYYYMMDD-HHMM
+  • Passes performance data (top/bottom tweets) to Claude Code CLI
+  • Claude Code reads source files and makes targeted improvements
+  • If requirements.txt was changed, pip install runs automatically
+  • Basic import checks verify nothing is broken
+
+PHASE 2+3 — Live Cycle + Verification (repeated up to 3 times)
+  • Runs python main.py --single-cycle on the improved branch
+  • This runs a REAL complete cycle and posts a REAL tweet to X
+  • Four checks must ALL pass:
+      ✅ Tweet exists on X (via Tweepy v2 lookup)
+      ✅ Tweet text quality ≥ 7/10 (AI review: format, grammar, CEFR, emojis)
+      ✅ Image quality score > -1.0 (ImageReward-v1.0)
+      ✅ Terminal output score ≥ 7/10 (AI review: all stages present, no crashes)
+  • If an attempt fails, Claude Code is asked to review and fix the issue
+  • Claude Code may respond FIXED, NO_CHANGE, or GIVE_UP
+  • One successful attempt is enough to proceed
+
+PHASE 4 — Decision
+  • If ANY attempt passed: kills old bot, starts new bot running on the branch
+  • If ALL attempts failed (or GIVE_UP): deletes ALL tweets from failed attempts,
+    discards branch, old bot continues
+```
+
+### Important: the branch is NEVER auto-merged
+
+The improvement engine does **not** merge branches into main. The flow is:
+
+- Old bot runs on `main`
+- Improvement creates branch `auto-improve/YYYYMMDD-HHMM`
+- If verification passes → new bot starts **on the branch** (not main)
+- Old bot is killed
+- You review and merge manually when satisfied
+
+To review and merge:
+```bash
+bash merge_improvement.sh
+```
+
+To go back to main if you don't like the changes:
+```bash
+git checkout main
+python main.py
+```
+
+### What Claude Code may (and may not) modify
+
+**Never touched:**
+- `.env` — API keys and secrets
+- `improve_with_claude_code.py` — self-modification forbidden
+- `verify_quality.py` — verifier must stay unchanged
+
+**Fair game (anything else), including:**
+- `nodes/generate_content.py` — tweet prompts, word selection, scaffold
+- `nodes/generate_image.py` — Midjourney prompt construction
+- `nodes/analyze.py` — strategy analysis prompts
+- `nodes/score.py` — engagement score weighting
+- `services/grok_ai.py` — model constants, call parameters
+- `data/strategy.json` — strategy parameters
+- Any other file where a genuine improvement is found
+
+### Attempt tracking — all tweets cleaned up on failure
+
+All tweets posted during failed verification attempts are tracked and **deleted
+from X** if the overall improvement fails. Their entries are also removed from
+`data/post_history.json`. No orphaned test tweets left behind.
+
+### Prerequisites
+
+```bash
+npm install -g @anthropic-ai/claude-code   # Claude Code CLI
+```
+
+### Configuration
+
+Set in `.env`:
+
+| Variable | Default | Description |
+|---|---|---|
+| `ENABLE_SELF_IMPROVEMENT` | `false` | Enable automatic improvement runs |
+| `IMPROVEMENT_INTERVAL_CYCLES` | `5` | Run improvement every N cycles |
+| `IMPROVEMENT_SCORE_THRESHOLD` | `9999` | Only improve if avg score < threshold |
+
+### Manual trigger
+
+```bash
+python improve_with_claude_code.py          # respects ENABLE_SELF_IMPROVEMENT setting
+python improve_with_claude_code.py --force  # runs regardless of setting
+```
+
+### Standalone quality check (after a manual --single-cycle run)
+
+```bash
+python main.py --single-cycle      # run one real cycle and write test_cycle_output.json
+python verify_quality.py           # check tweet text, image, terminal output
+```
+
+### Logs
+
+All improvement engine activity is logged to `data/improvement.log` in addition
+to the terminal. Artifacts (`data/test_cycle_output.json`, `data/test_cycle_terminal.txt`)
+are automatically deleted after each improvement run.
+
+---
+
 ## Video style: simple vs karaoke
 
 Set `VIDEO_STYLE` in `.env`:
@@ -247,10 +361,13 @@ To add a new provider:
 
 ```
 german-bot/
-├── main.py                      # Entry point
+├── main.py                      # Entry point (+ --single-cycle mode)
 ├── graph.py                     # LangGraph graph (nodes, edges, checkpointing)
 ├── state.py                     # LangGraph TypedDict state schema
 ├── config.py                    # Env var loading, folder creation, logging
+├── improve_with_claude_code.py  # Self-improvement engine (4-phase pipeline)
+├── verify_quality.py            # Standalone quality checker
+├── merge_improvement.sh         # Interactive branch review & merge helper
 ├── requirements.txt
 ├── .env.example
 ├── README.md
