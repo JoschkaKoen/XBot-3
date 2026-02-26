@@ -160,6 +160,34 @@ def _maybe_reinstall_requirements() -> None:
 
 # ── Claude Code environment helper ────────────────────────────────────────────
 
+def _find_claude_binary() -> str:
+    """
+    Resolve the best available Claude Code binary.
+
+    Preference order:
+      1. CLAUDE_BIN env var (manual override)
+      2. Newest native binary from Cursor extensions (~/.cursor/extensions/)
+      3. System claude (PATH)
+    """
+    # Manual override
+    override = os.environ.get("CLAUDE_BIN")
+    if override and os.path.isfile(override):
+        return override
+
+    # Native binaries shipped with Cursor extension
+    cursor_ext = Path.home() / ".cursor" / "extensions"
+    if cursor_ext.exists():
+        candidates = sorted(cursor_ext.glob("anthropic.claude-code-*/resources/native-binary/claude"))
+        if candidates:
+            # Last in sorted order = newest version
+            native = str(candidates[-1])
+            log_both(f"{_GRAY}    Using native Claude binary: {native}{_R}")
+            return native
+
+    # Fall back to system PATH
+    return "claude"
+
+
 def _build_claude_env() -> dict:
     """
     Build an environment dict for Claude Code subprocesses.
@@ -327,19 +355,19 @@ def phase_1_improve_code(original_branch: str) -> "str | None":
     log_both(f"{_CYAN}🤖  Running Claude Code (--max-turns 25) …{_R}")
     log_both(f"{_GRAY}    This may take several minutes.{_R}")
 
-    # Build environment for Claude Code subprocess: ensure ANTHROPIC_API_KEY is present.
-    # The key lives in ~/.bashrc which is not sourced by subprocesses — inject it explicitly.
+    # Resolve the authenticated Claude binary and build its environment.
+    claude_bin = _find_claude_binary()
     claude_env = _build_claude_env()
 
     try:
         claude_result = subprocess.run(
-            ["claude", "-p", prompt, "--max-turns", "25"],
+            [claude_bin, "-p", prompt, "--max-turns", "25"],
             cwd=str(PROJECT_DIR),
             env=claude_env,
             timeout=1800,  # 30 minutes max
         )
     except FileNotFoundError:
-        log_both(f"{_RED}❌  Claude Code CLI not found. Install with: npm install -g @anthropic-ai/claude-code{_R}", "error")
+        log_both(f"{_RED}❌  Claude Code CLI not found ({claude_bin}). Install with: npm install -g @anthropic-ai/claude-code{_R}", "error")
         _git(["checkout", original_branch])
         _git(["branch", "-D", branch_name], check=False)
         if stashed:
@@ -685,7 +713,7 @@ def _ask_claude_code_to_fix(failure_report: dict, attempt: int, terminal_output:
 
     try:
         result = subprocess.run(
-            ["claude", "-p", prompt, "--max-turns", "15"],
+            [_find_claude_binary(), "-p", prompt, "--max-turns", "15"],
             cwd=str(PROJECT_DIR),
             env=_build_claude_env(),
             capture_output=True,
