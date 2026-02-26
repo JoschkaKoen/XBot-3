@@ -317,6 +317,61 @@ Then explain your reasoning.
 """
 
 
+# ── Streaming subprocess runner for Claude Code ────────────────────────────────
+
+def _run_claude_streaming(
+    cmd: list,
+    env: dict,
+    timeout: int = 1800,
+    label: str = "Claude Code",
+) -> "int | None":
+    """
+    Run a Claude Code command and stream its stdout+stderr live to the terminal.
+
+    Returns the process exit code, or None if the process timed out or was not found.
+    Claude Code's interactive TUI bypasses inherited stdout when there is no real TTY,
+    so we use Popen + threads to capture and echo both streams explicitly.
+    """
+    import threading
+
+    try:
+        proc = subprocess.Popen(
+            cmd,
+            cwd=str(PROJECT_DIR),
+            env=env,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            bufsize=1,
+        )
+    except FileNotFoundError:
+        log_both(f"{_RED}❌  Claude Code binary not found: {cmd[0]}{_R}", "error")
+        log_both(f"{_RED}    Install with: sudo npm install -g @anthropic-ai/claude-code{_R}", "error")
+        return None
+
+    def _drain(stream, prefix: str = ""):
+        for line in stream:
+            print(prefix + line, end="", flush=True)
+
+    t_out = threading.Thread(target=_drain, args=(proc.stdout,), daemon=True)
+    t_err = threading.Thread(target=_drain, args=(proc.stderr, _GRAY), daemon=True)
+    t_out.start()
+    t_err.start()
+
+    try:
+        proc.wait(timeout=timeout)
+    except subprocess.TimeoutExpired:
+        proc.kill()
+        t_out.join(timeout=5)
+        t_err.join(timeout=5)
+        log_both(f"{_RED}❌  {label}: Claude Code timed out after {timeout}s{_R}", "error")
+        return None
+
+    t_out.join(timeout=5)
+    t_err.join(timeout=5)
+    return proc.returncode
+
+
 # ── Phase 1: Code Improvement ──────────────────────────────────────────────────
 
 def phase_1_improve_code(original_branch: str) -> "str | None":
@@ -353,30 +408,24 @@ def phase_1_improve_code(original_branch: str) -> "str | None":
     claude_bin = _find_claude_binary()
     claude_env = _build_claude_env()
 
-    try:
-        claude_result = subprocess.run(
-            [claude_bin, "-p", prompt, "--max-turns", "25"],
-            cwd=str(PROJECT_DIR),
-            env=claude_env,
-            timeout=1800,  # 30 minutes max
-        )
-    except FileNotFoundError:
-        log_both(f"{_RED}❌  Claude Code CLI not found ({claude_bin}). Install with: npm install -g @anthropic-ai/claude-code{_R}", "error")
-        _git(["checkout", original_branch])
-        _git(["branch", "-D", branch_name], check=False)
-        if stashed:
-            _git(["stash", "pop"], check=False)
-        return None
-    except subprocess.TimeoutExpired:
-        log_both(f"{_RED}❌  Claude Code timed out after 30 minutes{_R}", "error")
+    returncode = _run_claude_streaming(
+        [claude_bin, "-p", prompt, "--max-turns", "25"],
+        claude_env,
+        timeout=1800,
+        label="Phase 1",
+    )
+
+    if returncode is None:  # timeout or FileNotFoundError
         _git(["checkout", original_branch])
         _git(["branch", "-D", branch_name], check=False)
         if stashed:
             _git(["stash", "pop"], check=False)
         return None
 
-    if claude_result.returncode != 0:
-        log_both(f"{_YELLOW}⚠️  Claude Code exited with code {claude_result.returncode} — continuing to verification{_R}", "warning")
+    claude_returncode = returncode
+
+    if claude_returncode != 0:
+        log_both(f"{_YELLOW}⚠️  Claude Code exited with code {claude_returncode} — continuing to verification{_R}", "warning")
 
     # Check if requirements.txt was modified, reinstall if so
     try:
