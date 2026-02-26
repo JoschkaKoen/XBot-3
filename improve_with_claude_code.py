@@ -326,49 +326,105 @@ def _run_claude_streaming(
     label: str = "Claude Code",
 ) -> "int | None":
     """
-    Run a Claude Code command and stream its stdout+stderr live to the terminal.
+    Run a Claude Code command and stream its output live to the terminal.
 
-    Returns the process exit code, or None if the process timed out or was not found.
-    Claude Code's interactive TUI bypasses inherited stdout when there is no real TTY,
-    so we use Popen + threads to capture and echo both streams explicitly.
+    Claude Code writes its TUI directly to /dev/tty (bypassing stdout/stderr pipes)
+    when it detects it's not in a real terminal. We allocate a PTY (pseudo-terminal)
+    so Claude Code believes it has an interactive terminal — its output then flows
+    through the PTY master end which we read and print.
+
+    Returns the process exit code, or None on timeout/FileNotFoundError.
     """
-    import threading
+    import pty
+    import select as _select
+    import termios
+    import tty
+
+    try:
+        master_fd, slave_fd = pty.openpty()
+    except OSError as exc:
+        log_both(f"{_YELLOW}⚠️  Could not open PTY ({exc}) — falling back to direct inherit{_R}", "warning")
+        # Fallback: just run directly, output goes wherever it goes
+        try:
+            result = subprocess.run(cmd, cwd=str(PROJECT_DIR), env=env, timeout=timeout)
+            return result.returncode
+        except FileNotFoundError:
+            log_both(f"{_RED}❌  Claude Code binary not found: {cmd[0]}{_R}", "error")
+            return None
+        except subprocess.TimeoutExpired:
+            log_both(f"{_RED}❌  {label}: timed out after {timeout}s{_R}", "error")
+            return None
 
     try:
         proc = subprocess.Popen(
             cmd,
             cwd=str(PROJECT_DIR),
             env=env,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True,
-            bufsize=1,
+            stdin=slave_fd,
+            stdout=slave_fd,
+            stderr=slave_fd,
+            close_fds=True,
         )
     except FileNotFoundError:
+        os.close(master_fd)
+        os.close(slave_fd)
         log_both(f"{_RED}❌  Claude Code binary not found: {cmd[0]}{_R}", "error")
         log_both(f"{_RED}    Install with: sudo npm install -g @anthropic-ai/claude-code{_R}", "error")
         return None
 
-    def _drain(stream, prefix: str = ""):
-        for line in stream:
-            print(prefix + line, end="", flush=True)
+    os.close(slave_fd)  # parent doesn't need the slave end
 
-    t_out = threading.Thread(target=_drain, args=(proc.stdout,), daemon=True)
-    t_err = threading.Thread(target=_drain, args=(proc.stderr, _GRAY), daemon=True)
-    t_out.start()
-    t_err.start()
+    deadline = time.time() + timeout
+    buf = b""
 
     try:
-        proc.wait(timeout=timeout)
-    except subprocess.TimeoutExpired:
-        proc.kill()
-        t_out.join(timeout=5)
-        t_err.join(timeout=5)
-        log_both(f"{_RED}❌  {label}: Claude Code timed out after {timeout}s{_R}", "error")
-        return None
+        while True:
+            remaining = deadline - time.time()
+            if remaining <= 0:
+                proc.kill()
+                log_both(f"{_RED}❌  {label}: Claude Code timed out after {timeout}s{_R}", "error")
+                return None
 
-    t_out.join(timeout=5)
-    t_err.join(timeout=5)
+            try:
+                r, _, _ = _select.select([master_fd], [], [], min(remaining, 1.0))
+            except (ValueError, OSError):
+                break  # master_fd closed — process exited
+
+            if r:
+                try:
+                    chunk = os.read(master_fd, 4096)
+                except OSError:
+                    break  # EOF
+                if not chunk:
+                    break
+                # Echo raw bytes to our stdout so ANSI colours render properly
+                sys.stdout.buffer.write(chunk)
+                sys.stdout.buffer.flush()
+            else:
+                # No data — check if process has exited
+                if proc.poll() is not None:
+                    # Drain any remaining output
+                    try:
+                        while True:
+                            r2, _, _ = _select.select([master_fd], [], [], 0.1)
+                            if not r2:
+                                break
+                            chunk = os.read(master_fd, 4096)
+                            if not chunk:
+                                break
+                            sys.stdout.buffer.write(chunk)
+                            sys.stdout.buffer.flush()
+                    except OSError:
+                        pass
+                    break
+
+    finally:
+        try:
+            os.close(master_fd)
+        except OSError:
+            pass
+
+    proc.wait()
     return proc.returncode
 
 
