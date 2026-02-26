@@ -319,113 +319,141 @@ Then explain your reasoning.
 
 # ── Streaming subprocess runner for Claude Code ────────────────────────────────
 
+def _display_stream_event(event: dict) -> None:
+    """Parse a stream-json event from Claude Code and print a human-readable line."""
+    etype = event.get("type", "")
+
+    if etype == "system":
+        if event.get("subtype") == "init":
+            model = event.get("model", "")
+            if model:
+                print(f"  {_GRAY}    Model: {model}{_R}", flush=True)
+
+    elif etype == "assistant":
+        message = event.get("message", {})
+        for block in message.get("content", []):
+            btype = block.get("type", "")
+            if btype == "thinking":
+                text = block.get("thinking", "")
+                preview = text[:200].replace("\n", " ").strip()
+                if len(text) > 200:
+                    preview += " …"
+                print(f"  {_GRAY}    💭 {preview}{_R}", flush=True)
+            elif btype == "text":
+                text = block.get("text", "")
+                for line in text.splitlines():
+                    print(f"  {_GRAY}    📝 {line}{_R}", flush=True)
+            elif btype == "tool_use":
+                name = block.get("name", "?")
+                inp = block.get("input", {})
+                if name in ("Read", "ReadFile"):
+                    detail = inp.get("file_path", inp.get("path", ""))
+                elif name in ("Edit", "Write", "WriteFile"):
+                    detail = inp.get("file_path", inp.get("path", ""))
+                elif name in ("Bash", "Shell"):
+                    detail = inp.get("command", "")[:120]
+                else:
+                    detail = str(inp)[:120]
+                print(f"  {_CYAN}    🔧 {name}: {detail}{_R}", flush=True)
+
+    elif etype == "tool":
+        content = event.get("content", [])
+        for block in content:
+            if isinstance(block, dict) and block.get("type") == "text":
+                text = block.get("text", "")
+                lines = text.splitlines()
+                if lines:
+                    preview = lines[0][:150]
+                    if len(lines) > 1:
+                        preview += f"  … ({len(lines)} lines)"
+                    print(f"  {_GRAY}    ↳ {preview}{_R}", flush=True)
+
+    elif etype == "result":
+        cost = event.get("total_cost_usd", event.get("cost_usd", 0))
+        turns = event.get("num_turns", "?")
+        is_error = event.get("is_error", False)
+        if is_error:
+            print(f"  {_RED}    ❌ Finished with error — {turns} turns, ${cost:.4f}{_R}", flush=True)
+        else:
+            print(f"  {_GREEN}    ✅ Done — {turns} turns, ${cost:.4f}{_R}", flush=True)
+
+
 def _run_claude_streaming(
     cmd: list,
     env: dict,
     timeout: int = 1800,
     label: str = "Claude Code",
-) -> "int | None":
+) -> "tuple[int | None, str]":
     """
-    Run a Claude Code command and stream its output live to the terminal.
+    Run Claude Code with ``--output-format stream-json`` so every event
+    (thinking, tool use, text) is printed to the terminal as it arrives.
 
-    Claude Code writes its TUI directly to /dev/tty (bypassing stdout/stderr pipes)
-    when it detects it's not in a real terminal. We allocate a PTY (pseudo-terminal)
-    so Claude Code believes it has an interactive terminal — its output then flows
-    through the PTY master end which we read and print.
-
-    Returns the process exit code, or None on timeout/FileNotFoundError.
+    Returns ``(exit_code_or_None, final_result_text)``.
     """
-    import pty
-    import select as _select
-    import termios
-    import tty
+    import threading
 
-    try:
-        master_fd, slave_fd = pty.openpty()
-    except OSError as exc:
-        log_both(f"{_YELLOW}⚠️  Could not open PTY ({exc}) — falling back to direct inherit{_R}", "warning")
-        # Fallback: just run directly, output goes wherever it goes
-        try:
-            result = subprocess.run(cmd, cwd=str(PROJECT_DIR), env=env, timeout=timeout)
-            return result.returncode
-        except FileNotFoundError:
-            log_both(f"{_RED}❌  Claude Code binary not found: {cmd[0]}{_R}", "error")
-            return None
-        except subprocess.TimeoutExpired:
-            log_both(f"{_RED}❌  {label}: timed out after {timeout}s{_R}", "error")
-            return None
+    if "--output-format" not in cmd:
+        cmd = cmd + ["--output-format", "stream-json"]
+
+    log_both(f"{_GRAY}    $ {' '.join(cmd[:4])} …{_R}")
 
     try:
         proc = subprocess.Popen(
             cmd,
             cwd=str(PROJECT_DIR),
             env=env,
-            stdin=slave_fd,
-            stdout=slave_fd,
-            stderr=slave_fd,
-            close_fds=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
         )
     except FileNotFoundError:
-        os.close(master_fd)
-        os.close(slave_fd)
         log_both(f"{_RED}❌  Claude Code binary not found: {cmd[0]}{_R}", "error")
         log_both(f"{_RED}    Install with: sudo npm install -g @anthropic-ai/claude-code{_R}", "error")
-        return None
+        return None, ""
 
-    os.close(slave_fd)  # parent doesn't need the slave end
+    stderr_chunks: list[str] = []
+    def _drain_stderr():
+        assert proc.stderr is not None
+        for raw in proc.stderr:
+            line = raw.decode("utf-8", errors="replace").rstrip()
+            if line:
+                stderr_chunks.append(line)
+                print(f"  {_YELLOW}    [stderr] {line}{_R}", flush=True)
 
+    t = threading.Thread(target=_drain_stderr, daemon=True)
+    t.start()
+
+    final_text = ""
     deadline = time.time() + timeout
-    buf = b""
 
     try:
-        while True:
-            remaining = deadline - time.time()
-            if remaining <= 0:
+        assert proc.stdout is not None
+        for raw_line in proc.stdout:
+            if time.time() > deadline:
                 proc.kill()
-                log_both(f"{_RED}❌  {label}: Claude Code timed out after {timeout}s{_R}", "error")
-                return None
+                log_both(f"{_RED}❌  {label}: timed out after {timeout}s{_R}", "error")
+                return None, final_text
+
+            line = raw_line.decode("utf-8", errors="replace").strip()
+            if not line:
+                continue
 
             try:
-                r, _, _ = _select.select([master_fd], [], [], min(remaining, 1.0))
-            except (ValueError, OSError):
-                break  # master_fd closed — process exited
+                event = json.loads(line)
+            except json.JSONDecodeError:
+                print(f"  {_GRAY}    {line}{_R}", flush=True)
+                continue
 
-            if r:
-                try:
-                    chunk = os.read(master_fd, 4096)
-                except OSError:
-                    break  # EOF
-                if not chunk:
-                    break
-                # Echo raw bytes to our stdout so ANSI colours render properly
-                sys.stdout.buffer.write(chunk)
-                sys.stdout.buffer.flush()
-            else:
-                # No data — check if process has exited
-                if proc.poll() is not None:
-                    # Drain any remaining output
-                    try:
-                        while True:
-                            r2, _, _ = _select.select([master_fd], [], [], 0.1)
-                            if not r2:
-                                break
-                            chunk = os.read(master_fd, 4096)
-                            if not chunk:
-                                break
-                            sys.stdout.buffer.write(chunk)
-                            sys.stdout.buffer.flush()
-                    except OSError:
-                        pass
-                    break
+            _display_stream_event(event)
 
-    finally:
-        try:
-            os.close(master_fd)
-        except OSError:
-            pass
+            if event.get("type") == "result":
+                final_text = event.get("result", "")
+
+    except Exception as exc:
+        log_both(f"{_YELLOW}⚠️  {label}: error reading stream: {exc}{_R}", "warning")
 
     proc.wait()
-    return proc.returncode
+    t.join(timeout=5)
+    return proc.returncode, final_text
 
 
 # ── Phase 1: Code Improvement ──────────────────────────────────────────────────
@@ -464,7 +492,7 @@ def phase_1_improve_code(original_branch: str) -> "str | None":
     claude_bin = _find_claude_binary()
     claude_env = _build_claude_env()
 
-    returncode = _run_claude_streaming(
+    returncode, _ = _run_claude_streaming(
         [claude_bin, "-p", prompt, "--max-turns", "25"],
         claude_env,
         timeout=1800,
@@ -819,49 +847,39 @@ def _ask_claude_code_to_fix(failure_report: dict, attempt: int, terminal_output:
     log_both(f"{_CYAN}🤖  Asking Claude Code to review failure (attempt {attempt}/3) …{_R}")
 
     prompt = _build_fix_prompt(failure_report, attempt, terminal_output)
+    claude_bin = _find_claude_binary()
+    claude_env = _build_claude_env()
 
-    try:
-        result = subprocess.run(
-            [_find_claude_binary(), "-p", prompt, "--max-turns", "15"],
-            cwd=str(PROJECT_DIR),
-            env=_build_claude_env(),
-            capture_output=True,
-            text=True,
-            timeout=900,
-        )
-        output = (result.stdout + result.stderr).strip()
-        # Echo full output so user can follow Claude Code's reasoning
-        if output:
-            print(f"\n{_GRAY}{output}{_R}\n", flush=True)
+    returncode, output = _run_claude_streaming(
+        [claude_bin, "-p", prompt, "--max-turns", "15"],
+        claude_env,
+        timeout=900,
+        label="Fix attempt",
+    )
 
-        # Claude Code outputs extensive tool-use logs before its final response.
-        # Scan the LAST ~30 lines for the decision keyword rather than taking split()[0].
-        last_lines = [ln.strip() for ln in output.splitlines()[-30:] if ln.strip()]
-        log_both(f"{_GRAY}    Claude Code last line: {last_lines[-1] if last_lines else '(empty)'}{_R}")
-
-        decision = "NO_CHANGE"
-        for line in reversed(last_lines):
-            first = line.split()[0].upper() if line.split() else ""
-            if first in ("FIXED", "NO_CHANGE", "GIVE_UP"):
-                decision = first
-                break
-            # Also accept the keyword anywhere in a short line (≤ 40 chars)
-            for kw in ("GIVE_UP", "FIXED", "NO_CHANGE"):
-                if kw in line.upper() and len(line) <= 40:
-                    decision = kw
-                    break
-            if decision != "NO_CHANGE":
-                break
-
-        log_both(f"{_CYAN}🤖  Claude Code says: {decision}{_R}")
-        return decision
-
-    except FileNotFoundError:
-        log_both(f"{_RED}❌  Claude Code CLI not found — treating as NO_CHANGE{_R}", "error")
+    if returncode is None:
+        log_both(f"{_YELLOW}⚠️  Claude Code failed or timed out — treating as NO_CHANGE{_R}", "warning")
         return "NO_CHANGE"
-    except subprocess.TimeoutExpired:
-        log_both(f"{_YELLOW}⚠️  Claude Code timed out — treating as NO_CHANGE{_R}", "warning")
-        return "NO_CHANGE"
+
+    output = output.strip()
+    last_lines = [ln.strip() for ln in output.splitlines()[-30:] if ln.strip()]
+    log_both(f"{_GRAY}    Claude Code last line: {last_lines[-1] if last_lines else '(empty)'}{_R}")
+
+    decision = "NO_CHANGE"
+    for line in reversed(last_lines):
+        first = line.split()[0].upper() if line.split() else ""
+        if first in ("FIXED", "NO_CHANGE", "GIVE_UP"):
+            decision = first
+            break
+        for kw in ("GIVE_UP", "FIXED", "NO_CHANGE"):
+            if kw in line.upper() and len(line) <= 40:
+                decision = kw
+                break
+        if decision != "NO_CHANGE":
+            break
+
+    log_both(f"{_CYAN}🤖  Claude Code says: {decision}{_R}")
+    return decision
 
 
 # ── Phase 4: Success ───────────────────────────────────────────────────────────
