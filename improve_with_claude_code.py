@@ -689,7 +689,14 @@ def _verify_image_quality(image_path: str, midjourney_prompt: str) -> dict:
 
 def _verify_terminal_output(terminal_output: str) -> dict:
     from services.grok_ai import get_grok_response
-    snippet = terminal_output[:5000] + (" ... [truncated]" if len(terminal_output) > 5000 else "")
+    # Use head + tail so both early errors AND final stages/URL are visible.
+    # A full cycle produces ~8000-12000 chars; 2500+2500 captures both ends reliably.
+    if len(terminal_output) > 5000:
+        head = terminal_output[:2500]
+        tail = terminal_output[-2500:]
+        snippet = head + "\n\n... [middle truncated] ...\n\n" + tail
+    else:
+        snippet = terminal_output
     prompt = f"""You are reviewing the terminal output of a German-learning Twitter bot that just ran one full cycle.
 
 Terminal output (may be truncated):
