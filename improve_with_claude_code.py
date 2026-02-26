@@ -305,7 +305,7 @@ def phase_1_improve_code(original_branch: str) -> "str | None":
 
     try:
         claude_result = subprocess.run(
-            ["claude", "-p", prompt, "--yes", "--max-turns", "25"],
+            ["claude", "-p", prompt, "--max-turns", "25"],
             cwd=str(PROJECT_DIR),
             timeout=1800,  # 30 minutes max
         )
@@ -388,26 +388,47 @@ def phase_2_live_cycle(attempt: int) -> dict:
     env = os.environ.copy()
     env["PYTHONUNBUFFERED"] = "1"
 
+    # Stream output to terminal in real-time AND capture for verification
+    stdout_lines: list = []
+    stderr_lines: list = []
+
     try:
-        result = subprocess.run(
-            [sys.executable, "main.py", "--single-cycle"],
+        import threading
+        proc = subprocess.Popen(
+            [sys.executable, "-u", "main.py", "--single-cycle"],
             cwd=str(PROJECT_DIR),
             env=env,
-            capture_output=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
             text=True,
-            timeout=900,  # 15 minutes
         )
-        terminal_content = result.stdout + "\n--- STDERR ---\n" + result.stderr
-        terminal_path.write_text(terminal_content, encoding="utf-8")
-        log_both(f"{_GRAY}    Exit code: {result.returncode}{_R}")
 
-    except subprocess.TimeoutExpired as exc:
-        log_both(f"{_RED}❌  Live cycle timed out after 15 minutes{_R}", "error")
-        partial = (exc.stdout or "") + "\n--- STDERR ---\n" + (exc.stderr or "")
-        terminal_path.write_text(
-            f"TIMEOUT: Live cycle exceeded 15 minutes\n\n{partial}", encoding="utf-8"
-        )
-        return {"success": False, "errors": ["timeout"]}
+        def _drain(stream, buf: list, prefix: str = ""):
+            for line in stream:
+                print(prefix + line, end="", flush=True)
+                buf.append(line)
+
+        t_out = threading.Thread(target=_drain, args=(proc.stdout, stdout_lines))
+        t_err = threading.Thread(target=_drain, args=(proc.stderr, stderr_lines, _GRAY))
+        t_out.start(); t_err.start()
+
+        try:
+            proc.wait(timeout=900)
+        except subprocess.TimeoutExpired:
+            proc.kill()
+            t_out.join(); t_err.join()
+            partial = "".join(stdout_lines) + "\n--- STDERR ---\n" + "".join(stderr_lines)
+            terminal_path.write_text(
+                f"TIMEOUT: Live cycle exceeded 15 minutes\n\n{partial}", encoding="utf-8"
+            )
+            log_both(f"{_RED}❌  Live cycle timed out after 15 minutes{_R}", "error")
+            return {"success": False, "errors": ["timeout"]}
+
+        t_out.join(); t_err.join()
+        terminal_content = "".join(stdout_lines) + "\n--- STDERR ---\n" + "".join(stderr_lines)
+        terminal_path.write_text(terminal_content, encoding="utf-8")
+        log_both(f"{_GRAY}    Exit code: {proc.returncode}{_R}")
+
     except Exception as exc:
         log_both(f"{_RED}❌  Live cycle subprocess failed: {exc}{_R}", "error")
         terminal_path.write_text(f"SUBPROCESS ERROR: {exc}", encoding="utf-8")
@@ -635,13 +656,16 @@ def _ask_claude_code_to_fix(failure_report: dict, attempt: int, terminal_output:
 
     try:
         result = subprocess.run(
-            ["claude", "-p", prompt, "--yes", "--max-turns", "15"],
+            ["claude", "-p", prompt, "--max-turns", "15"],
             cwd=str(PROJECT_DIR),
             capture_output=True,
             text=True,
             timeout=900,
         )
         output = (result.stdout + result.stderr).strip()
+        # Echo full output so user can follow Claude Code's reasoning
+        if output:
+            print(f"\n{_GRAY}{output}{_R}\n", flush=True)
 
         # Claude Code outputs extensive tool-use logs before its final response.
         # Scan the LAST ~30 lines for the decision keyword rather than taking split()[0].
