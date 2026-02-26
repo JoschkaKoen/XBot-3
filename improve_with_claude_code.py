@@ -192,21 +192,15 @@ def _build_claude_env() -> dict:
     """
     Build an environment dict for Claude Code subprocesses.
 
-    ANTHROPIC_API_KEY lives in ~/.bashrc which is not sourced by non-interactive
-    subprocesses. Read it from .bashrc as a fallback if it's not already set.
+    Claude Code uses OAuth credentials stored in ~/.claude/ by default.
+    We must NOT inject ANTHROPIC_API_KEY into the environment — if that env var
+    is present it overrides the OAuth session and causes "Invalid API key" errors.
+    We strip it out to ensure Claude Code falls back to its stored OAuth token.
     """
     env = os.environ.copy()
-    if not env.get("ANTHROPIC_API_KEY"):
-        bashrc = Path.home() / ".bashrc"
-        if bashrc.exists():
-            for line in bashrc.read_text(encoding="utf-8", errors="ignore").splitlines():
-                line = line.strip()
-                if line.startswith("export ANTHROPIC_API_KEY="):
-                    key = line.split("=", 1)[1].strip().strip('"').strip("'")
-                    if key:
-                        env["ANTHROPIC_API_KEY"] = key
-                        log_both(f"{_GRAY}    Injected ANTHROPIC_API_KEY from ~/.bashrc{_R}")
-                    break
+    if "ANTHROPIC_API_KEY" in env:
+        del env["ANTHROPIC_API_KEY"]
+        log_both(f"{_GRAY}    Removed ANTHROPIC_API_KEY from env so Claude Code uses OAuth session{_R}")
     return env
 
 
