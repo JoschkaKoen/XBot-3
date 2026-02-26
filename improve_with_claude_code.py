@@ -393,7 +393,7 @@ def _run_claude_streaming(
     import threading
 
     if "--output-format" not in cmd:
-        cmd = cmd + ["--output-format", "stream-json"]
+        cmd = cmd + ["--output-format", "stream-json", "--verbose"]
 
     log_both(f"{_GRAY}    $ {' '.join(cmd[:4])} …{_R}")
 
