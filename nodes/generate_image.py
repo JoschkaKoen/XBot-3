@@ -43,6 +43,10 @@ class MidjourneyClient:
         prompt = prompt.strip()
         if "--ar" not in prompt.lower() and "--aspect" not in prompt.lower():
             prompt += f" --ar {aspect_ratio}"
+        if "--style" not in prompt.lower():
+            prompt += " --style raw"
+        if "--s " not in prompt.lower() and "--stylize" not in prompt.lower():
+            prompt += " --s 0"
 
         payload = {"prompt": prompt, "mode": mode}
         resp = requests.post(f"{self.BASE_URL}/imagine", headers=self.HEADERS, json=payload, timeout=30)
@@ -56,7 +60,7 @@ class MidjourneyClient:
         logger.info("Midjourney job submitted: %s (ar=%s)", job_id, aspect_ratio)
         return job_id
 
-    def _poll_job(self, job_id: str, timeout_sec: int = 360, interval: int = 8):
+    def _poll_job(self, job_id: str, timeout_sec: int = 360, interval: int = 1):
         url = f"{self.BASE_URL}/fetch"
         start = time.time()
         dots = 0
@@ -158,6 +162,8 @@ def generate_image(state: dict) -> dict:
         system_prompt = (
             "You are an expert Midjourney prompt engineer specialising in immersive, photorealistic funny scenes. "
             "Prioritise compositions that place the viewer inside the scene. "
+            "Always include specific camera model, lens, and lighting descriptors (e.g. 'shot on Sony A7IV, 50mm f/1.4, golden hour'). "
+            "Never use words like 'painting', 'illustration', 'artistic', 'rendered', 'digital art'. "
             "No parameter flags. No double hyphens. Output only the description."
         )
     else:
@@ -173,6 +179,8 @@ def generate_image(state: dict) -> dict:
             "You are an expert Midjourney prompt engineer. "
             "You create vivid, immersive, photorealistic prompts that place the viewer inside the scene. "
             "Prioritise ground-level or eye-level framing with foreground depth. "
+            "Always include specific camera model, lens, and lighting descriptors (e.g. 'shot on Sony A7IV, 50mm f/1.4, golden hour'). "
+            "Never use words like 'painting', 'illustration', 'artistic', 'rendered', 'digital art'. "
             "No parameter flags. No double hyphens. Output only the description."
         )
 
@@ -190,6 +198,11 @@ def generate_image(state: dict) -> dict:
     import re
     midjourney_prompt = re.sub(r"\s*--\w[\w\d]*.*$", "", midjourney_prompt).strip()
     midjourney_prompt = midjourney_prompt.replace("\u2018", "'").replace("\u2019", "'").replace("\u201c", "").replace("\u201d", "")
+    PHOTO_SUFFIX = (
+        ", shot on Canon EOS R5, 35mm lens, natural lighting, "
+        "RAW photo, ultra realistic, 8k UHD"
+    )
+    midjourney_prompt = midjourney_prompt.rstrip(".") + PHOTO_SUFFIX
     logger.debug("Midjourney prompt: %s", midjourney_prompt)
     print(f"  Prompt: {midjourney_prompt}", flush=True)
 

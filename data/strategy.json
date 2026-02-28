@@ -1,7 +1,7 @@
 {
-  "preferred_cefr": "B1,B2",
-  "preferred_themes": "civic engagement,home comfort,urban infrastructure",
-  "focus": "Prioritize B1-B2 vocabulary on civic and daily life themes",
+  "preferred_cefr": "B2,B1",
+  "preferred_themes": "civics,household",
+  "focus": "Target B1-B2 vocabulary in civic engagement and household themes",
   "avoid_words": [
     "Menschenverstand",
     "Zucker",
@@ -15,7 +15,9 @@
     "Ziel",
     "Woche",
     "Gesetz",
-    "Wärme"
+    "Wärme",
+    "Klima",
+    "Mädchenschule"
   ],
   "scaffold": "#DeutschLernen [LEVEL]\n\n🇩🇪  [ARTICLE] [GERMAN_WORD]\n🇬🇧  [ENGLISH_TRANSLATION]  [EMOJI][EMOJI]\n\n🇩🇪  [SHORT_FUNNY_GERMAN_SENTENCE]\n🇬🇧  [ENGLISH_TRANSLATION_OF_SENTENCE]  [EMOJI][EMOJI]"
 }
