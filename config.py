@@ -49,6 +49,10 @@ IMPROVEMENT_SCORE_THRESHOLD: float = float(os.getenv("IMPROVEMENT_SCORE_THRESHOL
 # Set to "false" to use warm, neutral sentences instead.
 FUNNY_MODE: bool = os.getenv("FUNNY_MODE", "false").lower().strip() == "true"
 
+# When True, a US-to-German flag overlay is added to the top-right corner of
+# each generated image, reinforcing the German-for-English-speakers branding.
+FLAG_OVERLAY: bool = os.getenv("FLAG_OVERLAY", "true").lower().strip() == "true"
+
 # Model used for strategy analysis ("reasoning" = grok-4-1-fast, "non-reasoning" = grok-4-1-fast-non-reasoning).
 # Only applies when AI_PROVIDER=grok. Scaleway always uses llama-3.3-70b.
 STRATEGY_MODEL: str = os.getenv("STRATEGY_MODEL", "reasoning").lower().strip()

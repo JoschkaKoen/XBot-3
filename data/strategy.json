@@ -1,7 +1,7 @@
 {
-  "preferred_cefr": "B1,B2",
-  "preferred_themes": "civic engagement,home comfort,urban infrastructure",
-  "focus": "Prioritize B1-B2 vocabulary on civic and daily life themes",
+  "preferred_cefr": "A1, A2, B1, B2, C1, C2",
+  "preferred_themes": "school,relationships,humor,daily life",
+  "focus": "Craft humorous, relatable sentences about school experiences, gender dynamics, lazy weekends, and everyday struggles.",
   "avoid_words": [
     "Menschenverstand",
     "Zucker",
@@ -15,7 +15,14 @@
     "Ziel",
     "Woche",
     "Gesetz",
-    "Wärme"
+    "Wärme",
+    "Klima",
+    "Mädchenschule",
+    "Rakete",
+    "Gelb",
+    "Sonntag",
+    "Sorge",
+    "Trauer"
   ],
-  "scaffold": "#DeutschLernen [LEVEL]\n\n🇩🇪  [ARTICLE] [GERMAN_WORD]\n🇬🇧  [ENGLISH_TRANSLATION]  [EMOJI][EMOJI]\n\n🇩🇪  [SHORT_FUNNY_GERMAN_SENTENCE]\n🇬🇧  [ENGLISH_TRANSLATION_OF_SENTENCE]  [EMOJI][EMOJI]"
+  "scaffold": "#DeutschLernen [LEVEL]\n\n🇩🇪  [ARTICLE] [GERMAN_WORD]\n🇺🇸  [ENGLISH_TRANSLATION]  [EMOJI][EMOJI]\n\n🇩🇪  [SHORT_FUNNY_GERMAN_SENTENCE]\n🇺🇸  [ENGLISH_TRANSLATION_OF_SENTENCE]  [EMOJI][EMOJI]"
 }

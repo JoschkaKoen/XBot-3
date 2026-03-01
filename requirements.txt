@@ -10,11 +10,12 @@ moviepy>=2.0.0
 pydub>=0.25.0
 german-nouns>=1.0.0
 Pillow>=10.0.0
+beautifulsoup4>=4.12.0
 # Image ranking (picks best Midjourney image automatically)
 image-reward>=1.5
 # CLIP is a required dependency of ImageReward not listed in its metadata
 git+https://github.com/openai/CLIP.git
 # ImageReward requires transformers <5.x
-transformers>=4.27.4,<5.0.0
+transformers>=4.27.4,<4.47.0
 torch>=2.0.0
 torchvision>=0.15.0

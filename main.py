@@ -2,7 +2,7 @@
 Entry point for the German Learning X Bot.
 
 Run with:
-    source venv/bin/activate
+    source "/home/y/Programming/XBot 2/venv/bin/activate"
     python main.py
 
     python main.py --single-cycle   # run exactly one cycle then exit (used by improvement engine)

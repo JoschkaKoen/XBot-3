@@ -13,7 +13,7 @@ import requests
 from typing import List
 from datetime import datetime
 
-from config import TT_API_KEY, IMAGES_DIR, FUNNY_MODE
+from config import TT_API_KEY, IMAGES_DIR, FUNNY_MODE, FLAG_OVERLAY
 from services.ai_client import get_ai_response
 from services.image_ranker import pick_best_image
 from utils.retry import retry_call, with_retry
@@ -43,6 +43,10 @@ class MidjourneyClient:
         prompt = prompt.strip()
         if "--ar" not in prompt.lower() and "--aspect" not in prompt.lower():
             prompt += f" --ar {aspect_ratio}"
+        if "--style" not in prompt.lower():
+            prompt += " --style raw"
+        if "--s " not in prompt.lower() and "--stylize" not in prompt.lower():
+            prompt += " --s 0"
 
         payload = {"prompt": prompt, "mode": mode}
         resp = requests.post(f"{self.BASE_URL}/imagine", headers=self.HEADERS, json=payload, timeout=30)
@@ -56,7 +60,7 @@ class MidjourneyClient:
         logger.info("Midjourney job submitted: %s (ar=%s)", job_id, aspect_ratio)
         return job_id
 
-    def _poll_job(self, job_id: str, timeout_sec: int = 360, interval: int = 8):
+    def _poll_job(self, job_id: str, timeout_sec: int = 360, interval: int = 1):
         url = f"{self.BASE_URL}/fetch"
         start = time.time()
         dots = 0
@@ -115,6 +119,7 @@ def generate_image(state: dict) -> dict:
     example_de: str  = state.get("example_sentence_de", "")
     article: str     = state.get("article", "")
     german_word: str = state.get("german_word", "")
+    full_tweet: str  = state.get("full_tweet", "")
 
     # Build a gender hint so Midjourney shows the right sex when the word is
     # a gendered noun (der → male, die → female, das / non-noun → no hint).
@@ -144,26 +149,54 @@ def generate_image(state: dict) -> dict:
         "The composition should feel lived-in and immediate, as if the viewer just walked into the moment. "
     )
 
+    _CLEAN_AESTHETIC = (
+        "Keep the composition clean and uncluttered — ONE clear subject, minimal background elements. "
+        "The joke or mood must be immediately readable at a glance; avoid crowding the frame with unnecessary props or details. "
+        "Prioritise aesthetic beauty: harmonious colours, balanced composition, and flattering natural light. "
+    )
+
     if FUNNY_MODE and example_de:
+        tweet_context = f"Full tweet:\n{full_tweet}\n\n" if full_tweet else ""
         mj_req = (
-            "Generate a Midjourney prompt for a photorealistic, cinematic image that is funny and aesthetically beautiful. "
-            "The sentence below is a humorous observation — visually depict the joke. "
-            "Show the ironic situation with expressive faces or body language (proud smile, knowing look, deadpan stare). "
+            "A German learning tweet contains a joke. Your job is to create a Midjourney prompt for a "
+            "photorealistic, cinematic image that makes the PUNCHLINE of the joke visually obvious and funny.\n\n"
+            f"{tweet_context}"
+            f"German sentence: \"{example_de}\"\n"
+            f"English sentence: \"{example_en}\"\n\n"
+            "Step 1 — Identify the punchline: find the ironic twist, the subverted expectation, or the absurd contrast in the sentence.\n"
+            "Step 2 — Stage it visually with exaggeration: design a scene that shows that punchline in action. "
+            "Exaggerate the situation — push the irony, the contrast, or the absurdity further than reality would. "
+            "Exaggerated expressions, over-the-top body language, or a comically amplified scene are all encouraged. "
+            "The comedy must be immediately visible from the image alone — without needing to read the sentence. "
+            "The viewer should laugh at the image before they even read the tweet.\n"
+            "Step 3 — Keep it clean: ONE subject, ONE joke, uncluttered frame.\n"
+            "Step 4 — Keep it positive and safe: the humour must be warm, light-hearted, and family-friendly. "
+            "No shock content, no disturbing imagery, no pain, no embarrassment, no negative emotions. "
+            "The viewer should feel good — amused, charmed, or delighted. Never unsettled.\n\n"
             f"{_IMMERSIVE}"
-            "Warm, well-lit, natural setting. Photorealistic photography, NOT illustration or cartoon.\n\n"
-            f"Sentence: \"{example_en}\""
+            f"{_CLEAN_AESTHETIC}"
+            "Warm, well-lit, natural setting. Photorealistic photography, NOT illustration or cartoon."
             f"{gender_hint}"
             f"{_RULES}"
         )
         system_prompt = (
-            "You are an expert Midjourney prompt engineer specialising in immersive, photorealistic funny scenes. "
-            "Prioritise compositions that place the viewer inside the scene. "
+            "You are an expert Midjourney prompt engineer specialising in photorealistic comedy scenes. "
+            "Your primary skill is identifying the punchline of a joke and translating it into a single, "
+            "instantly funny visual — not illustrating the sentence literally, but staging the irony or twist "
+            "with exaggeration so it lands from the image alone. "
+            "Lean into over-the-top expressions, absurd contrasts, and comedic amplification to make the humour undeniable. "
+            "The humour is always warm and family-friendly — never shocking, disturbing, or negative. "
+            "The final image should make the viewer smile or laugh, never feel unsettled. "
+            "One subject, one joke, clean composition, beautiful light. "
+            "Always include specific camera model, lens, and lighting descriptors (e.g. 'shot on Sony A7IV, 50mm f/1.4, golden hour'). "
+            "Never use words like 'painting', 'illustration', 'artistic', 'rendered', 'digital art'. "
             "No parameter flags. No double hyphens. Output only the description."
         )
     else:
         mj_req = (
             "Generate a Midjourney prompt for a beautiful, photorealistic 16:9 photography. "
             f"{_IMMERSIVE}"
+            f"{_CLEAN_AESTHETIC}"
             "No text in the image. Visually appealing for social media.\n\n"
             f"Sentence: \"{example_en}\""
             f"{gender_hint}"
@@ -171,8 +204,11 @@ def generate_image(state: dict) -> dict:
         )
         system_prompt = (
             "You are an expert Midjourney prompt engineer. "
-            "You create vivid, immersive, photorealistic prompts that place the viewer inside the scene. "
-            "Prioritise ground-level or eye-level framing with foreground depth. "
+            "You create clean, elegant, photorealistic prompts — ONE clear subject, uncluttered composition, beautiful light. "
+            "Never crowd the frame; every element in the description must serve the main subject. "
+            "Prioritise ground-level or eye-level framing with shallow depth of field to isolate the subject beautifully. "
+            "Always include specific camera model, lens, and lighting descriptors (e.g. 'shot on Sony A7IV, 50mm f/1.4, golden hour'). "
+            "Never use words like 'painting', 'illustration', 'artistic', 'rendered', 'digital art'. "
             "No parameter flags. No double hyphens. Output only the description."
         )
 
@@ -190,6 +226,17 @@ def generate_image(state: dict) -> dict:
     import re
     midjourney_prompt = re.sub(r"\s*--\w[\w\d]*.*$", "", midjourney_prompt).strip()
     midjourney_prompt = midjourney_prompt.replace("\u2018", "'").replace("\u2019", "'").replace("\u201c", "").replace("\u201d", "")
+    PHOTO_SUFFIX = (
+        ", shot on Canon EOS R5, 35mm lens, natural lighting, "
+        "RAW photo, ultra realistic, 8k UHD"
+    )
+    if FLAG_OVERLAY:
+        PHOTO_SUFFIX += (
+            ", top-right corner has a small semi-transparent flag that transitions "
+            "softly from the American flag on the left to the German flag on the right, "
+            "blended naturally into the background"
+        )
+    midjourney_prompt = midjourney_prompt.rstrip(".") + PHOTO_SUFFIX
     logger.debug("Midjourney prompt: %s", midjourney_prompt)
     print(f"  Prompt: {midjourney_prompt}", flush=True)
 

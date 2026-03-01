@@ -30,7 +30,7 @@ _VOICES = {
 }
 
 _DEFAULT_VOICE = "Matilda"
-_DEFAULT_SPEED = 0.75
+_DEFAULT_SPEED = 0.70
 
 os.makedirs(VOICES_DIR, exist_ok=True)
 
@@ -58,8 +58,8 @@ def generate_german_audio(
         logger.warning("Unknown voice '%s', falling back to Matilda.", voice)
         voice = _DEFAULT_VOICE
     if not (0.7 <= speed <= 1.2):
-        logger.warning("Speed %.2f out of range, using 0.85.", speed)
-        speed = 0.85
+        logger.warning("Speed %.2f out of range, clamping to 0.70.", speed)
+        speed = 0.70
 
     if output_file is None:
         ts = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -83,7 +83,7 @@ def generate_german_audio_with_timings(
     text: str,
     output_file: str = None,
     voice: str = _DEFAULT_VOICE,
-    speed: float = 0.78,
+    speed: float = 0.70,
 ) -> tuple:
     """
     Generate German TTS audio with word-level timings.

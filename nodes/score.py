@@ -15,14 +15,42 @@ from utils.ui import stage_banner, ok
 
 logger = logging.getLogger("german_bot.score")
 
+_MIN_AGE_HOURS = 6   # avoid extreme inflation for very fresh tweets
+
+
+def tweet_age_hours(record: dict) -> float:
+    """Return how many hours ago this tweet was posted. Minimum 6 hours to avoid division inflation."""
+    ts = record.get("timestamp", "")
+    if not ts:
+        return 24.0
+    try:
+        posted = datetime.fromisoformat(ts)
+        if posted.tzinfo is None:
+            posted = posted.replace(tzinfo=timezone.utc)
+        age_hours = (datetime.now(timezone.utc) - posted).total_seconds() / 3600
+        return round(max(age_hours, _MIN_AGE_HOURS), 2)
+    except (ValueError, TypeError):
+        return 24.0
+
+
+def tweet_age_days(record: dict) -> float:
+    """Return tweet age in days (derived from hours)."""
+    return round(tweet_age_hours(record) / 24, 2)
+
+
+def normalized_score(record: dict) -> float:
+    """Engagement score divided by age in hours — a fair per-hour rate for comparison."""
+    age_hours = tweet_age_hours(record)
+    return round(record.get("engagement_score", 0.0) / age_hours, 4)
+
 
 def get_top_tweets(history: list, n: int = 3) -> list:
-    """Return the N highest-scoring tweets from history, excluding score 0.0."""
+    """Return the N highest age-normalized-scoring tweets from history, excluding score 0.0."""
     qualifying = [
         r for r in history
         if r.get("engagement_score", 0.0) > 0.0 and r.get("full_tweet")
     ]
-    qualifying.sort(key=lambda r: r.get("engagement_score", 0.0), reverse=True)
+    qualifying.sort(key=normalized_score, reverse=True)
     return qualifying[:n]
 
 
