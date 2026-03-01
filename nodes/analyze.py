@@ -40,10 +40,13 @@ _SYSTEM_PROMPT = (
 _DEFAULT_SCAFFOLD = (
     "#DeutschLernen [LEVEL]\n\n"
     "🇩🇪  [ARTICLE] [GERMAN_WORD]\n"
-    "🇬🇧  [ENGLISH_TRANSLATION]  [EMOJI][EMOJI]\n\n"
+    "🇺🇸  [ENGLISH_TRANSLATION]  [EMOJI][EMOJI]\n\n"
     "🇩🇪  [SHORT_FUNNY_GERMAN_SENTENCE]\n"
-    "🇬🇧  [ENGLISH_TRANSLATION_OF_SENTENCE]  [EMOJI][EMOJI]"
+    "🇺🇸  [ENGLISH_TRANSLATION_OF_SENTENCE]  [EMOJI][EMOJI]"
 )
+
+_ALL_CEFR_LEVELS = ["A1", "A2", "B1", "B2", "C1", "C2"]
+_CEFR_MIN_TWEETS = 10   # minimum tweets per level before CEFR bias is allowed
 
 _DEFAULT_STRATEGY = {
     "preferred_cefr": "A1, A2, B1, B2, C1, C2",
@@ -199,14 +202,18 @@ def _log_strategy_diff(old: dict, new: dict) -> bool:
 
 # ── analysis prompt ────────────────────────────────────────────────────────────
 
-def _build_analysis_prompt(history_slice: list, current_scaffold: str, funny_mode: bool = False) -> str:
+def _build_analysis_prompt(history_slice: list, current_scaffold: str, funny_mode: bool = False, cefr_frozen: bool = False) -> str:
+    from nodes.score import tweet_age_hours, normalized_score
+
     posts_summary = json.dumps(
         [
             {
                 "word": r.get("german_word"),
                 "cefr": r.get("cefr_level"),
                 "sentence_de": r.get("example_sentence_de"),
-                "score": r.get("engagement_score", 0),
+                "age_hours": tweet_age_hours(r),
+                "score_raw": r.get("engagement_score", 0),
+                "score_per_hour": normalized_score(r),
                 "likes": r.get("metrics", {}).get("like_count", 0),
                 "reposts": r.get("metrics", {}).get("retweet_count", 0),
                 "replies": r.get("metrics", {}).get("reply_count", 0),
@@ -218,17 +225,52 @@ def _build_analysis_prompt(history_slice: list, current_scaffold: str, funny_mod
     )
 
     return (
-        f"Here are the last {len(history_slice)} posts with their engagement scores:\n\n"
+        f"Here are the last {len(history_slice)} posts with their engagement data:\n\n"
         f"{posts_summary}\n\n"
+        "IMPORTANT: use 'score_per_hour' (engagement divided by tweet age in hours) as the primary "
+        "performance metric — NOT 'score_raw'. A tweet that is 10 hours old with score_per_hour=0.5 "
+        "outperforms a tweet that is 100 hours old with score_per_hour=0.1, even if the older tweet "
+        "has a higher raw score.\n\n"
         "Based on this data, output a JSON object with these keys:\n"
-        '  "preferred_cefr":    (string) comma-separated CEFR levels that performed best, '
-        'chosen from A1, A2, B1, B2, C1, C2, e.g. "A2, B1, C1"\n'
-        '  "preferred_themes":  (string) comma-separated themes to focus on next, e.g. "food, travel, emotions"\n'
-        '  "focus":             (string) a short instruction covering vocabulary style, theme, or CEFR preference — '
-        f"{'NOTE: tone/humour is controlled externally — do NOT set focus to override tone direction (e.g. avoid instructions like use motivational or use uplifting). Focus on vocabulary themes and CEFR only.' if funny_mode else 'e.g. use funnier sentences'}\n"
+        + (
+            '  "preferred_cefr":    (string) IGNORE — this field is controlled by the system and will be overridden. '
+            'Set it to "A1, A2, B1, B2, C1, C2" — there is not yet enough data per level to bias it.\n'
+            if cefr_frozen else
+            '  "preferred_cefr":    (string) comma-separated CEFR levels that performed best, '
+            'chosen from A1, A2, B1, B2, C1, C2, e.g. "A2, B1, C1"\n'
+        )
+        + '  "preferred_themes":  (string) comma-separated themes to focus on next, e.g. "food, travel, emotions"\n'
+        '  "focus":             (string) a short instruction covering vocabulary style and theme'
+        + (
+            ' — DO NOT mention any specific CEFR levels (A1/A2/B1/B2/C1/C2) or language difficulty here; '
+            'CEFR is frozen and controlled separately. Focus only on themes, topics, or vocabulary style.'
+            if cefr_frozen else
+            f" — {'NOTE: tone/humour is controlled externally — do NOT set focus to override tone direction. Focus on vocabulary themes and CEFR only.' if funny_mode else 'e.g. use funnier sentences, focus on daily life themes'}"
+        ) + "\n"
         '  "avoid_words":       (array)  list of German words recently used that should not be repeated\n\n'
         "Return ONLY the raw JSON object. No markdown, no explanation."
     )
+
+
+def _cefr_counts(history: list) -> dict:
+    """Return a dict of {level: tweet_count} for all CEFR levels."""
+    counts = {level: 0 for level in _ALL_CEFR_LEVELS}
+    for r in history:
+        level = (r.get("cefr_level") or "").strip().upper()
+        if level in counts:
+            counts[level] += 1
+    return counts
+
+
+def _cefr_frozen(history: list) -> tuple[bool, dict]:
+    """
+    Return (frozen, counts).
+    frozen=True when any CEFR level has fewer than _CEFR_MIN_TWEETS tweets,
+    meaning we don't yet have enough data to bias towards a level.
+    """
+    counts = _cefr_counts(history)
+    frozen = any(c < _CEFR_MIN_TWEETS for c in counts.values())
+    return frozen, counts
 
 
 def _parse_strategy(raw: str) -> dict:
@@ -260,7 +302,8 @@ def analyze_and_improve(state: dict) -> dict:
 
     history_slice = history[-ANALYZE_LAST_N:]
     current_scaffold = old_strategy.get("scaffold", _DEFAULT_SCAFFOLD)
-    prompt = _build_analysis_prompt(history_slice, current_scaffold, funny_mode=FUNNY_MODE)
+    frozen, cefr_counts_pre = _cefr_frozen(history)
+    prompt = _build_analysis_prompt(history_slice, current_scaffold, funny_mode=FUNNY_MODE, cefr_frozen=frozen)
 
     strategy_ai = _get_strategy_ai()
     model_label = "grok-reasoning" if (AI_PROVIDER == "grok" and STRATEGY_MODEL == "reasoning") else "default"
@@ -282,6 +325,25 @@ def analyze_and_improve(state: dict) -> dict:
     # Scaffold is locked — always keep the current scaffold unchanged.
     merged = {**_DEFAULT_STRATEGY, **new_strategy}
     merged["scaffold"] = current_scaffold
+
+    # Freeze CEFR bias until every level has at least _CEFR_MIN_TWEETS tweets.
+    if frozen:
+        merged["preferred_cefr"] = ", ".join(_ALL_CEFR_LEVELS)
+        # Safety-net: strip any stray CEFR level tokens the LLM may have written into 'focus'
+        import re as _re
+        merged["focus"] = _re.sub(
+            r"\b(A1|A2|B1|B2|C1|C2)\b[\s,/]*",
+            "",
+            merged.get("focus", ""),
+            flags=_re.IGNORECASE,
+        ).strip(" ,;—-")
+        under = {lvl: n for lvl, n in cefr_counts_pre.items() if n < _CEFR_MIN_TWEETS}
+        ui_info(
+            f"CEFR bias frozen — insufficient data for: "
+            + ", ".join(f"{lvl}({n})" for lvl, n in sorted(under.items()))
+            + f" (need {_CEFR_MIN_TWEETS} each)"
+        )
+        logger.info("CEFR bias frozen. counts=%s", cefr_counts_pre)
 
     # Always accumulate avoid_words from the full history (last 30)
     recent_words = [r.get("german_word", "") for r in history[-30:] if r.get("german_word")]

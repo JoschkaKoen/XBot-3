@@ -1,7 +1,7 @@
 {
-  "preferred_cefr": "B2,B1",
-  "preferred_themes": "civics,household",
-  "focus": "Target B1-B2 vocabulary in civic engagement and household themes",
+  "preferred_cefr": "A1, A2, B1, B2, C1, C2",
+  "preferred_themes": "humor,school,daily life,language learning,coffee,weekends",
+  "focus": "Focus on humorous, relatable everyday situations like school experiences, lazy weekends, coffee boosts, and compliments on language progress.",
   "avoid_words": [
     "Menschenverstand",
     "Zucker",
@@ -17,7 +17,12 @@
     "Gesetz",
     "Wärme",
     "Klima",
-    "Mädchenschule"
+    "Mädchenschule",
+    "Rakete",
+    "Gelb",
+    "Sonntag",
+    "Sorge",
+    "Trauer"
   ],
-  "scaffold": "#DeutschLernen [LEVEL]\n\n🇩🇪  [ARTICLE] [GERMAN_WORD]\n🇬🇧  [ENGLISH_TRANSLATION]  [EMOJI][EMOJI]\n\n🇩🇪  [SHORT_FUNNY_GERMAN_SENTENCE]\n🇬🇧  [ENGLISH_TRANSLATION_OF_SENTENCE]  [EMOJI][EMOJI]"
+  "scaffold": "#DeutschLernen [LEVEL]\n\n🇩🇪  [ARTICLE] [GERMAN_WORD]\n🇺🇸  [ENGLISH_TRANSLATION]  [EMOJI][EMOJI]\n\n🇩🇪  [SHORT_FUNNY_GERMAN_SENTENCE]\n🇺🇸  [ENGLISH_TRANSLATION_OF_SENTENCE]  [EMOJI][EMOJI]"
 }
