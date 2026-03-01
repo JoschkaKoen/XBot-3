@@ -1,7 +1,7 @@
 {
   "preferred_cefr": "A1, A2, B1, B2, C1, C2",
-  "preferred_themes": "humor,school,daily life,language learning,coffee,weekends",
-  "focus": "Focus on humorous, relatable everyday situations like school experiences, lazy weekends, coffee boosts, and compliments on language progress.",
+  "preferred_themes": "school,relationships,humor,daily life",
+  "focus": "Craft humorous, relatable sentences about school experiences, gender dynamics, lazy weekends, and everyday struggles.",
   "avoid_words": [
     "Menschenverstand",
     "Zucker",

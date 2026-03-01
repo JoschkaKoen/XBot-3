@@ -172,20 +172,16 @@ def _build_tweet_prompt(
         "## Best-performing past tweets (imitate their style and quality):\n"
         f"{examples_section}\n"
         "## Output\n"
-        "Generate 3 different tweet candidates. Each must use a genuinely different example sentence.\n"
-        "Return ONLY a valid JSON array of exactly 3 objects, each with these fields:\n\n"
-        "[\n"
-        "  {\n"
-        '    "tweet": "<the complete tweet text, exactly matching the scaffold>",\n'
-        '    "german_word": "<the bare German word without article, e.g. Führerschein>",\n'
-        '    "article": "<der / die / das / no known noun>",\n'
-        '    "cefr_level": "<A1 / A2 / B1 / B2 / C1 / C2>",\n'
-        '    "example_sentence_de": "<just the German example sentence>",\n'
-        '    "example_sentence_en": "<just the English translation of the sentence>"\n'
-        "  },\n"
-        "  ...\n"
-        "]\n\n"
-        "No markdown. No explanation. Just the JSON array."
+        "Return ONLY a single valid JSON object with these fields:\n\n"
+        "{\n"
+        '  "tweet": "<the complete tweet text, exactly matching the scaffold>",\n'
+        '  "german_word": "<the bare German word without article, e.g. Führerschein>",\n'
+        '  "article": "<der / die / das / no known noun>",\n'
+        '  "cefr_level": "<A1 / A2 / B1 / B2 / C1 / C2>",\n'
+        '  "example_sentence_de": "<just the German example sentence>",\n'
+        '  "example_sentence_en": "<just the English translation of the sentence>"\n'
+        "}\n\n"
+        "No markdown. No explanation. Just the JSON object."
     )
 
     if extra_instruction:
@@ -203,7 +199,10 @@ def _call_tweet_ai(
     cefr_level: str = "",
     extra_instruction: str = "",
 ) -> list:
-    """Generate 3 tweet candidates and return them as a list of dicts."""
+    """Fire 3 parallel API calls, each generating one tweet candidate. Returns list of dicts."""
+    import threading
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+
     prompt = _build_tweet_prompt(trending_word, scaffold, strategy, top_tweets, cefr_level, extra_instruction)
     if FUNNY_MODE:
         system_prompt = (
@@ -217,30 +216,59 @@ def _call_tweet_ai(
             "You are a German language teacher creating engaging vocabulary content for "
             "X (Twitter). You always respond with valid JSON only."
         )
-    raw = retry_call(
-        tweet_ai,
-        prompt,
-        system_prompt,
-        max_tokens=1800,
-        temperature=0.9,
-        label="generate_tweet",
-    )
-    raw = raw.strip()
-    if raw.startswith("```"):
-        lines = raw.split("\n")
-        raw = "\n".join(lines[1:-1] if lines[-1].strip() == "```" else lines[1:])
-    candidates = json.loads(raw)
-    if isinstance(candidates, dict):
-        candidates = [candidates]  # graceful fallback if AI returns single object
-    return candidates
+
+    _R    = "\033[0m"
+    _BOLD = "\033[1m"
+    _CYAN = "\033[96m"
+    _GRAY = "\033[90m"
+    _GREEN = "\033[92m"
+
+    arrived = [0]
+    lock = threading.Lock()
+
+    def _single_call(idx: int) -> dict:
+        raw = retry_call(
+            tweet_ai,
+            prompt,
+            system_prompt,
+            max_tokens=700,
+            temperature=0.9,
+            label=f"generate_tweet_{idx}",
+        )
+        raw = raw.strip()
+        if raw.startswith("```"):
+            lines = raw.split("\n")
+            raw = "\n".join(lines[1:-1] if lines[-1].strip() == "```" else lines[1:])
+        result = json.loads(raw)
+        if isinstance(result, list):
+            result = result[0]  # graceful fallback if AI returns array
+        with lock:
+            arrived[0] += 1
+            print(f"  {_GREEN}✓{_R}  Candidate {idx} arrived ({arrived[0]}/3)", flush=True)
+        return result
+
+    print(f"\n  {_CYAN}{_BOLD}⚡  Generating 3 tweet candidates in parallel…{_R}", flush=True)
+
+    candidates_map: dict[int, dict] = {}
+    with ThreadPoolExecutor(max_workers=3) as pool:
+        futures = {pool.submit(_single_call, i + 1): i + 1 for i in range(3)}
+        for future in as_completed(futures):
+            idx = futures[future]
+            try:
+                candidates_map[idx] = future.result()
+            except Exception as exc:
+                logger.warning("Candidate %d failed: %s", idx, exc)
+
+    # Return in original order (1, 2, 3); drop any that failed
+    return [candidates_map[i] for i in sorted(candidates_map)]
 
 
 def _select_best_tweet(candidates: list, german_word: str, cefr_level: str) -> dict:
     """
-    Print all candidates to the terminal, use grok-fast to pick the best one,
+    Print all candidates to the terminal, use grok-4 (flagship) to pick the best one,
     and highlight the winner. Falls back to the first candidate if selection fails.
     """
-    from services.grok_ai import get_grok_response
+    from services.grok_ai import get_grok_flagship_response
 
     _R    = "\033[0m"
     _BOLD = "\033[1m"
@@ -264,32 +292,51 @@ def _select_best_tweet(candidates: list, german_word: str, cefr_level: str) -> d
         f"Candidate {i + 1}:\n{c.get('tweet', '')}"
         for i, c in enumerate(candidates)
     )
-    criteria = (
-        "funny and engaging" if FUNNY_MODE
-        else "warm, clear, and engaging"
+
+    tone_note = (
+        "- Humour & originality: Is the example sentence genuinely funny? Does it have a real punchline or ironic twist?\n"
+        if FUNNY_MODE else
+        "- Warmth & authenticity: Is the example sentence natural and relatable?\n"
+    )
+
+    selection_prompt = (
+        f"You are evaluating {len(candidates)} German vocabulary tweet candidates for the word "
+        f"'{german_word}' (CEFR: {cefr_level or 'unknown'}).\n\n"
+        f"{numbered}\n\n"
+        "Score each candidate on these criteria and pick the BEST overall:\n"
+        f"{tone_note}"
+        "- Engagement potential: Would a native English speaker stop scrolling and interact with this tweet?\n"
+        "- Shareability: Is it quotable, relatable, or surprising enough to share?\n"
+        "- Learning effect: Does the example sentence make the German word memorable and easy to understand?\n"
+        "- Sentence quality: Is the German sentence natural, correctly matched to the CEFR level, and short enough to read at a glance?\n\n"
+        "Reply with the winning number followed by a single short reason (max 12 words), e.g.:\n"
+        "2 — funniest punchline, most memorable sentence\n\n"
+        "Your answer:"
     )
 
     chosen_idx = 0
+    reason = ""
     try:
         raw = retry_call(
-            get_grok_response,
-            f"These are {len(candidates)} tweet candidates for the German word '{german_word}' (CEFR: {cefr_level or 'unknown'}).\n\n"
-            f"{numbered}\n\n"
-            f"Which candidate is most {criteria} for an English-speaking German learner on X (Twitter)? "
-            "Reply with only the number (1, 2, or 3).",
-            "You are a social media expert evaluating German vocabulary tweets. Reply with only a single digit.",
-            max_tokens=5,
+            get_grok_flagship_response,
+            selection_prompt,
+            "You are a social media expert and German teacher evaluating tweet quality. "
+            "Reply with a number (1, 2 or 3) followed by a short reason — nothing else.",
+            max_tokens=40,
             temperature=0.0,
             label="select_tweet",
         )
-        idx = int(raw.strip()[0]) - 1
+        raw = raw.strip()
+        idx = int(raw[0]) - 1
+        reason = raw[2:].strip(" —-") if len(raw) > 1 else ""
         if 0 <= idx < len(candidates):
             chosen_idx = idx
-            logger.info("Tweet selection: picked candidate %d of %d", idx + 1, len(candidates))
+            logger.info("Tweet selection: picked candidate %d — %s", idx + 1, reason)
     except Exception as exc:
         logger.warning("Tweet selection failed (%s) — using first candidate.", exc)
 
-    print(f"\n  {_GREEN}{_BOLD}✔  Selected: Candidate {chosen_idx + 1}{_R}\n", flush=True)
+    reason_str = f"  {_GRAY}{reason}{_R}" if reason else ""
+    print(f"\n  {_GREEN}{_BOLD}✔  Selected: Candidate {chosen_idx + 1}{_R}{reason_str}\n", flush=True)
     return candidates[chosen_idx]
 
 
@@ -337,7 +384,7 @@ def _pick_word_from_trends(avoid_words: list) -> Optional[tuple[str, str]]:
         "- Politische Fachbegriffe, die nur im Nachrichtenkontext auftauchen\n"
         "- Entferne führende # oder @ von jedem Wort\n\n"
         "Antworte NUR mit einem gültigen JSON-Array, nichts anderes:\n"
-        '[{"word": "<deutsches Wort>", "cefr": "<A1|A2|B1|B2|C1|C2>", "reason": "<ein Satz: warum ist dieses Wort nützlich für Lernende?>"}, ...]\n'
+        '[{"word": "<deutsches Wort>", "cefr": "<A1|A2|B1|B2|C1|C2>"}, ...]\n'
         "Falls kein Trend ein geeignetes Wort liefert, antworte mit einem leeren Array: []"
     )
 
@@ -372,10 +419,9 @@ def _pick_word_from_trends(avoid_words: list) -> Optional[tuple[str, str]]:
         _GRAY  = "\033[90m"
         _CYAN  = "\033[96m"
 
-        chosen_word   = None
-        chosen_cefr   = ""
-        chosen_reason = ""
-        free_count    = 0
+        chosen_word = None
+        chosen_cefr = ""
+        free_count  = 0
 
         _VALID_CEFR = {"A1", "A2", "B1", "B2", "C1", "C2"}
 
@@ -389,33 +435,32 @@ def _pick_word_from_trends(avoid_words: list) -> Optional[tuple[str, str]]:
             if cefr not in _VALID_CEFR:
                 cefr = "?"
             used = word.lower() in avoid_set
-            clean_entries.append((word, cefr, entry.get("reason", ""), used))
+            clean_entries.append((word, cefr, used))
             if not used:
                 free_count += 1
                 if chosen_word is None:
-                    chosen_word   = word
-                    chosen_cefr   = cefr
-                    chosen_reason = entry.get("reason", "")
+                    chosen_word = word
+                    chosen_cefr = cefr
 
         print(f"\n  {_CYAN}{_BOLD}🏆  Trend word shortlist  ({free_count} free):{_R}", flush=True)
-        for i, (word, cefr, reason, used) in enumerate(clean_entries, 1):
+        for i, (word, cefr, used) in enumerate(clean_entries, 1):
             cefr_fmt = f"{_CYAN}{cefr:<3}{_R}"
             if used:
-                status     = f"{_RED}✖ already used{_R}"
-                word_fmt   = f"{_GRAY}{word:<20}{_R}"
+                status   = f"{_RED}✖ already used{_R}"
+                word_fmt = f"{_GRAY}{word:<20}{_R}"
             elif word == chosen_word:
-                status     = f"{_GREEN}✔ selected{_R}"
-                word_fmt   = f"{_BOLD}{word:<20}{_R}"
+                status   = f"{_GREEN}✔ selected{_R}"
+                word_fmt = f"{_BOLD}{word:<20}{_R}"
             else:
-                status     = f"{_GRAY}○ free{_R}"
-                word_fmt   = f"{word:<20}"
-            print(f"  {_GRAY}{i}.{_R} {word_fmt} {cefr_fmt} {status}  {_GRAY}{reason}{_R}", flush=True)
+                status   = f"{_GRAY}○ free{_R}"
+                word_fmt = f"{word:<20}"
+            print(f"  {_GRAY}{i}.{_R} {word_fmt} {cefr_fmt} {status}", flush=True)
 
         print(flush=True)
 
         if chosen_word:
-            logger.info("Trend word chosen: '%s' (CEFR: %s) — %s", chosen_word, chosen_cefr, chosen_reason)
-            ok(f"Trend word: '{chosen_word}' [{chosen_cefr}] — {chosen_reason}")
+            logger.info("Trend word chosen: '%s' (CEFR: %s)", chosen_word, chosen_cefr)
+            ok(f"Trend word: '{chosen_word}' [{chosen_cefr}]")
             return chosen_word, chosen_cefr
 
         logger.warning("All %d trend candidates already used — falling back to AI word selection.", len(candidates))
