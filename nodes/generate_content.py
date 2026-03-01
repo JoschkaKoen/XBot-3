@@ -3,7 +3,7 @@ Node: generate_content
 
 Picks a German word (trend-based or AI-free), then generates the complete
 tweet in a single Grok call that returns JSON.  Local post-processing handles
-article verification and tweet-length enforcement.
+tweet-length enforcement.
 """
 
 import json
@@ -13,7 +13,6 @@ from typing import Any, Optional
 
 from config import USE_TRENDS, SENTENCE_MODEL, AI_PROVIDER, FUNNY_MODE
 from services.ai_client import get_ai_response
-from services.get_article import get_article
 from services.x_trends import get_germany_trends
 from utils.retry import retry_call
 from utils.ui import stage_banner, ok, tweet_box, info, warn as ui_warn
@@ -156,6 +155,7 @@ def _build_tweet_prompt(
         f"{funny_tone_section}"
         "## Rules\n"
         "- The German word must include the correct article (der/die/das) if it's a noun\n"
+        "- If the word has no grammatical article (adjective, phrase, verb, etc.), omit the [ARTICLE] slot entirely — write nothing before the word. NEVER write 'no known noun' in the tweet\n"
         f"{cefr_rule}"
         "- The example sentence must be short, warm, and authentic — something a German would actually say\n"
         "- Vary the sentence ending: most sentences should end with a period (.) — only use an exclamation mark (!) when it is genuinely funny or surprising, and occasionally use a question (?)\n"
@@ -244,10 +244,13 @@ def _call_tweet_ai(
             result = result[0]  # graceful fallback if AI returns array
         with lock:
             arrived[0] += 1
-            print(f"  {_GREEN}✓{_R}  Candidate {idx} arrived ({arrived[0]}/3)", flush=True)
+            tweet_text = result.get("tweet", "")
+            print(f"\n  {_GRAY}── Candidate {idx} ({arrived[0]}/3) ────────────────────────────{_R}", flush=True)
+            for line in tweet_text.splitlines():
+                print(f"  {_GRAY}│{_R}  {line}", flush=True)
         return result
 
-    print(f"\n  {_CYAN}{_BOLD}⚡  Generating 3 tweet candidates in parallel…{_R}", flush=True)
+    print(f"\n  {_CYAN}{_BOLD}⚡  Generating 3 tweet candidates in parallel…{_R} (printing each as it arrives)\n", flush=True)
 
     candidates_map: dict[int, dict] = {}
     with ThreadPoolExecutor(max_workers=3) as pool:
@@ -276,14 +279,6 @@ def _select_best_tweet(candidates: list, german_word: str, cefr_level: str) -> d
     _GRAY = "\033[90m"
     _GREEN = "\033[92m"
 
-    # Print all candidates
-    print(f"\n  {_CYAN}{_BOLD}✍️   Tweet candidates:{_R}", flush=True)
-    for i, c in enumerate(candidates):
-        tweet_text = c.get("tweet", "")
-        print(f"\n  {_GRAY}── Candidate {i + 1} ──────────────────────────────────────{_R}", flush=True)
-        for line in tweet_text.splitlines():
-            print(f"  {_GRAY}│{_R}  {line}", flush=True)
-
     if len(candidates) == 1:
         print(f"\n  {_GREEN}✔  Only one candidate — selected automatically.{_R}\n", flush=True)
         return candidates[0]
@@ -293,26 +288,46 @@ def _select_best_tweet(candidates: list, german_word: str, cefr_level: str) -> d
         for i, c in enumerate(candidates)
     )
 
-    tone_note = (
-        "- Humour & originality: Is the example sentence genuinely funny? Does it have a real punchline or ironic twist?\n"
-        if FUNNY_MODE else
-        "- Warmth & authenticity: Is the example sentence natural and relatable?\n"
-    )
-
-    selection_prompt = (
-        f"You are evaluating {len(candidates)} German vocabulary tweet candidates for the word "
-        f"'{german_word}' (CEFR: {cefr_level or 'unknown'}).\n\n"
-        f"{numbered}\n\n"
-        "Score each candidate on these criteria and pick the BEST overall:\n"
-        f"{tone_note}"
-        "- Engagement potential: Would a native English speaker stop scrolling and interact with this tweet?\n"
-        "- Shareability: Is it quotable, relatable, or surprising enough to share?\n"
-        "- Learning effect: Does the example sentence make the German word memorable and easy to understand?\n"
-        "- Sentence quality: Is the German sentence natural, correctly matched to the CEFR level, and short enough to read at a glance?\n\n"
-        "Reply with the winning number followed by a single short reason (max 12 words), e.g.:\n"
-        "2 — funniest punchline, most memorable sentence\n\n"
-        "Your answer:"
-    )
+    if FUNNY_MODE:
+        selection_prompt = (
+            f"You are evaluating {len(candidates)} German vocabulary tweet candidates for the word "
+            f"'{german_word}' (CEFR: {cefr_level or 'unknown'}).\n\n"
+            f"{numbered}\n\n"
+            "Pick the best candidate using exactly these two criteria, in this order:\n\n"
+            "1. FUNNINESS (primary): Which sentence has the sharpest punchline, the best ironic twist, "
+            "or the most absurd contrast? Would a real person laugh or smirk? "
+            "A genuinely funny tweet always beats a merely pleasant one.\n"
+            "2. POSITIVITY (tiebreaker): If two candidates are equally funny, pick the one that feels "
+            "warm, uplifting, and good-natured. Avoid anything that feels mean, cynical, or negative.\n\n"
+            "Reply with the winning number followed by a single short reason (max 12 words), e.g.:\n"
+            "2 — sharpest punchline, warm and instantly relatable\n\n"
+            "Your answer:"
+        )
+        system_prompt_selector = (
+            "You are a comedy editor selecting the best German vocabulary tweet. "
+            "Your two criteria are: (1) funniness — always pick the sharpest joke, "
+            "(2) positivity as tiebreaker — warm beats cynical. "
+            "Reply with a number (1, 2 or 3) followed by a short reason — nothing else."
+        )
+    else:
+        selection_prompt = (
+            f"You are evaluating {len(candidates)} German vocabulary tweet candidates for the word "
+            f"'{german_word}' (CEFR: {cefr_level or 'unknown'}).\n\n"
+            f"{numbered}\n\n"
+            "Score each candidate on these criteria and pick the BEST overall:\n"
+            "- Warmth & authenticity: Is the example sentence natural and relatable?\n"
+            "- Engagement potential: Would a native English speaker stop scrolling and interact with this tweet?\n"
+            "- Shareability: Is it quotable, relatable, or surprising enough to share?\n"
+            "- Learning effect: Does the example sentence make the German word memorable and easy to understand?\n"
+            "- Sentence quality: Is the German sentence natural, correctly matched to the CEFR level, and short enough to read at a glance?\n\n"
+            "Reply with the winning number followed by a single short reason (max 12 words), e.g.:\n"
+            "2 — most relatable, clearest vocabulary hook\n\n"
+            "Your answer:"
+        )
+        system_prompt_selector = (
+            "You are a social media expert and German teacher evaluating tweet quality. "
+            "Reply with a number (1, 2 or 3) followed by a short reason — nothing else."
+        )
 
     chosen_idx = 0
     reason = ""
@@ -320,8 +335,7 @@ def _select_best_tweet(candidates: list, german_word: str, cefr_level: str) -> d
         raw = retry_call(
             get_grok_flagship_response,
             selection_prompt,
-            "You are a social media expert and German teacher evaluating tweet quality. "
-            "Reply with a number (1, 2 or 3) followed by a short reason — nothing else.",
+            system_prompt_selector,
             max_tokens=40,
             temperature=0.0,
             label="select_tweet",
@@ -434,7 +448,8 @@ def _pick_word_from_trends(avoid_words: list) -> Optional[tuple[str, str]]:
             cefr = (entry.get("cefr") or "").strip().upper()
             if cefr not in _VALID_CEFR:
                 cefr = "?"
-            used = word.lower() in avoid_set
+            word_tokens = set(word.lower().split())
+            used = word.lower() in avoid_set or bool(word_tokens & avoid_set)
             clean_entries.append((word, cefr, used))
             if not used:
                 free_count += 1
@@ -556,29 +571,11 @@ def generate_content(state: dict) -> dict:
     logger.info("Generated %d tweet candidate(s).", len(candidates))
     result = _select_best_tweet(candidates, german_word, word_cefr)
 
-    # ── 4. Article verification (local, no extra API call) ─────────────────────
-    verified_article = get_article(result.get("german_word", german_word))
-    ai_article = result.get("article", "no known noun")
-    if (
-        verified_article != ai_article
-        and verified_article not in ("no known noun", "")
-        and ai_article not in ("no known noun", "")
-    ):
-        logger.warning(
-            "Fixed article: %s → %s for \"%s\"", ai_article, verified_article, result.get("german_word")
-        )
-        print(
-            f'  ⚠️  Fixed article: {ai_article} → {verified_article} for "{result.get("german_word")}"',
-            flush=True,
-        )
-        result["full_tweet"] = result.get("tweet", "").replace(
-            f"{ai_article} {result.get('german_word', german_word)}",
-            f"{verified_article} {result.get('german_word', german_word)}",
-            1,
-        )
-        result["article"] = verified_article
-    else:
-        result["full_tweet"] = result.get("tweet", "")
+    # ── 4. Use AI-generated article directly ───────────────────────────────────
+    result["full_tweet"] = result.get("tweet", "")
+
+    # Safety-net: remove any literal "no known noun" the AI may have written in the tweet body
+    result["full_tweet"] = result["full_tweet"].replace("no known noun ", "").replace("no known noun", "")
 
     # Ensure cefr_level in result uses the pre-determined level if AI omitted it
     if word_cefr and result.get("cefr_level", "") not in _VALID_CEFR:

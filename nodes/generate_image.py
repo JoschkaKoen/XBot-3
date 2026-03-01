@@ -109,6 +109,91 @@ class MidjourneyClient:
 _mj_client = MidjourneyClient()
 
 
+# ── flag overlay (PIL, applied after image download) ──────────────────────────
+
+def _create_flag_badge(badge_w: int, badge_h: int):
+    """Return a PIL Image of a US→DE blended flag badge."""
+    from PIL import Image, ImageDraw
+
+    # US flag: 13 alternating red/white horizontal stripes + blue canton
+    us = Image.new("RGB", (badge_w, badge_h))
+    d = ImageDraw.Draw(us)
+    sh = badge_h / 13
+    for i in range(13):
+        color = (178, 34, 52) if i % 2 == 0 else (255, 255, 255)
+        d.rectangle([0, int(i * sh), badge_w - 1, int((i + 1) * sh)], fill=color)
+    canton_w = int(badge_w * 0.40)
+    canton_h = int(sh * 7)
+    d.rectangle([0, 0, canton_w, canton_h], fill=(60, 59, 110))
+
+    # German flag: three equal horizontal bands — black / red / gold
+    de = Image.new("RGB", (badge_w, badge_h))
+    d2 = ImageDraw.Draw(de)
+    bh = badge_h // 3
+    d2.rectangle([0,      0,         badge_w, bh],        fill=(0,   0,   0))
+    d2.rectangle([0,      bh,        badge_w, bh * 2],    fill=(221, 0,   0))
+    d2.rectangle([0,      bh * 2,    badge_w, badge_h],   fill=(255, 206, 0))
+
+    # Gradient mask: 255 (left) = US visible, 0 (right) = DE visible
+    gradient = bytes(
+        [255 - int(255 * x / max(badge_w - 1, 1)) for x in range(badge_w)] * badge_h
+    )
+    mask = Image.frombytes("L", (badge_w, badge_h), gradient)
+
+    return Image.composite(us, de, mask)
+
+
+def _apply_rounded_corners(img, radius: int):
+    """Return img with rounded corners (requires RGBA)."""
+    from PIL import Image, ImageDraw
+    img = img.convert("RGBA")
+    circle = Image.new("L", (radius * 2, radius * 2), 0)
+    ImageDraw.Draw(circle).ellipse((0, 0, radius * 2, radius * 2), fill=255)
+    w, h = img.size
+    alpha = Image.new("L", (w, h), 255)
+    for (x, y) in [(0, 0), (w - radius * 2, 0), (0, h - radius * 2), (w - radius * 2, h - radius * 2)]:
+        alpha.paste(circle.crop((
+            0 if x == 0 else radius,
+            0 if y == 0 else radius,
+            radius if x == 0 else radius * 2,
+            radius if y == 0 else radius * 2,
+        )), (x + (0 if x == 0 else radius), y + (0 if y == 0 else radius)))
+    img.putalpha(alpha)
+    return img
+
+
+def _overlay_flags(image_path: str) -> str:
+    """Composite a US→DE flag badge onto the top-right corner of the image in-place."""
+    from PIL import Image
+    img = Image.open(image_path).convert("RGBA")
+    iw, ih = img.size
+
+    badge_w = max(int(iw * 0.09), 90)        # ~9 % of image width
+    badge_h = int(badge_w * 0.60)
+    padding = max(int(iw * 0.015), 12)
+    radius  = max(badge_h // 5, 4)
+
+    badge = _create_flag_badge(badge_w, badge_h)
+    badge = _apply_rounded_corners(badge, radius)
+
+    # Thin white border (2 px) for legibility
+    from PIL import ImageDraw
+    border_draw = ImageDraw.Draw(badge)
+    border_draw.rounded_rectangle(
+        [0, 0, badge_w - 1, badge_h - 1], radius=radius, outline=(255, 255, 255), width=2
+    )
+
+    # 85 % opacity
+    r, g, b, a = badge.split()
+    a = a.point(lambda v: int(v * 0.85))
+    badge = Image.merge("RGBA", (r, g, b, a))
+
+    img.paste(badge, (iw - badge_w - padding, padding), badge)
+    img.convert("RGB").save(image_path, format="PNG")
+    logger.info("Flag overlay applied → %s", os.path.basename(image_path))
+    return image_path
+
+
 # ── node ──────────────────────────────────────────────────────────────────────
 
 def generate_image(state: dict) -> dict:
@@ -150,63 +235,70 @@ def generate_image(state: dict) -> dict:
     )
 
     _CLEAN_AESTHETIC = (
-        "Keep the composition clean and uncluttered — ONE clear subject, minimal background elements. "
-        "The joke or mood must be immediately readable at a glance; avoid crowding the frame with unnecessary props or details. "
-        "Prioritise aesthetic beauty: harmonious colours, balanced composition, and flattering natural light. "
+        "Composition: ONE clear subject, uncluttered frame, minimal background elements. "
+        "The joke or mood must be immediately readable at a glance — never crowd the scene. "
+    )
+
+    _AESTHETIC = (
+        "Aesthetics: make this image genuinely beautiful — not just technically correct. "
+        "Think carefully about: harmonious colour palette (warm, vibrant, or richly contrasted), "
+        "flattering and dramatic natural light (golden hour, soft side-light, or crisp morning sun), "
+        "shallow depth of field to isolate the subject against a beautifully blurred background, "
+        "and a composition that would stop someone mid-scroll. "
+        "The image should look like a professional editorial photo that people want to share for its looks alone. "
     )
 
     if FUNNY_MODE and example_de:
         tweet_context = f"Full tweet:\n{full_tweet}\n\n" if full_tweet else ""
         mj_req = (
-            "A German learning tweet contains a joke. Your job is to create a Midjourney prompt for a "
-            "photorealistic, cinematic image that makes the PUNCHLINE of the joke visually obvious and funny.\n\n"
+            "A German learning tweet contains a joke. Your job is to create a Midjourney prompt that is "
+            "BOTH visually stunning AND makes the punchline of the joke instantly obvious.\n\n"
             f"{tweet_context}"
             f"German sentence: \"{example_de}\"\n"
             f"English sentence: \"{example_en}\"\n\n"
-            "Step 1 — Identify the punchline: find the ironic twist, the subverted expectation, or the absurd contrast in the sentence.\n"
-            "Step 2 — Stage it visually with exaggeration: design a scene that shows that punchline in action. "
-            "Exaggerate the situation — push the irony, the contrast, or the absurdity further than reality would. "
-            "Exaggerated expressions, over-the-top body language, or a comically amplified scene are all encouraged. "
-            "The comedy must be immediately visible from the image alone — without needing to read the sentence. "
-            "The viewer should laugh at the image before they even read the tweet.\n"
-            "Step 3 — Keep it clean: ONE subject, ONE joke, uncluttered frame.\n"
-            "Step 4 — Keep it positive and safe: the humour must be warm, light-hearted, and family-friendly. "
-            "No shock content, no disturbing imagery, no pain, no embarrassment, no negative emotions. "
-            "The viewer should feel good — amused, charmed, or delighted. Never unsettled.\n\n"
+            "Step 1 — Identify the punchline: find the ironic twist, the subverted expectation, or the absurd contrast.\n"
+            "Step 2 — Stage it visually: design a scene that shows the punchline in action with exaggerated expressions "
+            "or body language. The comedy must land from the image alone — the viewer should laugh before reading the tweet.\n"
+            "Step 3 — Make it beautiful: apply deliberate aesthetic choices — golden-hour light, rich colours, "
+            "shallow depth of field, a composition worth sharing for its looks alone. "
+            "Beauty and humour must coexist: a stunning image that is also funny.\n"
+            "Step 4 — Keep it clean and readable: ONE subject, ONE joke, uncluttered frame.\n"
+            "Step 5 — Keep it positive: warm, light-hearted, family-friendly. "
+            "The viewer should feel amused and uplifted — never unsettled.\n\n"
             f"{_IMMERSIVE}"
             f"{_CLEAN_AESTHETIC}"
-            "Warm, well-lit, natural setting. Photorealistic photography, NOT illustration or cartoon."
+            f"{_AESTHETIC}"
+            "Photorealistic photography, NOT illustration or cartoon."
             f"{gender_hint}"
             f"{_RULES}"
         )
         system_prompt = (
-            "You are an expert Midjourney prompt engineer specialising in photorealistic comedy scenes. "
-            "Your primary skill is identifying the punchline of a joke and translating it into a single, "
-            "instantly funny visual — not illustrating the sentence literally, but staging the irony or twist "
-            "with exaggeration so it lands from the image alone. "
-            "Lean into over-the-top expressions, absurd contrasts, and comedic amplification to make the humour undeniable. "
-            "The humour is always warm and family-friendly — never shocking, disturbing, or negative. "
-            "The final image should make the viewer smile or laugh, never feel unsettled. "
-            "One subject, one joke, clean composition, beautiful light. "
-            "Always include specific camera model, lens, and lighting descriptors (e.g. 'shot on Sony A7IV, 50mm f/1.4, golden hour'). "
+            "You are an expert Midjourney prompt engineer who creates images that are both visually stunning "
+            "and instantly funny. Your prompts always combine two things: (1) a clear visual punchline that "
+            "lands from the image alone, and (2) deliberately beautiful aesthetics — perfect light, rich colours, "
+            "shallow depth of field, editorial composition. "
+            "You never sacrifice beauty for the joke or the joke for beauty — the best prompt delivers both. "
+            "Humour is always warm and family-friendly. "
+            "Always include specific camera model, lens, and lighting descriptors (e.g. 'shot on Sony A7IV, 50mm f/1.4, golden hour backlight'). "
             "Never use words like 'painting', 'illustration', 'artistic', 'rendered', 'digital art'. "
             "No parameter flags. No double hyphens. Output only the description."
         )
     else:
         mj_req = (
-            "Generate a Midjourney prompt for a beautiful, photorealistic 16:9 photography. "
+            "Generate a Midjourney prompt for a photorealistic, aesthetically stunning 16:9 photograph.\n\n"
+            f"Sentence: \"{example_en}\"\n\n"
             f"{_IMMERSIVE}"
             f"{_CLEAN_AESTHETIC}"
-            "No text in the image. Visually appealing for social media.\n\n"
-            f"Sentence: \"{example_en}\""
+            f"{_AESTHETIC}"
+            "No text in the image."
             f"{gender_hint}"
             f"{_RULES}"
         )
         system_prompt = (
-            "You are an expert Midjourney prompt engineer. "
-            "You create clean, elegant, photorealistic prompts — ONE clear subject, uncluttered composition, beautiful light. "
-            "Never crowd the frame; every element in the description must serve the main subject. "
-            "Prioritise ground-level or eye-level framing with shallow depth of field to isolate the subject beautifully. "
+            "You are an expert Midjourney prompt engineer who creates images that look like professional "
+            "editorial photography. Every prompt you write is deliberately beautiful: perfect light, "
+            "rich harmonious colours, shallow depth of field, and a composition people want to share. "
+            "ONE clear subject, uncluttered frame — every element serves the main subject. "
             "Always include specific camera model, lens, and lighting descriptors (e.g. 'shot on Sony A7IV, 50mm f/1.4, golden hour'). "
             "Never use words like 'painting', 'illustration', 'artistic', 'rendered', 'digital art'. "
             "No parameter flags. No double hyphens. Output only the description."
@@ -228,14 +320,9 @@ def generate_image(state: dict) -> dict:
     midjourney_prompt = midjourney_prompt.replace("\u2018", "'").replace("\u2019", "'").replace("\u201c", "").replace("\u201d", "")
     PHOTO_SUFFIX = (
         ", shot on Canon EOS R5, 35mm lens, natural lighting, "
-        "RAW photo, ultra realistic, 8k UHD"
+        "RAW photo, ultra realistic, 8k UHD, "
+        "positive joyful atmosphere, warm and welcoming, bright uplifting mood"
     )
-    if FLAG_OVERLAY:
-        PHOTO_SUFFIX += (
-            ", top-right corner has a small semi-transparent flag that transitions "
-            "softly from the American flag on the left to the German flag on the right, "
-            "blended naturally into the background"
-        )
     midjourney_prompt = midjourney_prompt.rstrip(".") + PHOTO_SUFFIX
     logger.debug("Midjourney prompt: %s", midjourney_prompt)
     print(f"  Prompt: {midjourney_prompt}", flush=True)
@@ -259,6 +346,9 @@ def generate_image(state: dict) -> dict:
     idx = image_paths.index(chosen) + 1
     ok(f"Best image: #{idx}/{len(image_paths)} → {os.path.basename(chosen)}")
     logger.info("Best image selected: %s (from %d options)", chosen, len(image_paths))
+
+    if FLAG_OVERLAY:
+        _overlay_flags(chosen)
 
     return {
         **state,
