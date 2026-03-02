@@ -10,14 +10,14 @@ venv/
 env/
 .venv/
 
-# Runtime data (logs, checkpoints, post history)
+# Runtime data (logs, checkpoints — large/binary, not tracked)
 data/bot.log
 data/improvement.log
 data/checkpoints.sqlite*
-data/post_history.json
 data/test_cycle_output.json
 data/test_cycle_terminal.txt
 data/new_bot_branch.txt
+# post_history.json IS tracked — it contains tweet history and engagement data
 
 # Big media — images, video, audio
 *.mp4
