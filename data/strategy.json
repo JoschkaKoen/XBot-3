@@ -1,7 +1,7 @@
 {
   "preferred_cefr": "A1, A2, B1, B2, C1, C2",
-  "preferred_themes": "humor, daily life, school, laziness, relatable quirks",
-  "focus": "Create witty, relatable sentences about everyday situations, school experiences, lazy habits, and humorous personal fails.",
+  "preferred_themes": "food, daily life, school, emotions",
+  "focus": "Focus on humorous, relatable sentences about food temptations, lazy routines, school mishaps, and emotional expressions.",
   "avoid_words": [
     "Menschenverstand",
     "Zucker",
@@ -23,7 +23,11 @@
     "Sonntag",
     "Sorge",
     "Seite",
-    "deutsche"
+    "deutsche",
+    "schön",
+    "Hausaufgaben",
+    "das",
+    "Tatort"
   ],
   "scaffold": "#DeutschLernen [LEVEL]\n\n🇩🇪  [ARTICLE] [GERMAN_WORD]\n🇺🇸  [ENGLISH_TRANSLATION]  [EMOJI][EMOJI]\n\n🇩🇪  [SHORT_FUNNY_GERMAN_SENTENCE]\n🇺🇸  [ENGLISH_TRANSLATION_OF_SENTENCE]  [EMOJI][EMOJI]"
 }
