@@ -21,15 +21,32 @@ from elevenlabs.types import VoiceSettings
 
 logger = logging.getLogger("german_bot.generate_audio")
 
-_VOICES = {
-    "Matilda": "XrExE9yKIg1WjnnlVkGX",
-    "Sarah":   "EXAVITQu4vr4xnSDxMaL",
-    "Serena":  "pMsXgVXv3BLzUgSXRplE",
-    "Freya":   "jsCqWAovK2LkecY7zXl4",
-    "Adam":    "pNInz6obpgDQGcFmaJgB",
-}
+# Curated pool of authentic German-native ElevenLabs voices.
+# A random voice is picked on every cycle to add variety.
+_GERMAN_VOICES = [
+    # Female
+    ("Luisa",           "z0gdR3nhVl1Ig2kiEigL"),  # young, calm — news/audiobook
+    ("Carola Ferstl",   "K75lPKuh15SyVhQC1LrE"),  # warm, educational, middle-aged
+    ("Anna from Munich","wDvyXJwxWHsjOKSUVvpG"),  # authentic Bavarian female
+    ("Franziska Lenz",  "NX39CipaoYitJ3sMwH5I"),  # German female, professional
+    ("Laura",           "Qy4b2JlSGxY7I9M9Bqxb"),  # calm and smooth, documentary
+    ("Irene",           "NkMe1eztMQReztnhYfeX"),  # friendly and approachable
+    ("Selena",          "sWuGr24LIqDil2oFD3xs"),  # melancholic and expressive
+    ("Laura (Pro)",     "2aL479c8D3QMIPExj0tw"),  # sharp and professional
+    ("Carrie",          "zKHQdbB8oaQ7roNTiDTK"),  # the gentle storyteller
+    # Male
+    ("Marc",            "SfXg52J54dixBlOl016v"),  # warm, expressive, storytelling
+    ("Leo liest",       "QtXsTvuI72CiSlfxczvg"),  # relaxed, warm, deep — reading
+    ("Marcel",          "neSsqAiYj0KThbslcqPj"),  # deep, pleasant, tutorials
+    ("Marcus KvE",      "6V1EWbNGUufEsfPFe5VA"),  # clean no-accent voice-over
+    ("William",         "oae6GCCzwoEbfc5FHdEu"),  # soothing and calm
+    ("Moritz Wegner",   "PhufIH7nYh2Up1uej6aY"),  # confident, friendly & informative
+    ("Helmut",          "5KvpaGteYkNayiswuX2h"),  # distinctive and authentic
+    ("Tristan",         "yU41gRVGrkgofLTfIbzK"),  # dark, deep, captivating
+    ("Jantosch",        "CVcPLXStXPeDxhrSflDZ"),  # charismatic and charming
+    ("Dan",             "utkd5fchbspYG3Ld0zt0"),  # radio host & moderator
+]
 
-_DEFAULT_VOICE = "Matilda"
 _DEFAULT_SPEED = 0.70
 
 os.makedirs(VOICES_DIR, exist_ok=True)
@@ -45,18 +62,21 @@ def _voice_settings(speed: float) -> VoiceSettings:
     return VoiceSettings(stability=0.75, similarity_boost=0.85, speed=speed)
 
 
+def _pick_random_voice() -> tuple[str, str]:
+    """Return a random (name, voice_id) from the German voice pool."""
+    import random
+    return random.choice(_GERMAN_VOICES)
+
+
 @with_retry(max_attempts=4, base_delay=3.0, label="elevenlabs_simple")
 def generate_german_audio(
     text: str,
     output_file: str = None,
-    voice: str = _DEFAULT_VOICE,
+    voice_id: str = None,
     speed: float = _DEFAULT_SPEED,
 ) -> str:
     """Generate German TTS audio. Returns path to saved MP3."""
     client = _get_client()
-    if voice not in _VOICES:
-        logger.warning("Unknown voice '%s', falling back to Matilda.", voice)
-        voice = _DEFAULT_VOICE
     if not (0.7 <= speed <= 1.2):
         logger.warning("Speed %.2f out of range, clamping to 0.70.", speed)
         speed = 0.70
@@ -65,10 +85,10 @@ def generate_german_audio(
         ts = datetime.now().strftime("%Y%m%d_%H%M%S")
         output_file = os.path.join(VOICES_DIR, f"german_{ts}.mp3")
 
-    logger.info("ElevenLabs TTS | voice=%s speed=%.2f | %.60s", voice, speed, text)
+    logger.info("ElevenLabs TTS | voice_id=%s speed=%.2f | %.60s", voice_id, speed, text)
     audio = client.text_to_speech.convert(
         text=text,
-        voice_id=_VOICES[voice],
+        voice_id=voice_id,
         model_id="eleven_multilingual_v2",
         output_format="mp3_44100_128",
         voice_settings=_voice_settings(speed),
@@ -82,7 +102,7 @@ def generate_german_audio(
 def generate_german_audio_with_timings(
     text: str,
     output_file: str = None,
-    voice: str = _DEFAULT_VOICE,
+    voice_id: str = None,
     speed: float = 0.70,
 ) -> tuple:
     """
@@ -91,17 +111,15 @@ def generate_german_audio_with_timings(
     word_timings = [{'word': str, 'start': float, 'end': float}, ...]
     """
     client = _get_client()
-    if voice not in _VOICES:
-        voice = _DEFAULT_VOICE
 
     if output_file is None:
         ts = datetime.now().strftime("%Y%m%d_%H%M%S")
         output_file = os.path.join(VOICES_DIR, f"german_ktv_{ts}.mp3")
 
-    logger.info("ElevenLabs TTS (timings) | voice=%s speed=%.2f | %.60s", voice, speed, text)
+    logger.info("ElevenLabs TTS (timings) | voice_id=%s speed=%.2f | %.60s", voice_id, speed, text)
     result = client.text_to_speech.convert_with_timestamps(
         text=text,
-        voice_id=_VOICES[voice],
+        voice_id=voice_id,
         model_id="eleven_multilingual_v2",
         output_format="mp3_44100_128",
         voice_settings=_voice_settings(speed),
@@ -180,13 +198,18 @@ def generate_audio(state: dict) -> dict:
     text: str = state["example_sentence_de"]
     style: str = VIDEO_STYLE
 
+    voice_name, voice_id = _pick_random_voice()
+    from utils.ui import info
+    info(f"Voice: {voice_name}")
+    logger.info("Selected voice: %s (%s)", voice_name, voice_id)
+
     try:
         if style == "ktv":
-            audio_path, word_timings = generate_german_audio_with_timings(text)
+            audio_path, word_timings = generate_german_audio_with_timings(text, voice_id=voice_id)
             ok(f"Audio + {len(word_timings)} word timings → {os.path.basename(audio_path)}")
             return {**state, "clean_audio_path": audio_path, "word_timings": word_timings}
         else:
-            audio_path = generate_german_audio(text)
+            audio_path = generate_german_audio(text, voice_id=voice_id)
             ok(f"Audio → {os.path.basename(audio_path)}")
             return {**state, "clean_audio_path": audio_path, "word_timings": []}
 
