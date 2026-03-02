@@ -1,7 +1,7 @@
 {
   "preferred_cefr": "A1, A2, B1, B2, C1, C2",
-  "preferred_themes": "food, daily life, school, emotions",
-  "focus": "Focus on humorous, relatable sentences about food temptations, lazy routines, school mishaps, and emotional expressions.",
+  "preferred_themes": "food,diet,school,humor",
+  "focus": "Focus on humorous, relatable scenarios involving food cravings, diet fails, and everyday laziness.",
   "avoid_words": [
     "Menschenverstand",
     "Zucker",
@@ -27,7 +27,9 @@
     "schön",
     "Hausaufgaben",
     "das",
-    "Tatort"
+    "Tatort",
+    "Hunger",
+    "Bomben"
   ],
-  "scaffold": "#DeutschLernen [LEVEL]\n\n🇩🇪  [ARTICLE] [GERMAN_WORD]\n🇺🇸  [ENGLISH_TRANSLATION]  [EMOJI][EMOJI]\n\n🇩🇪  [SHORT_FUNNY_GERMAN_SENTENCE]\n🇺🇸  [ENGLISH_TRANSLATION_OF_SENTENCE]  [EMOJI][EMOJI]"
+  "scaffold": "#DeutschLernen [LEVEL]\n\n🇩🇪  [ARTICLE] [GERMAN_WORD]\n🇬🇧  [ENGLISH_TRANSLATION]  [EMOJI][EMOJI]\n\n🇩🇪  [SHORT_FUNNY_GERMAN_SENTENCE]\n🇬🇧  [ENGLISH_TRANSLATION_OF_SENTENCE]  [EMOJI][EMOJI]"
 }

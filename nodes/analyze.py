@@ -224,6 +224,10 @@ def _build_analysis_prompt(history_slice: list, current_scaffold: str, funny_mod
         indent=2,
     )
 
+    # Summarise which theme-words have appeared recently so the AI can avoid them
+    recent_words = [r.get("german_word", "") for r in history_slice if r.get("german_word")]
+    recent_words_str = ", ".join(recent_words) if recent_words else "none"
+
     return (
         f"Here are the last {len(history_slice)} posts with their engagement data:\n\n"
         f"{posts_summary}\n\n"
@@ -231,6 +235,7 @@ def _build_analysis_prompt(history_slice: list, current_scaffold: str, funny_mod
         "performance metric — NOT 'score_raw'. A tweet that is 10 hours old with score_per_hour=0.5 "
         "outperforms a tweet that is 100 hours old with score_per_hour=0.1, even if the older tweet "
         "has a higher raw score.\n\n"
+        f"Recently used words (avoid clustering around the same topics): {recent_words_str}\n\n"
         "Based on this data, output a JSON object with these keys:\n"
         + (
             '  "preferred_cefr":    (string) IGNORE — this field is controlled by the system and will be overridden. '
@@ -239,13 +244,18 @@ def _build_analysis_prompt(history_slice: list, current_scaffold: str, funny_mod
             '  "preferred_cefr":    (string) comma-separated CEFR levels that performed best, '
             'chosen from A1, A2, B1, B2, C1, C2, e.g. "A2, B1, C1"\n'
         )
-        + '  "preferred_themes":  (string) comma-separated themes to focus on next, e.g. "food, travel, emotions"\n'
-        '  "focus":             (string) a short instruction covering vocabulary style and theme'
+        + '  "preferred_themes":  (string) 4-6 comma-separated themes for UPCOMING posts. '
+        'CRITICAL: these must be DIFFERENT from the themes already covered in the recent posts above — '
+        'the goal is VARIETY across the whole account, not repeating what worked. '
+        'Pick underrepresented themes from a wide range such as: food, sport, nature, travel, technology, '
+        'art, music, health, family, education, work, weather, emotions, relationships, money, politics, '
+        'fashion, history, science, humour. Do NOT just repeat the themes that scored highest.\n'
+        '  "focus":             (string) a short instruction covering vocabulary style and sentence tone'
         + (
             ' — DO NOT mention any specific CEFR levels (A1/A2/B1/B2/C1/C2) or language difficulty here; '
-            'CEFR is frozen and controlled separately. Focus only on themes, topics, or vocabulary style.'
+            'CEFR is frozen and controlled separately. Focus only on vocabulary style or sentence tone.'
             if cefr_frozen else
-            f" — {'NOTE: tone/humour is controlled externally — do NOT set focus to override tone direction. Focus on vocabulary themes and CEFR only.' if funny_mode else 'e.g. use funnier sentences, focus on daily life themes'}"
+            f" — {'NOTE: tone/humour is controlled externally — do NOT set focus to override tone direction. Focus on vocabulary style only.' if funny_mode else 'e.g. use funnier sentences, focus on vivid everyday vocabulary'}"
         ) + "\n"
         '  "avoid_words":       (array)  list of German words recently used that should not be repeated\n\n'
         "Return ONLY the raw JSON object. No markdown, no explanation."

@@ -120,9 +120,9 @@
       "like_count": 0,
       "quote_count": 0,
       "bookmark_count": 0,
-      "impression_count": 24
+      "impression_count": 25
     },
-    "engagement_score": 0.24,
+    "engagement_score": 0.25,
     "cycle": 0
   },
   {
@@ -456,9 +456,9 @@
       "like_count": 0,
       "quote_count": 0,
       "bookmark_count": 0,
-      "impression_count": 33
+      "impression_count": 34
     },
-    "engagement_score": 0.33,
+    "engagement_score": 0.34,
     "cycle": 0
   },
   {
@@ -477,9 +477,9 @@
       "like_count": 0,
       "quote_count": 0,
       "bookmark_count": 0,
-      "impression_count": 30
+      "impression_count": 32
     },
-    "engagement_score": 0.3,
+    "engagement_score": 0.32,
     "cycle": 0
   },
   {
@@ -498,9 +498,9 @@
       "like_count": 0,
       "quote_count": 0,
       "bookmark_count": 0,
-      "impression_count": 26
+      "impression_count": 28
     },
-    "engagement_score": 0.26,
+    "engagement_score": 0.28,
     "cycle": 0
   },
   {
@@ -519,9 +519,9 @@
       "like_count": 0,
       "quote_count": 0,
       "bookmark_count": 0,
-      "impression_count": 43
+      "impression_count": 45
     },
-    "engagement_score": 0.43,
+    "engagement_score": 0.45,
     "cycle": 1
   },
   {
@@ -534,8 +534,36 @@
     "cefr_level": "A1",
     "example_sentence_de": "Ich habe keinen Hunger – sagte niemand je vor einer Pizza.",
     "example_sentence_en": "I have no hunger – said no one ever in front of a pizza.",
-    "metrics": {},
-    "engagement_score": 0.0,
+    "metrics": {
+      "retweet_count": 0,
+      "reply_count": 0,
+      "like_count": 0,
+      "quote_count": 0,
+      "bookmark_count": 0,
+      "impression_count": 18
+    },
+    "engagement_score": 0.18,
     "cycle": 2
+  },
+  {
+    "timestamp": "2026-03-02T04:32:20.737873+00:00",
+    "tweet_id": "2028327522073739686",
+    "tweet_url": "https://x.com/i/web/status/2028327522073739686",
+    "full_tweet": "#DeutschLernen B1\n\n🇩🇪 die Bomben\n🇬🇧 bombs 💣💣\n\n🇩🇪 Ich fürchte Bomben nicht – außer den Bomben aus Schokolade, die meine Waage explodieren lassen.\n🇬🇧 I'm not afraid of bombs – except the chocolate ones that make my scale explode. 🍫🍫",
+    "german_word": "Bomben",
+    "article": "die",
+    "cefr_level": "B1",
+    "example_sentence_de": "Ich fürchte Bomben nicht – außer den Bomben aus Schokolade, die meine Waage explodieren lassen.",
+    "example_sentence_en": "I'm not afraid of bombs – except the chocolate ones that make my scale explode.",
+    "metrics": {
+      "retweet_count": 0,
+      "reply_count": 0,
+      "like_count": 0,
+      "quote_count": 0,
+      "bookmark_count": 0,
+      "impression_count": 2
+    },
+    "engagement_score": 0.02,
+    "cycle": 0
   }
 ]
