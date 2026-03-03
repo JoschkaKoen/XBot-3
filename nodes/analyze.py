@@ -50,8 +50,8 @@ _CEFR_MIN_TWEETS = 10   # minimum tweets per level before CEFR bias is allowed
 
 _DEFAULT_STRATEGY = {
     "preferred_cefr": "A1, A2, B1, B2, C1, C2",
-    "preferred_themes": "food, travel, daily life, emotions, work, weather, relationships",
-    "focus": "",
+    "next_topic": "",
+    "style": "",
     "avoid_words": [],
     "scaffold": _DEFAULT_SCAFFOLD,
 }
@@ -147,7 +147,7 @@ def _log_strategy_diff(old: dict, new: dict) -> bool:
     """
     _Y    = "\033[93m"
 
-    scalar_keys = ["preferred_cefr", "preferred_themes", "focus"]
+    scalar_keys = ["preferred_cefr", "next_topic", "style"]
     changed = False
     lines = []
 
@@ -238,26 +238,30 @@ def _build_analysis_prompt(history_slice: list, current_scaffold: str, funny_mod
         f"Recently used words (avoid clustering around the same topics): {recent_words_str}\n\n"
         "Based on this data, output a JSON object with these keys:\n"
         + (
-            '  "preferred_cefr":    (string) IGNORE — this field is controlled by the system and will be overridden. '
+            '  "preferred_cefr":  (string) IGNORE — this field is controlled by the system and will be overridden. '
             'Set it to "A1, A2, B1, B2, C1, C2" — there is not yet enough data per level to bias it.\n'
             if cefr_frozen else
-            '  "preferred_cefr":    (string) comma-separated CEFR levels that performed best, '
+            '  "preferred_cefr":  (string) comma-separated CEFR levels that performed best, '
             'chosen from A1, A2, B1, B2, C1, C2, e.g. "A2, B1, C1"\n'
         )
-        + '  "preferred_themes":  (string) 4-6 comma-separated themes for UPCOMING posts. '
-        'CRITICAL: these must be DIFFERENT from the themes already covered in the recent posts above — '
-        'the goal is VARIETY across the whole account, not repeating what worked. '
-        'Pick underrepresented themes from a wide range such as: food, sport, nature, travel, technology, '
-        'art, music, health, family, education, work, weather, emotions, relationships, money, politics, '
-        'fashion, history, science, humour. Do NOT just repeat the themes that scored highest.\n'
-        '  "focus":             (string) a short instruction covering vocabulary style and sentence tone'
+        + '  "next_topic":      (string) ONE fresh topic or angle for the next tweet that has NOT been covered '
+        'in recent posts and that you anticipate will resonate with English-speaking German learners. '
+        'Pick something new and specific — do NOT repeat any theme already seen in the recent post list. '
+        'Examples: "German workplace culture", "untranslatable German concepts", "German food idioms", '
+        '"emotions Germans express that English lacks a word for". '
+        'Leave empty string "" if you cannot identify a genuinely fresh angle.\n'
+        '  "style":           (string) a short instruction about sentence style, tone, grammatical patterns, '
+        'or humour style for the next tweet — STYLE ONLY, NO topics or themes. '
         + (
-            ' — DO NOT mention any specific CEFR levels (A1/A2/B1/B2/C1/C2) or language difficulty here; '
-            'CEFR is frozen and controlled separately. Focus only on vocabulary style or sentence tone.'
+            'DO NOT mention any specific CEFR levels (A1/A2/B1/B2/C1/C2) here. '
             if cefr_frozen else
-            f" — {'NOTE: tone/humour is controlled externally — do NOT set focus to override tone direction. Focus on vocabulary style only.' if funny_mode else 'e.g. use funnier sentences, focus on vivid everyday vocabulary'}"
-        ) + "\n"
-        '  "avoid_words":       (array)  list of German words recently used that should not be repeated\n\n'
+            ('NOTE: tone/humour direction is controlled externally — do NOT override it here. '
+             if funny_mode else '')
+        )
+        + 'Examples of good style instructions: "use a twist ending", "use self-aware irony", '
+        '"write in second person (du)", "use short punchy sentences". '
+        'Examples of BAD style instructions (DO NOT do this): "focus on food topics", "use daily life themes".\n'
+        '  "avoid_words":     (array)  list of German words recently used that should not be repeated\n\n'
         "Return ONLY the raw JSON object. No markdown, no explanation."
     )
 
@@ -341,10 +345,10 @@ def analyze_and_improve(state: dict) -> dict:
         merged["preferred_cefr"] = ", ".join(_ALL_CEFR_LEVELS)
         # Safety-net: strip any stray CEFR level tokens the LLM may have written into 'focus'
         import re as _re
-        merged["focus"] = _re.sub(
+        merged["style"] = _re.sub(
             r"\b(A1|A2|B1|B2|C1|C2)\b[\s,/]*",
             "",
-            merged.get("focus", ""),
+            merged.get("style", ""),
             flags=_re.IGNORECASE,
         ).strip(" ,;—-")
         under = {lvl: n for lvl, n in cefr_counts_pre.items() if n < _CEFR_MIN_TWEETS}
@@ -366,8 +370,8 @@ def analyze_and_improve(state: dict) -> dict:
     _save_strategy(merged)
     _append_strategy_history(merged)
 
-    ok(f"Strategy saved — CEFR: {merged['preferred_cefr']} | Focus: {merged['focus'] or 'none'}")
-    ui_info(f"Themes: {merged['preferred_themes']}")
+    ok(f"Strategy saved — CEFR: {merged['preferred_cefr']} | Style: {merged['style'] or 'none'}")
+    ui_info(f"Next topic: {merged['next_topic'] or 'none'}")
     ui_info(f"Avoiding {len(merged['avoid_words'])} recent word(s)")
     logger.info("Updated strategy: %s", {k: v for k, v in merged.items() if k != "avoid_words"})
     logger.info("Avoid words (%d): %s", len(merged["avoid_words"]), merged["avoid_words"][-10:])

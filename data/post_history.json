@@ -36,9 +36,9 @@
       "like_count": 0,
       "quote_count": 0,
       "bookmark_count": 0,
-      "impression_count": 37
+      "impression_count": 38
     },
-    "engagement_score": 0.37,
+    "engagement_score": 0.38,
     "cycle": 0
   },
   {
@@ -57,9 +57,9 @@
       "like_count": 0,
       "quote_count": 0,
       "bookmark_count": 0,
-      "impression_count": 173
+      "impression_count": 174
     },
-    "engagement_score": 1.73,
+    "engagement_score": 1.74,
     "cycle": 0
   },
   {
@@ -120,9 +120,9 @@
       "like_count": 0,
       "quote_count": 0,
       "bookmark_count": 0,
-      "impression_count": 25
+      "impression_count": 28
     },
-    "engagement_score": 0.25,
+    "engagement_score": 0.28,
     "cycle": 0
   },
   {
@@ -204,9 +204,9 @@
       "like_count": 0,
       "quote_count": 0,
       "bookmark_count": 0,
-      "impression_count": 11
+      "impression_count": 14
     },
-    "engagement_score": 0.11,
+    "engagement_score": 0.14,
     "cycle": 0
   },
   {
@@ -225,9 +225,9 @@
       "like_count": 0,
       "quote_count": 0,
       "bookmark_count": 0,
-      "impression_count": 19
+      "impression_count": 20
     },
-    "engagement_score": 0.19,
+    "engagement_score": 0.2,
     "cycle": 0
   },
   {
@@ -330,9 +330,9 @@
       "like_count": 0,
       "quote_count": 0,
       "bookmark_count": 0,
-      "impression_count": 65
+      "impression_count": 67
     },
-    "engagement_score": 0.65,
+    "engagement_score": 0.67,
     "cycle": 0
   },
   {
@@ -351,9 +351,9 @@
       "like_count": 0,
       "quote_count": 0,
       "bookmark_count": 0,
-      "impression_count": 103
+      "impression_count": 106
     },
-    "engagement_score": 1.03,
+    "engagement_score": 1.06,
     "cycle": 1
   },
   {
@@ -370,11 +370,11 @@
       "retweet_count": 0,
       "reply_count": 0,
       "like_count": 0,
-      "quote_count": 0,
+      "quote_count": 1,
       "bookmark_count": 0,
-      "impression_count": 58
+      "impression_count": 70
     },
-    "engagement_score": 0.58,
+    "engagement_score": 2.7,
     "cycle": 3
   },
   {
@@ -393,9 +393,9 @@
       "like_count": 0,
       "quote_count": 0,
       "bookmark_count": 0,
-      "impression_count": 33
+      "impression_count": 37
     },
-    "engagement_score": 0.33,
+    "engagement_score": 0.37,
     "cycle": 0
   },
   {
@@ -411,12 +411,12 @@
     "metrics": {
       "retweet_count": 0,
       "reply_count": 0,
-      "like_count": 0,
+      "like_count": 1,
       "quote_count": 0,
       "bookmark_count": 0,
-      "impression_count": 22
+      "impression_count": 28
     },
-    "engagement_score": 0.22,
+    "engagement_score": 1.28,
     "cycle": 0
   },
   {
@@ -432,12 +432,12 @@
     "metrics": {
       "retweet_count": 0,
       "reply_count": 0,
-      "like_count": 0,
+      "like_count": 1,
       "quote_count": 0,
       "bookmark_count": 0,
-      "impression_count": 25
+      "impression_count": 33
     },
-    "engagement_score": 0.25,
+    "engagement_score": 1.33,
     "cycle": 0
   },
   {
@@ -456,9 +456,9 @@
       "like_count": 0,
       "quote_count": 0,
       "bookmark_count": 0,
-      "impression_count": 34
+      "impression_count": 39
     },
-    "engagement_score": 0.34,
+    "engagement_score": 0.39,
     "cycle": 0
   },
   {
@@ -477,9 +477,9 @@
       "like_count": 0,
       "quote_count": 0,
       "bookmark_count": 0,
-      "impression_count": 32
+      "impression_count": 39
     },
-    "engagement_score": 0.32,
+    "engagement_score": 0.39,
     "cycle": 0
   },
   {
@@ -498,9 +498,9 @@
       "like_count": 0,
       "quote_count": 0,
       "bookmark_count": 0,
-      "impression_count": 28
+      "impression_count": 37
     },
-    "engagement_score": 0.28,
+    "engagement_score": 0.37,
     "cycle": 0
   },
   {
@@ -519,9 +519,9 @@
       "like_count": 0,
       "quote_count": 0,
       "bookmark_count": 0,
-      "impression_count": 45
+      "impression_count": 67
     },
-    "engagement_score": 0.45,
+    "engagement_score": 0.67,
     "cycle": 1
   },
   {
@@ -540,9 +540,9 @@
       "like_count": 0,
       "quote_count": 0,
       "bookmark_count": 0,
-      "impression_count": 18
+      "impression_count": 35
     },
-    "engagement_score": 0.18,
+    "engagement_score": 0.35,
     "cycle": 2
   },
   {
@@ -564,6 +564,20 @@
       "impression_count": 2
     },
     "engagement_score": 0.02,
+    "cycle": 0
+  },
+  {
+    "timestamp": "2026-03-03T15:09:27.262944+00:00",
+    "tweet_id": "2028850243874505099",
+    "tweet_url": "https://x.com/i/web/status/2028850243874505099",
+    "full_tweet": "🇩🇪 Word of the Day  ⛽⛽\n\ndas Benzin\n→ gasoline\n\n🇩🇪  Das Benzin ist alle, jetzt laufe ich – super Diät!\n🇺🇸  The gasoline is all gone, now I'm walking – great diet!  🏃🏃\n\n#DeutschLernen A2",
+    "german_word": "Benzin",
+    "article": "das",
+    "cefr_level": "A2",
+    "example_sentence_de": "Das Benzin ist alle, jetzt laufe ich – super Diät!",
+    "example_sentence_en": "The gasoline is all gone, now I'm walking – great diet!",
+    "metrics": {},
+    "engagement_score": 0.0,
     "cycle": 0
   }
 ]

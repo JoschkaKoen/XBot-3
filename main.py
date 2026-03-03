@@ -29,7 +29,7 @@ import logging
 os.environ.setdefault("PYTHONUNBUFFERED", "1")
 sys.stdout.reconfigure(line_buffering=True)
 
-from config import setup_logging, AI_PROVIDER, SENTENCE_MODEL, STRATEGY_MODEL, USE_TRENDS, FUNNY_MODE
+from config import setup_logging, AI_PROVIDER, SENTENCE_MODEL, STRATEGY_MODEL, USE_TRENDS, FUNNY_MODE, ENABLE_GROK_VIDEO
 from utils.ui import startup_banner, cycle_banner, cycle_summary, err, warn
 from services.image_ranker import warmup as _warmup_image_ranker
 
@@ -59,6 +59,7 @@ def _model_lines() -> list:
     lines.append(("─" * 22, "─" * 30))   # visual separator
     lines.append(("Use trends:",          "ON" if USE_TRENDS else "off"))
     lines.append(("Funny mode:",          "ON 😄" if FUNNY_MODE else "off"))
+    lines.append(("Grok video (I2V):",    "ON 🎬  (once/day via Grok Imagine)" if ENABLE_GROK_VIDEO else "off"))
     return lines
 
 setup_logging()

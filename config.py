@@ -49,6 +49,11 @@ IMPROVEMENT_SCORE_THRESHOLD: float = float(os.getenv("IMPROVEMENT_SCORE_THRESHOL
 # Set to "false" to use warm, neutral sentences instead.
 FUNNY_MODE: bool = os.getenv("FUNNY_MODE", "false").lower().strip() == "true"
 
+# When True, one Grok Imagine video is generated per calendar day from the selected
+# image and used as the animated base for the KTV overlay.  All other cycles that day
+# fall back to the static KTV video.  Requires XAI_API_KEY.
+ENABLE_GROK_VIDEO: bool = os.getenv("ENABLE_GROK_VIDEO", "false").lower().strip() == "true"
+
 # When True, a US-to-German flag overlay is added to the top-right corner of
 # each generated image, reinforcing the German-for-English-speakers branding.
 FLAG_OVERLAY: bool = os.getenv("FLAG_OVERLAY", "true").lower().strip() == "true"
