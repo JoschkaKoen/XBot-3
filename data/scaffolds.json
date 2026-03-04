@@ -1,0 +1,26 @@
+[
+  {
+    "name": "Classic",
+    "template": "#DeutschLernen [LEVEL]\n\n🇩🇪  [ARTICLE] [GERMAN_WORD]\n🇺🇸  [ENGLISH_TRANSLATION]  [EMOJI1][EMOJI1]\n\n🇩🇪  [SHORT_FUNNY_GERMAN_SENTENCE]\n🇺🇸  [ENGLISH_TRANSLATION_OF_SENTENCE]  [EMOJI2][EMOJI2]"
+  },
+  {
+    "name": "Flip Card",
+    "template": "🇩🇪 → 🇺🇸\n\n[ARTICLE] [GERMAN_WORD] = [ENGLISH_TRANSLATION]  [EMOJI1][EMOJI1]\n\n📝 [SHORT_FUNNY_GERMAN_SENTENCE]\n✏️ [ENGLISH_TRANSLATION_OF_SENTENCE]  [EMOJI2][EMOJI2]\n\n#DeutschLernen [LEVEL]"
+  },
+  {
+    "name": "Did You Know",
+    "template": "Did you know? 🤔\n\n🇩🇪  [ARTICLE] [GERMAN_WORD]  [EMOJI1][EMOJI1]\n🇺🇸  [ENGLISH_TRANSLATION]\n\n🗣️  [SHORT_FUNNY_GERMAN_SENTENCE]\n💬  [ENGLISH_TRANSLATION_OF_SENTENCE]  [EMOJI2][EMOJI2]\n\n#DeutschLernen [LEVEL]"
+  },
+  {
+    "name": "Word of the Day",
+    "template": "🇩🇪 Word of the Day  [EMOJI1][EMOJI1]\n\n[ARTICLE] [GERMAN_WORD]\n→ [ENGLISH_TRANSLATION]\n\n🇩🇪  [SHORT_FUNNY_GERMAN_SENTENCE]\n🇺🇸  [ENGLISH_TRANSLATION_OF_SENTENCE]  [EMOJI2][EMOJI2]\n\n#DeutschLernen [LEVEL]"
+  },
+  {
+    "name": "Reply Challenge",
+    "template": "🧠 New German word!  #DeutschLernen [LEVEL]\n\n🇩🇪  [ARTICLE] [GERMAN_WORD]  [EMOJI1][EMOJI1]\n🇺🇸  [ENGLISH_TRANSLATION]\n\n🇩🇪  [SHORT_FUNNY_GERMAN_SENTENCE]\n🇺🇸  [ENGLISH_TRANSLATION_OF_SENTENCE]  [EMOJI2][EMOJI2]\n\n↩️ Reply with your own sentence!"
+  },
+  {
+    "name": "Pro Tip",
+    "template": "💡 #DeutschLernen [LEVEL]\n\n🇩🇪  [ARTICLE] [GERMAN_WORD]\n🇺🇸  [ENGLISH_TRANSLATION]  [EMOJI1][EMOJI1]\n\n\u201e[SHORT_FUNNY_GERMAN_SENTENCE]\u201c\n= [ENGLISH_TRANSLATION_OF_SENTENCE]  [EMOJI2][EMOJI2]\n\n🔖 Save for later!"
+  }
+]

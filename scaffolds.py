@@ -1,15 +1,16 @@
 """
 Tweet scaffold pool and rotation.
 
-Each scaffold is a (name, template) tuple.  Placeholders the AI must fill:
-  [LEVEL]                      — CEFR level, e.g. A1, B2
-  [ARTICLE]                    — der / die / das  (omitted for non-nouns)
-  [GERMAN_WORD]                — the bare German word
-  [ENGLISH_TRANSLATION]        — English translation of the word
-  [SHORT_FUNNY_GERMAN_SENTENCE]— example sentence in German
-  [ENGLISH_TRANSLATION_OF_SENTENCE] — English translation of the sentence
-  [EMOJI1][EMOJI1]             — first emoji pair (two identical emojis)
-  [EMOJI2][EMOJI2]             — second emoji pair (two identical emojis, may differ from EMOJI1)
+Scaffold templates are defined in data/scaffolds.json.
+Each entry has a "name" and a "template" string with these placeholders:
+  [LEVEL]                          — CEFR level, e.g. A1, B2
+  [ARTICLE]                        — der / die / das  (omitted for non-nouns)
+  [GERMAN_WORD]                    — the bare German word
+  [ENGLISH_TRANSLATION]            — English translation of the word
+  [SHORT_FUNNY_GERMAN_SENTENCE]    — example sentence in German
+  [ENGLISH_TRANSLATION_OF_SENTENCE]— English translation of the sentence
+  [EMOJI1][EMOJI1]                 — first emoji pair (two identical emojis)
+  [EMOJI2][EMOJI2]                 — second emoji pair (two identical emojis, may differ from EMOJI1)
 
 Rotation is round-robin and persisted to data/scaffold_state.json so the
 sequence survives restarts and is predictable.
@@ -21,64 +22,17 @@ import os
 
 logger = logging.getLogger("german_bot.scaffolds")
 
-_STATE_FILE = "data/scaffold_state.json"
+_SCAFFOLDS_FILE = "data/scaffolds.json"
+_STATE_FILE     = "data/scaffold_state.json"
+
 
 # ── pool ──────────────────────────────────────────────────────────────────────
 
-SCAFFOLD_POOL: list[tuple[str, str]] = [
-    (
-        "Classic",
-        "#DeutschLernen [LEVEL]\n\n"
-        "🇩🇪  [ARTICLE] [GERMAN_WORD]\n"
-        "🇺🇸  [ENGLISH_TRANSLATION]  [EMOJI1][EMOJI1]\n\n"
-        "🇩🇪  [SHORT_FUNNY_GERMAN_SENTENCE]\n"
-        "🇺🇸  [ENGLISH_TRANSLATION_OF_SENTENCE]  [EMOJI2][EMOJI2]",
-    ),
-    (
-        "Flip Card",
-        "🇩🇪 → 🇺🇸\n\n"
-        "[ARTICLE] [GERMAN_WORD] = [ENGLISH_TRANSLATION]  [EMOJI1][EMOJI1]\n\n"
-        "📝 [SHORT_FUNNY_GERMAN_SENTENCE]\n"
-        "✏️ [ENGLISH_TRANSLATION_OF_SENTENCE]  [EMOJI2][EMOJI2]\n\n"
-        "#DeutschLernen [LEVEL]",
-    ),
-    (
-        "Did You Know",
-        "Did you know? 🤔\n\n"
-        "🇩🇪  [ARTICLE] [GERMAN_WORD]  [EMOJI1][EMOJI1]\n"
-        "🇺🇸  [ENGLISH_TRANSLATION]\n\n"
-        "🗣️  [SHORT_FUNNY_GERMAN_SENTENCE]\n"
-        "💬  [ENGLISH_TRANSLATION_OF_SENTENCE]  [EMOJI2][EMOJI2]\n\n"
-        "#DeutschLernen [LEVEL]",
-    ),
-    (
-        "Word of the Day",
-        "🇩🇪 Word of the Day  [EMOJI1][EMOJI1]\n\n"
-        "[ARTICLE] [GERMAN_WORD]\n"
-        "→ [ENGLISH_TRANSLATION]\n\n"
-        "🇩🇪  [SHORT_FUNNY_GERMAN_SENTENCE]\n"
-        "🇺🇸  [ENGLISH_TRANSLATION_OF_SENTENCE]  [EMOJI2][EMOJI2]\n\n"
-        "#DeutschLernen [LEVEL]",
-    ),
-    (
-        "Reply Challenge",
-        "🧠 New German word!  #DeutschLernen [LEVEL]\n\n"
-        "🇩🇪  [ARTICLE] [GERMAN_WORD]  [EMOJI1][EMOJI1]\n"
-        "🇺🇸  [ENGLISH_TRANSLATION]\n\n"
-        "🇩🇪  [SHORT_FUNNY_GERMAN_SENTENCE]\n"
-        "🇺🇸  [ENGLISH_TRANSLATION_OF_SENTENCE]  [EMOJI2][EMOJI2]\n\n"
-        "↩️ Reply with your own sentence!",
-    ),
-    (
-        "Pro Tip",
-        "💡 #DeutschLernen [LEVEL]\n\n"
-        "🇩🇪  [ARTICLE] [GERMAN_WORD]\n"
-        "🇺🇸  [ENGLISH_TRANSLATION]  [EMOJI1][EMOJI1]\n\n"
-        "\u201e[SHORT_FUNNY_GERMAN_SENTENCE]\u201c\n"
-        "= [ENGLISH_TRANSLATION_OF_SENTENCE]  [EMOJI2][EMOJI2]\n\n"
-        "🔖 Save for later!",
-    ),
-]
+def _load_pool() -> list[tuple[str, str]]:
+    """Load scaffolds from data/scaffolds.json and return as (name, template) tuples."""
+    with open(_SCAFFOLDS_FILE, encoding="utf-8") as f:
+        entries = json.load(f)
+    return [(e["name"], e["template"]) for e in entries]
 
 
 # ── rotation ──────────────────────────────────────────────────────────────────
@@ -104,9 +58,10 @@ def next_scaffold() -> tuple[str, str]:
     Return the next (name, template) in round-robin order and advance the
     persisted index so the next call picks the following scaffold.
     """
+    pool = _load_pool()
     last = _load_index()
-    idx = (last + 1) % len(SCAFFOLD_POOL)
+    idx  = (last + 1) % len(pool)
     _save_index(idx)
-    name, template = SCAFFOLD_POOL[idx]
-    logger.info("Scaffold rotation: %d/%d — %s", idx + 1, len(SCAFFOLD_POOL), name)
+    name, template = pool[idx]
+    logger.info("Scaffold rotation: %d/%d — %s", idx + 1, len(pool), name)
     return name, template
