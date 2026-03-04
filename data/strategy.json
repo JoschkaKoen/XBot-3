@@ -1,6 +1,6 @@
 {
   "preferred_cefr": "A1, A2, B1, B2, C1, C2",
-"next_topic": "German workplace culture",
+  "next_topic": "untranslatable German concepts",
   "style": "use a twist ending",
   "avoid_words": [
     "Menschenverstand",
@@ -29,8 +29,7 @@
     "das",
     "Tatort",
     "Hunger",
-"Bomben",
-    "Sprache"
+    "Benzin"
   ],
   "scaffold": "#DeutschLernen [LEVEL]\n\n🇩🇪  [ARTICLE] [GERMAN_WORD]\n🇬🇧  [ENGLISH_TRANSLATION]  [EMOJI][EMOJI]\n\n🇩🇪  [SHORT_FUNNY_GERMAN_SENTENCE]\n🇬🇧  [ENGLISH_TRANSLATION_OF_SENTENCE]  [EMOJI][EMOJI]"
 }
