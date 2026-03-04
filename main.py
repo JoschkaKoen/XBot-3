@@ -29,9 +29,8 @@ import logging
 os.environ.setdefault("PYTHONUNBUFFERED", "1")
 sys.stdout.reconfigure(line_buffering=True)
 
-from config import setup_logging, AI_PROVIDER, SENTENCE_MODEL, STRATEGY_MODEL, USE_TRENDS, FUNNY_MODE, ENABLE_GROK_VIDEO
+from config import setup_logging, AI_PROVIDER, TWEET_MODEL, STRATEGY_MODEL, USE_TRENDS, FUNNY_MODE, ENABLE_GROK_VIDEO
 from utils.ui import startup_banner, cycle_banner, cycle_summary, err, warn
-from services.image_ranker import warmup as _warmup_image_ranker
 
 
 def _model_lines() -> list:
@@ -42,7 +41,7 @@ def _model_lines() -> list:
             "reasoning":     "grok-4-1-fast  (reasoning)",
             "non-reasoning": "grok-4-1-fast-non-reasoning",
         }
-        tweet_model    = _model_names.get(SENTENCE_MODEL, SENTENCE_MODEL)
+        tweet_model    = _model_names.get(TWEET_MODEL, TWEET_MODEL)
         strategy_model = _model_names.get(STRATEGY_MODEL, STRATEGY_MODEL)
         trend_model    = "grok-4-1-fast  (reasoning)"
         word_model     = "grok-4-1-fast-non-reasoning"
@@ -101,10 +100,6 @@ def main():
     startup_banner(_model_lines())
     logger.info("German Learning X Bot starting …")
 
-    # Start loading ImageReward in the background immediately so it is ready
-    # by the time the first image ranking call happens (~5+ minutes into cycle 1).
-    _warmup_image_ranker()
-
     graph = get_graph()
 
     thread_id = "german_bot_main"
@@ -160,7 +155,6 @@ def _single_cycle() -> None:
     from graph import get_graph
 
     setup_logging()
-    _warmup_image_ranker()
 
     graph = get_graph()
     thread_id = f"single_cycle_{uuid.uuid4().hex[:8]}"

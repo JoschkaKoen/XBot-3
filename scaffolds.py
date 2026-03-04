@@ -8,7 +8,8 @@ Each scaffold is a (name, template) tuple.  Placeholders the AI must fill:
   [ENGLISH_TRANSLATION]        — English translation of the word
   [SHORT_FUNNY_GERMAN_SENTENCE]— example sentence in German
   [ENGLISH_TRANSLATION_OF_SENTENCE] — English translation of the sentence
-  [EMOJI][EMOJI]               — a matching pair of two identical emojis
+  [EMOJI1][EMOJI1]             — first emoji pair (two identical emojis)
+  [EMOJI2][EMOJI2]             — second emoji pair (two identical emojis, may differ from EMOJI1)
 
 Rotation is round-robin and persisted to data/scaffold_state.json so the
 sequence survives restarts and is predictable.
@@ -29,52 +30,52 @@ SCAFFOLD_POOL: list[tuple[str, str]] = [
         "Classic",
         "#DeutschLernen [LEVEL]\n\n"
         "🇩🇪  [ARTICLE] [GERMAN_WORD]\n"
-        "🇺🇸  [ENGLISH_TRANSLATION]  [EMOJI][EMOJI]\n\n"
+        "🇺🇸  [ENGLISH_TRANSLATION]  [EMOJI1][EMOJI1]\n\n"
         "🇩🇪  [SHORT_FUNNY_GERMAN_SENTENCE]\n"
-        "🇺🇸  [ENGLISH_TRANSLATION_OF_SENTENCE]  [EMOJI][EMOJI]",
+        "🇺🇸  [ENGLISH_TRANSLATION_OF_SENTENCE]  [EMOJI2][EMOJI2]",
     ),
     (
         "Flip Card",
         "🇩🇪 → 🇺🇸\n\n"
-        "[ARTICLE] [GERMAN_WORD] = [ENGLISH_TRANSLATION]  [EMOJI][EMOJI]\n\n"
+        "[ARTICLE] [GERMAN_WORD] = [ENGLISH_TRANSLATION]  [EMOJI1][EMOJI1]\n\n"
         "📝 [SHORT_FUNNY_GERMAN_SENTENCE]\n"
-        "✏️ [ENGLISH_TRANSLATION_OF_SENTENCE]  [EMOJI][EMOJI]\n\n"
+        "✏️ [ENGLISH_TRANSLATION_OF_SENTENCE]  [EMOJI2][EMOJI2]\n\n"
         "#DeutschLernen [LEVEL]",
     ),
     (
         "Did You Know",
         "Did you know? 🤔\n\n"
-        "🇩🇪  [ARTICLE] [GERMAN_WORD]  [EMOJI][EMOJI]\n"
+        "🇩🇪  [ARTICLE] [GERMAN_WORD]  [EMOJI1][EMOJI1]\n"
         "🇺🇸  [ENGLISH_TRANSLATION]\n\n"
         "🗣️  [SHORT_FUNNY_GERMAN_SENTENCE]\n"
-        "💬  [ENGLISH_TRANSLATION_OF_SENTENCE]  [EMOJI][EMOJI]\n\n"
+        "💬  [ENGLISH_TRANSLATION_OF_SENTENCE]  [EMOJI2][EMOJI2]\n\n"
         "#DeutschLernen [LEVEL]",
     ),
     (
         "Word of the Day",
-        "🇩🇪 Word of the Day  [EMOJI][EMOJI]\n\n"
+        "🇩🇪 Word of the Day  [EMOJI1][EMOJI1]\n\n"
         "[ARTICLE] [GERMAN_WORD]\n"
         "→ [ENGLISH_TRANSLATION]\n\n"
         "🇩🇪  [SHORT_FUNNY_GERMAN_SENTENCE]\n"
-        "🇺🇸  [ENGLISH_TRANSLATION_OF_SENTENCE]  [EMOJI][EMOJI]\n\n"
+        "🇺🇸  [ENGLISH_TRANSLATION_OF_SENTENCE]  [EMOJI2][EMOJI2]\n\n"
         "#DeutschLernen [LEVEL]",
     ),
     (
         "Reply Challenge",
         "🧠 New German word!  #DeutschLernen [LEVEL]\n\n"
-        "🇩🇪  [ARTICLE] [GERMAN_WORD]  [EMOJI][EMOJI]\n"
+        "🇩🇪  [ARTICLE] [GERMAN_WORD]  [EMOJI1][EMOJI1]\n"
         "🇺🇸  [ENGLISH_TRANSLATION]\n\n"
         "🇩🇪  [SHORT_FUNNY_GERMAN_SENTENCE]\n"
-        "🇺🇸  [ENGLISH_TRANSLATION_OF_SENTENCE]  [EMOJI][EMOJI]\n\n"
+        "🇺🇸  [ENGLISH_TRANSLATION_OF_SENTENCE]  [EMOJI2][EMOJI2]\n\n"
         "↩️ Reply with your own sentence!",
     ),
     (
         "Pro Tip",
         "💡 #DeutschLernen [LEVEL]\n\n"
         "🇩🇪  [ARTICLE] [GERMAN_WORD]\n"
-        "🇺🇸  [ENGLISH_TRANSLATION]  [EMOJI][EMOJI]\n\n"
+        "🇺🇸  [ENGLISH_TRANSLATION]  [EMOJI1][EMOJI1]\n\n"
         "\u201e[SHORT_FUNNY_GERMAN_SENTENCE]\u201c\n"
-        "= [ENGLISH_TRANSLATION_OF_SENTENCE]  [EMOJI][EMOJI]\n\n"
+        "= [ENGLISH_TRANSLATION_OF_SENTENCE]  [EMOJI2][EMOJI2]\n\n"
         "🔖 Save for later!",
     ),
 ]

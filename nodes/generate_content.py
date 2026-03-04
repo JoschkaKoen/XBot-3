@@ -11,7 +11,10 @@ import logging
 import string
 from typing import Any, Optional
 
-from config import USE_TRENDS, SENTENCE_MODEL, AI_PROVIDER, FUNNY_MODE
+from config import (
+    USE_TRENDS, TWEET_MODEL, TWEET_PICKER_MODEL, AI_PROVIDER, FUNNY_MODE,
+    TREND_FILTER_MODEL, WORD_PICK_MODEL, SIMILARITY_MODEL,
+)
 from services.ai_client import get_ai_response
 from services.x_trends import get_germany_trends
 from utils.retry import retry_call
@@ -21,13 +24,47 @@ from utils.ui import stage_banner, ok, tweet_box, info, warn as ui_warn
 def _get_tweet_ai() -> callable:
     """Return the AI function to use for tweet generation."""
     if AI_PROVIDER == "grok":
-        if SENTENCE_MODEL == "flagship":
+        if TWEET_MODEL == "flagship":
             from services.grok_ai import get_grok_flagship_response
             return get_grok_flagship_response
-        if SENTENCE_MODEL == "reasoning":
+        if TWEET_MODEL == "reasoning":
             from services.grok_ai import get_grok_reasoning_response
             return get_grok_reasoning_response
     return get_ai_response
+
+
+def _get_tweet_picker_ai() -> callable:
+    """Return the AI function to use for picking the best tweet candidate (TWEET_PICKER_MODEL)."""
+    return _model_to_ai_fn(TWEET_PICKER_MODEL)
+
+
+def _model_to_ai_fn(model: str) -> callable:
+    """Resolve a model name string to the corresponding Grok AI function."""
+    if AI_PROVIDER == "grok":
+        if model == "flagship":
+            from services.grok_ai import get_grok_flagship_response
+            return get_grok_flagship_response
+        if model == "reasoning":
+            from services.grok_ai import get_grok_reasoning_response
+            return get_grok_reasoning_response
+        from services.grok_ai import get_grok_response
+        return get_grok_response
+    return get_ai_response
+
+
+def _get_trend_filter_ai() -> callable:
+    """AI function for filtering trend keywords (TREND_FILTER_MODEL)."""
+    return _model_to_ai_fn(TREND_FILTER_MODEL)
+
+
+def _get_word_pick_ai() -> callable:
+    """AI function for free-form word selection (WORD_PICK_MODEL)."""
+    return _model_to_ai_fn(WORD_PICK_MODEL)
+
+
+def _get_similarity_ai() -> callable:
+    """AI function for semantic duplicate / similarity check (SIMILARITY_MODEL)."""
+    return _model_to_ai_fn(SIMILARITY_MODEL)
 
 
 def _load_strategy_from_file() -> dict:
@@ -120,23 +157,23 @@ def _build_tweet_prompt(
     if FUNNY_MODE:
         funny_tone_section = (
             "## Tone\n"
-            "The example sentence MUST be genuinely funny — it should make the reader laugh or smirk. "
-            "A sentence that is merely pleasant or informative is not acceptable.\n\n"
+            "The example sentence MUST be genuinely very funny — it should make the reader laugh and smirk. "
+            # "A sentence that is merely pleasant or informative is not acceptable.\n\n"
         )
 
     cefr_rule = (
-        f"- The CEFR level for this word is **{cefr_level}** — use exactly this level in the tweet\n"
-        f"- The grammar and vocabulary of the example sentence must match {cefr_level}: "
-        + (
-            "very simple present/past tense, everyday words, short sentences\n"
-            if cefr_level in ("A1", "A2") else
-            "moderate complexity, some subordinate clauses allowed\n"
-            if cefr_level in ("B1", "B2") else
-            "idiomatic expressions and complex structures are welcome\n"
-        )
+        f"- The CEFR level for this word is **{cefr_level}** — use this level in the tweet\n"
+        f"- The grammar and vocabulary of the example sentence should match {cefr_level}: "
+        # + (
+        #     "very simple present/past tense, everyday words, short sentences\n"
+        #     if cefr_level in ("A1", "A2") else
+        #     "moderate complexity, some subordinate clauses allowed\n"
+        #     if cefr_level in ("B1", "B2") else
+        #     "idiomatic expressions and complex structures are welcome\n"
+        # )
         if cefr_level else
         "- Pick an appropriate CEFR level (A1-C2) for this word\n"
-        "- The grammar and vocabulary of the example sentence must match the CEFR level: "
+        "- The grammar and vocabulary of the example sentence should match the CEFR level: "
         "A1/A2 → simple; B1/B2 → moderate; C1/C2 → complex/idiomatic\n"
     )
 
@@ -150,16 +187,17 @@ def _build_tweet_prompt(
         f"{funny_tone_section}"
         "## Rules\n"
         "- The German word must include the correct article (der/die/das) if it's a noun\n"
-        "- If the word has no grammatical article (adjective, phrase, verb, etc.), omit the [ARTICLE] slot entirely — write nothing before the word. NEVER write 'no known noun' in the tweet\n"
+        "- If the word has no grammatical article (adjective, phrase, verb, etc.), omit the [ARTICLE] slot entirely\n"
         f"{cefr_rule}"
-        "- The example sentence must be short, warm, and authentic — something a German would actually say\n"
-        "- Vary the sentence ending: most sentences should end with a period (.) — only use an exclamation mark (!) when it is genuinely funny or surprising, and occasionally use a question (?)\n"
+        #"- The example sentence must be short, warm, and authentic — something a German would actually say\n"
+        #"- Vary the sentence ending: most sentences should end with a period (.) — only use an exclamation mark (!) when it is genuinely funny or surprising, and occasionally use a question (?)\n"
         "- The example sentence MUST contain the exact word\n"
         "- The English translations must be natural, not robotic\n"
-        "- Each line gets a pair of 2 identical emojis that visually represent the meaning\n"
-        "- The two emoji PAIRS must be DIFFERENT from each other "
-        "(e.g. 🚗🚗 for word line, 🎉🎉 for sentence line — NOT the same pair twice)\n"
-        "- Do NOT wrap the output in quotes or markdown\n\n"
+        "- The emojis should help the reader visually understand the meaning. Don't just use laughing emojis\n"
+        #"- Each line gets a pair of 2 identical emojis that visually represent the meaning\n"
+        # "- The two emoji PAIRS must be DIFFERENT from each other "
+        # "(e.g. 🚗🚗 for word line, 🎉🎉 for sentence line — NOT the same pair twice)\n"
+        # "- Do NOT wrap the output in quotes or markdown\n\n"
         "## Strategy guidance\n"
         f"- Preferred CEFR levels: {preferred_cefr}\n"
         + (f"- Topic / angle for this tweet: {next_topic}\n" if next_topic else "")
@@ -175,7 +213,7 @@ def _build_tweet_prompt(
         '  "example_sentence_de": "<just the German example sentence>",\n'
         '  "example_sentence_en": "<just the English translation of the sentence>"\n'
         "}\n\n"
-        "No markdown. No explanation. Just the JSON object."
+        "Just the JSON object."
     )
 
     if extra_instruction:
@@ -201,13 +239,14 @@ def _call_tweet_ai(
     prompt = _build_tweet_prompt(trending_word, scaffold, strategy, top_tweets, cefr_level, extra_instruction, word_from_trends=word_from_trends)
     if FUNNY_MODE:
         system_prompt = (
-            "You are a German language teacher and comedy writer creating vocabulary content for X (Twitter). "
-            "Every example sentence must be genuinely funny — it must make the reader laugh or smirk. "
+            "You are a German language teacher and comedy writer creating funny tweets for X (Twitter). "
+            "Every example sentence must be genuinely very funny — it must make the reader laugh."
+            # "It should be positive and uplifting not negative and cynical."
             "You always respond with valid JSON only."
         )
     else:
         system_prompt = (
-            "You are a German language teacher creating engaging vocabulary content for "
+            "You are a German language teacher creating engaging tweets for "
             "X (Twitter). You always respond with valid JSON only."
         )
 
@@ -262,10 +301,9 @@ def _call_tweet_ai(
 
 def _select_best_tweet(candidates: list, german_word: str, cefr_level: str) -> dict:
     """
-    Print all candidates to the terminal, use grok-4 (flagship) to pick the best one,
-    and highlight the winner. Falls back to the first candidate if selection fails.
+    Print all candidates to the terminal, use the configured TWEET_PICKER_MODEL to pick
+    the best one, and highlight the winner. Falls back to the first candidate if selection fails.
     """
-    from services.grok_ai import get_grok_flagship_response
 
     _R    = "\033[0m"
     _BOLD = "\033[1m"
@@ -287,21 +325,21 @@ def _select_best_tweet(candidates: list, german_word: str, cefr_level: str) -> d
             f"You are evaluating {len(candidates)} German vocabulary tweet candidates for the word "
             f"'{german_word}' (CEFR: {cefr_level or 'unknown'}).\n\n"
             f"{numbered}\n\n"
-            "Pick the best candidate using exactly these two criteria, in this order:\n\n"
-            "1. FUNNINESS (primary): Which sentence has the sharpest punchline, the best ironic twist, "
-            "or the most absurd contrast? Would a real person laugh or smirk? "
-            "A genuinely funny tweet always beats a merely pleasant one.\n"
-            "2. POSITIVITY (tiebreaker): If two candidates are equally funny, pick the one that feels "
-            "warm, uplifting, and good-natured. Avoid anything that feels mean, cynical, or negative.\n\n"
-            "Reply with the winning number followed by a single short reason (max 12 words), e.g.:\n"
-            "2 — sharpest punchline, warm and instantly relatable\n\n"
+            "Pick the funniest tweet.\n\n"
+            # "1. FUNNINESS (primary): Which sentence has the sharpest punchline, the best ironic twist, "
+            # "or the most absurd contrast? Would a real person laugh or smirk? "
+            # "A genuinely funny tweet always beats a merely pleasant one.\n"
+            # "2. POSITIVITY (tiebreaker): If two candidates are equally funny, pick the one that feels "
+            # "warm, uplifting, and good-natured. Avoid anything that feels mean, cynical, or negative.\n\n"
+            # "Reply with the winning number followed by a single short reason (max 12 words), e.g.:\n"
+            # "2 — sharpest punchline, warm and instantly relatable\n\n"
             "Your answer:"
         )
         system_prompt_selector = (
-            "You are a comedy editor selecting the best German vocabulary tweet. "
-            "Your two criteria are: (1) funniness — always pick the sharpest joke, "
-            "(2) positivity as tiebreaker — warm beats cynical. "
-            "Reply with a number (1, 2 or 3) followed by a short reason — nothing else."
+            "You are a comedy editor selecting the funniest German vocabulary tweet. "
+            # "Your two criteria are: (1) funniness — always pick the sharpest joke, "
+            # "(2) positivity as tiebreaker — warm beats cynical. "
+            # "Reply with a number (1, 2 or 3) followed by a short reason — nothing else."
         )
     else:
         selection_prompt = (
@@ -327,7 +365,7 @@ def _select_best_tweet(candidates: list, german_word: str, cefr_level: str) -> d
     reason = ""
     try:
         raw = retry_call(
-            get_grok_flagship_response,
+            _get_tweet_picker_ai(),
             selection_prompt,
             system_prompt_selector,
             max_tokens=40,
@@ -397,9 +435,8 @@ def _pick_word_from_trends(avoid_words: list) -> Optional[tuple[str, str]]:
     )
 
     try:
-        from services.grok_ai import get_grok_reasoning_response
         raw = retry_call(
-            get_grok_reasoning_response,
+            _get_trend_filter_ai(),
             pick_req,
             "Du bist ein erfahrener Deutschlehrer. Dein einziges Ziel ist es, Wörter auszuwählen, die für englischsprachige Deutschlernende im echten Alltag möglichst nützlich sind. Trendrelevanz ist zweitrangig — Lernwert hat absolute Priorität. Du antwortest ausschließlich mit gültigem JSON.",
             max_tokens=1200,
@@ -494,8 +531,6 @@ def _is_word_too_similar(word: str, avoid_words: list) -> tuple[bool, str]:
     if not avoid_words:
         return False, ""
 
-    from services.grok_ai import get_grok_response
-
     recent = avoid_words[-50:]
     word_list_str = ", ".join(recent)
 
@@ -514,7 +549,7 @@ def _is_word_too_similar(word: str, avoid_words: list) -> tuple[bool, str]:
 
     try:
         raw = retry_call(
-            get_grok_response,
+            _get_similarity_ai(),
             prompt,
             "Du prüfst, ob ein deutsches Wort zu ähnlich zu einer Liste bereits verwendeter Wörter ist. "
             "Antworte ausschließlich mit gültigem JSON.",
@@ -573,7 +608,7 @@ def generate_content(state: dict) -> dict:
         strategy = {**strategy, "avoid_words": avoid_words}
         word_prompt = _build_word_prompt(strategy)
         raw_word = retry_call(
-            get_ai_response,
+            _get_word_pick_ai(),
             word_prompt,
             "Du bist ein Deutschlehrer und erstellst Vokabelinhalte für Social Media. Du antwortest ausschließlich mit gültigem JSON.",
             max_tokens=40,
@@ -625,7 +660,7 @@ def generate_content(state: dict) -> dict:
         ))}
         word_prompt = _build_word_prompt(strategy)
         raw_word = retry_call(
-            get_ai_response,
+            _get_word_pick_ai(),
             word_prompt,
             "Du bist ein Deutschlehrer und erstellst Vokabelinhalte für Social Media. "
             "Du antwortest ausschließlich mit gültigem JSON.",
@@ -713,6 +748,11 @@ def generate_content(state: dict) -> dict:
     full_tweet = result["full_tweet"]
     tweet_box(full_tweet)
     logger.info("Full tweet assembled (%d chars):\n%s", len(full_tweet), full_tweet)
+
+    # Start loading ImageReward in the background now — it will be ready by the
+    # time Midjourney image generation finishes and pick_best_image() is called.
+    from services.image_ranker import warmup as _warmup_image_ranker
+    _warmup_image_ranker()
 
     return {
         **state,

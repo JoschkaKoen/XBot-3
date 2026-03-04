@@ -10,9 +10,16 @@ For every tweet in post_history.json:
 
 This means engagement scores grow over time as posts keep accumulating
 likes / impressions, giving the strategy analyser ever-improving signal.
+
+A timestamp sidecar (data/metrics_refresh.json) is used to throttle refreshes
+to at most once every STRATEGY_UPDATE_INTERVAL_HOURS hours.
 """
 
+import json
 import logging
+import os
+from datetime import datetime, timezone
+
 import tweepy
 
 from config import (
@@ -21,6 +28,7 @@ from config import (
     TWITTER_CONSUMER_SECRET,
     TWITTER_ACCESS_TOKEN,
     TWITTER_ACCESS_TOKEN_SECRET,
+    STRATEGY_UPDATE_INTERVAL_HOURS,
 )
 from nodes.score import _load_history, _save_history, _compute_score
 from utils.retry import with_retry
@@ -29,6 +37,30 @@ from utils.ui import stage_banner, ok, info as ui_info, warn as ui_warn
 logger = logging.getLogger("german_bot.fetch_metrics")
 
 _NOT_FOUND_CODES = {144, 34}
+
+_REFRESH_STATE_PATH = os.path.join(
+    os.path.dirname(__file__), "..", "data", "metrics_refresh.json"
+)
+
+
+def _last_refresh_hours_ago() -> float:
+    """Return how many hours ago metrics were last refreshed. Returns inf if never."""
+    try:
+        with open(_REFRESH_STATE_PATH, encoding="utf-8") as fh:
+            data = json.load(fh)
+        ts = datetime.fromisoformat(data["last_refresh"])
+        if ts.tzinfo is None:
+            ts = ts.replace(tzinfo=timezone.utc)
+        delta = datetime.now(timezone.utc) - ts
+        return delta.total_seconds() / 3600
+    except (FileNotFoundError, KeyError, ValueError, json.JSONDecodeError):
+        return float("inf")
+
+
+def _record_refresh_timestamp() -> None:
+    os.makedirs(os.path.dirname(_REFRESH_STATE_PATH), exist_ok=True)
+    with open(_REFRESH_STATE_PATH, "w", encoding="utf-8") as fh:
+        json.dump({"last_refresh": datetime.now(timezone.utc).isoformat()}, fh)
 
 
 def _client() -> tweepy.Client:
@@ -74,15 +106,30 @@ def fetch_all_metrics(state: dict) -> dict:
     """
     Refresh metrics for every tweet in history.
     Deleted tweets are removed; existing ones get updated scores.
+    Skips the refresh if it was run within the last STRATEGY_UPDATE_INTERVAL_HOURS hours.
     """
     stage_banner(1)
     logger.info("Node: fetch_all_metrics")
+
+    hours_ago = _last_refresh_hours_ago()
+    if hours_ago < STRATEGY_UPDATE_INTERVAL_HOURS:
+        hours_left = STRATEGY_UPDATE_INTERVAL_HOURS - hours_ago
+        ui_info(
+            f"Metrics were refreshed {hours_ago:.1f}h ago — "
+            f"skipping metrics + strategy update (next in {hours_left:.1f}h)."
+        )
+        logger.info(
+            "Metrics refresh skipped: last run %.1fh ago, interval is %dh.",
+            hours_ago,
+            STRATEGY_UPDATE_INTERVAL_HOURS,
+        )
+        return {**state, "metrics_refreshed": False}
 
     history = _load_history()
     if not history:
         ui_info("No posts in history yet — skipping metrics refresh.")
         logger.info("No post history found — nothing to refresh.")
-        return state
+        return {**state, "metrics_refreshed": False}
 
     client = _client()
     total   = len(history)
@@ -128,6 +175,7 @@ def fetch_all_metrics(state: dict) -> dict:
                 kept_unchanged += 1
 
     _save_history(new_history)
+    _record_refresh_timestamp()
 
     parts = []
     if updated:       parts.append(f"{updated} updated")
@@ -140,4 +188,4 @@ def fetch_all_metrics(state: dict) -> dict:
         updated, deleted, kept_unchanged, len(new_history),
     )
 
-    return state
+    return {**state, "metrics_refreshed": True}

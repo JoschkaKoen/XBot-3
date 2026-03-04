@@ -62,12 +62,44 @@ FLAG_OVERLAY: bool = os.getenv("FLAG_OVERLAY", "true").lower().strip() == "true"
 # Only applies when AI_PROVIDER=grok. Scaleway always uses llama-3.3-70b.
 STRATEGY_MODEL: str = os.getenv("STRATEGY_MODEL", "reasoning").lower().strip()
 
-# Model used for German example sentence generation:
-#   "flagship"      = grok-4          (best language quality, ~$0.003/sentence)
+# Model used for tweet generation:
+#   "flagship"      = grok-4          (best language quality, ~$0.003/tweet)
 #   "reasoning"     = grok-4-1-fast   (reasoning variant, same price as fast)
 #   "non-reasoning" = grok-4-1-fast-non-reasoning  (default fast model)
 # Only applies when AI_PROVIDER=grok.
-SENTENCE_MODEL: str = os.getenv("SENTENCE_MODEL", "flagship").lower().strip()
+TWEET_MODEL: str = os.getenv("TWEET_MODEL", "flagship").lower().strip()
+
+# Model used to pick the best tweet from the generated candidates:
+#   "flagship"      = grok-4  (default — highest judgement quality)
+#   "reasoning"     = grok-4-1-fast
+#   "non-reasoning" = grok-4-1-fast-non-reasoning
+# Only applies when AI_PROVIDER=grok.
+TWEET_PICKER_MODEL: str = os.getenv("TWEET_PICKER_MODEL", "flagship").lower().strip()
+
+# Model used to filter trend keywords and rank them by German learning value:
+#   "flagship"      = grok-4
+#   "reasoning"     = grok-4-1-fast
+#   "non-reasoning" = grok-4-1-fast-non-reasoning  (default — fast and cheap)
+# Only applies when AI_PROVIDER=grok.
+TREND_FILTER_MODEL: str = os.getenv("TREND_FILTER_MODEL", "non-reasoning").lower().strip()
+
+# Model used for free-form word selection (when USE_TRENDS=false or trends yield nothing):
+#   "flagship"      = grok-4
+#   "reasoning"     = grok-4-1-fast
+#   "non-reasoning" = grok-4-1-fast-non-reasoning  (default)
+# Only applies when AI_PROVIDER=grok.
+WORD_PICK_MODEL: str = os.getenv("WORD_PICK_MODEL", "non-reasoning").lower().strip()
+
+# Model used for the semantic duplicate / similarity check:
+#   "flagship"      = grok-4
+#   "reasoning"     = grok-4-1-fast
+#   "non-reasoning" = grok-4-1-fast-non-reasoning  (default)
+# Only applies when AI_PROVIDER=grok.
+SIMILARITY_MODEL: str = os.getenv("SIMILARITY_MODEL", "non-reasoning").lower().strip()
+
+# How many hours must pass before metrics are refreshed and strategy is re-analysed.
+# Both steps are skipped together when the interval has not elapsed (default: 24h).
+STRATEGY_UPDATE_INTERVAL_HOURS: int = int(os.getenv("STRATEGY_UPDATE_INTERVAL_HOURS", "24"))
 
 # ── Folder layout ─────────────────────────────────────────────────────────────
 KTV_FONT = "/usr/share/fonts/truetype/lato/Lato-Bold.ttf"

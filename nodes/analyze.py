@@ -305,6 +305,13 @@ def analyze_and_improve(state: dict) -> dict:
     stage_banner(2)
     logger.info("Node: analyze_and_improve")
 
+    # Skip if metrics were not refreshed this cycle — no new signal to learn from.
+    if not state.get("metrics_refreshed", True):
+        old_strategy = load_strategy()
+        ui_info("Metrics not refreshed — skipping strategy analysis, reusing current strategy.")
+        logger.info("Strategy analysis skipped (metrics_refreshed=False).")
+        return {**state, "strategy": old_strategy}
+
     # Load the previous strategy to diff against
     old_strategy = load_strategy()
 
