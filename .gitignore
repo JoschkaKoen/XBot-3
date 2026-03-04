@@ -1,5 +1,7 @@
 # Secrets — never commit API keys
 .env
+# Public configuration (no keys) — tracked by git
+!settings.env
 
 # Python cache & venv
 __pycache__/

@@ -2,7 +2,10 @@ import os
 import logging
 from dotenv import load_dotenv
 
-load_dotenv()
+# Load public configuration first, then secret keys.
+# Values in .env take precedence over settings.env (override=True on .env).
+load_dotenv("settings.env")
+load_dotenv(override=True)   # loads .env (keys only, gitignored)
 
 # ── AI provider ──────────────────────────────────────────────────────────────
 AI_PROVIDER: str = os.getenv("AI_PROVIDER", "grok").lower().strip()
