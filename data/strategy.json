@@ -1,7 +1,7 @@
 {
   "preferred_cefr": "A1, A2, B1, B2, C1, C2",
-  "next_topic": "untranslatable German concepts",
-  "style": "use a twist ending",
+  "preferred_themes": "sport, nature, travel, technology, music, weather",
+  "focus": "humorous and relatable everyday scenarios with witty, self-deprecating twists",
   "avoid_words": [
     "Menschenverstand",
     "Zucker",
@@ -29,7 +29,8 @@
     "das",
     "Tatort",
     "Hunger",
-    "Benzin"
+    "Raketen",
+    "deutsch"
   ],
   "scaffold": "#DeutschLernen [LEVEL]\n\n🇩🇪  [ARTICLE] [GERMAN_WORD]\n🇬🇧  [ENGLISH_TRANSLATION]  [EMOJI][EMOJI]\n\n🇩🇪  [SHORT_FUNNY_GERMAN_SENTENCE]\n🇬🇧  [ENGLISH_TRANSLATION_OF_SENTENCE]  [EMOJI][EMOJI]"
 }
