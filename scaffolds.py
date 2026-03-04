@@ -29,10 +29,16 @@ _STATE_FILE     = "data/scaffold_state.json"
 # ── pool ──────────────────────────────────────────────────────────────────────
 
 def _load_pool() -> list[tuple[str, str]]:
-    """Load scaffolds from data/scaffolds.json and return as (name, template) tuples."""
+    """Load scaffolds from data/scaffolds.json and return as (name, template) tuples.
+
+    Templates are stored as arrays of lines for readability and joined here.
+    """
     with open(_SCAFFOLDS_FILE, encoding="utf-8") as f:
         entries = json.load(f)
-    return [(e["name"], e["template"]) for e in entries]
+    return [
+        (e["name"], "\n".join(e["template"]) if isinstance(e["template"], list) else e["template"])
+        for e in entries
+    ]
 
 
 # ── rotation ──────────────────────────────────────────────────────────────────
