@@ -178,7 +178,7 @@ def _build_tweet_prompt(
     )
 
     prompt = (
-        "You are a German language teacher running a popular X (Twitter) account that teaches "
+        "You are a German language teacher and comedian running a very popular X (Twitter) account that teaches "
         "German to English speakers.\n\n"
         f"## Your task\n"
         f'Create a complete tweet about this German word: "{trending_word}"\n\n'
@@ -194,6 +194,12 @@ def _build_tweet_prompt(
         "- The example sentence MUST contain the exact word\n"
         "- The English translations must be natural, not robotic\n"
         "- The emojis should help the reader visually understand the meaning. Don't just use laughing emojis\n"
+        "- Each [EMOJI1] or [EMOJI2] placeholder stands for exactly ONE emoji character. "
+        "The scaffold writes them twice (e.g. [EMOJI1][EMOJI1]) to show you should repeat the same emoji. "
+        "Replace the entire [EMOJI1][EMOJI1] with exactly 2 identical emojis (e.g. 🚗🚗). "
+        "Do NOT add any emojis beyond what the scaffold specifies.\n"
+        "- Preserve the exact spacing from the scaffold: if the scaffold shows two spaces between an emoji and the text "
+        "(e.g. '🇩🇪  [GERMAN_WORD]'), use exactly two spaces in the output. Do not collapse spaces or add more.\n"
         #"- Each line gets a pair of 2 identical emojis that visually represent the meaning\n"
         # "- The two emoji PAIRS must be DIFFERENT from each other "
         # "(e.g. 🚗🚗 for word line, 🎉🎉 for sentence line — NOT the same pair twice)\n"
@@ -320,26 +326,33 @@ def _select_best_tweet(candidates: list, german_word: str, cefr_level: str) -> d
         for i, c in enumerate(candidates)
     )
 
+    _fmt_instruction = (
+        "Your entire response must be exactly this format and nothing else:\n"
+        "<N> — <reason up to 12 words>\n"
+        "where <N> is the candidate number (1, 2 or 3). "
+        "Do NOT write 'Candidate', do NOT add any text before the number. "
+        "Example: 2 — sharpest punchline, warm and instantly relatable"
+    )
+
     if FUNNY_MODE:
         selection_prompt = (
             f"You are evaluating {len(candidates)} German vocabulary tweet candidates for the word "
             f"'{german_word}' (CEFR: {cefr_level or 'unknown'}).\n\n"
             f"{numbered}\n\n"
-            "Pick the funniest tweet.\n\n"
-            # "1. FUNNINESS (primary): Which sentence has the sharpest punchline, the best ironic twist, "
-            # "or the most absurd contrast? Would a real person laugh or smirk? "
-            # "A genuinely funny tweet always beats a merely pleasant one.\n"
-            # "2. POSITIVITY (tiebreaker): If two candidates are equally funny, pick the one that feels "
-            # "warm, uplifting, and good-natured. Avoid anything that feels mean, cynical, or negative.\n\n"
-            # "Reply with the winning number followed by a single short reason (max 12 words), e.g.:\n"
-            # "2 — sharpest punchline, warm and instantly relatable\n\n"
+            "Pick the BEST tweet using these criteria:\n"
+            "1. FUNNINESS (primary): Which sentence has the sharpest punchline, the best ironic twist, "
+            "or the most absurd contrast? Would a real person laugh or smirk? "
+            "A genuinely funny tweet always beats a merely pleasant one.\n"
+            "2. POSITIVITY (tiebreaker): If two candidates are equally funny, pick the one that feels "
+            "warm, uplifting, and good-natured. Avoid anything that feels mean, cynical, or negative.\n\n"
+            f"{_fmt_instruction}\n\n"
             "Your answer:"
         )
         system_prompt_selector = (
             "You are a comedy editor selecting the funniest German vocabulary tweet. "
-            # "Your two criteria are: (1) funniness — always pick the sharpest joke, "
-            # "(2) positivity as tiebreaker — warm beats cynical. "
-            # "Reply with a number (1, 2 or 3) followed by a short reason — nothing else."
+            "Your two criteria are: (1) funniness — always pick the sharpest joke, "
+            "(2) positivity as tiebreaker — warm beats cynical. "
+            "Reply with ONLY a number (1, 2 or 3) followed by a short reason — nothing else before the number."
         )
     else:
         selection_prompt = (
@@ -352,32 +365,38 @@ def _select_best_tweet(candidates: list, german_word: str, cefr_level: str) -> d
             "- Shareability: Is it quotable, relatable, or surprising enough to share?\n"
             "- Learning effect: Does the example sentence make the German word memorable and easy to understand?\n"
             "- Sentence quality: Is the German sentence natural, correctly matched to the CEFR level, and short enough to read at a glance?\n\n"
-            "Reply with the winning number followed by a single short reason (max 12 words), e.g.:\n"
-            "2 — most relatable, clearest vocabulary hook\n\n"
+            f"{_fmt_instruction}\n\n"
             "Your answer:"
         )
         system_prompt_selector = (
             "You are a social media expert and German teacher evaluating tweet quality. "
-            "Reply with a number (1, 2 or 3) followed by a short reason — nothing else."
+            "Reply with ONLY a number (1, 2 or 3) followed by a short reason — nothing else before the number."
         )
 
     chosen_idx = 0
     reason = ""
     try:
+        import re as _re
         raw = retry_call(
             _get_tweet_picker_ai(),
             selection_prompt,
             system_prompt_selector,
-            max_tokens=40,
+            max_tokens=60,
             temperature=0.0,
             label="select_tweet",
         )
         raw = raw.strip()
-        idx = int(raw[0]) - 1
-        reason = raw[2:].strip(" —-") if len(raw) > 1 else ""
-        if 0 <= idx < len(candidates):
-            chosen_idx = idx
-            logger.info("Tweet selection: picked candidate %d — %s", idx + 1, reason)
+        m = _re.search(r'\b([123])\b', raw)
+        if m:
+            idx = int(m.group(1)) - 1
+            reason = raw[m.end():].strip(" —-") if m.end() < len(raw) else ""
+            if 0 <= idx < len(candidates):
+                chosen_idx = idx
+                logger.info("Tweet selection: picked candidate %d — %s", idx + 1, reason)
+            else:
+                logger.warning("Tweet selection: parsed index %d out of range — using first candidate.", idx + 1)
+        else:
+            logger.warning("Tweet selection: could not parse a candidate number from %r — using first candidate.", raw)
     except Exception as exc:
         logger.warning("Tweet selection failed (%s) — using first candidate.", exc)
 

@@ -26,6 +26,16 @@ DEEPL_AUTH_KEY: str = os.getenv("DEEPL_AUTH_KEY", "")
 # ── Midjourney via TTAPI ─────────────────────────────────────────────────────
 TT_API_KEY: str = os.getenv("TT_API_KEY", "")
 
+# ── Image generation provider ────────────────────────────────────────────────
+# "midjourney" = Midjourney via TTAPI (default, requires TT_API_KEY)
+# "grok"       = xAI Grok Imagine API  (requires XAI_API_KEY)
+IMAGE_PROVIDER: str = os.getenv("IMAGE_PROVIDER", "midjourney").lower().strip()
+
+# Number of images to request per cycle when IMAGE_PROVIDER=grok.
+# If Grok Imagine ignores this and always returns a fixed count, all returned
+# images are still ranked and the best one is selected automatically.
+GROK_IMAGE_COUNT: int = int(os.getenv("GROK_IMAGE_COUNT", "1"))
+
 # ── Bot behaviour ─────────────────────────────────────────────────────────────
 POST_INTERVAL_SECONDS: int = int(os.getenv("POST_INTERVAL_SECONDS", "18000"))
 HISTORY_FILE: str = os.getenv("HISTORY_FILE", "data/post_history.json")

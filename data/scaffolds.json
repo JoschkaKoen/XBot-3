@@ -41,7 +41,7 @@
   {
     "name": "Word of the Day",
     "template": [
-      "🇩🇪 Word of the Day  [EMOJI1][EMOJI1]",
+      "🇩🇪  Word of the Day  [EMOJI1][EMOJI1]",
       "",
       "[ARTICLE] [GERMAN_WORD]",
       "→ [ENGLISH_TRANSLATION]",
@@ -55,7 +55,7 @@
   {
     "name": "Reply Challenge",
     "template": [
-      "🧠 New German word!  #DeutschLernen [LEVEL]",
+      "🧠  New German word!  #DeutschLernen [LEVEL]",
       "",
       "🇩🇪  [ARTICLE] [GERMAN_WORD]  [EMOJI1][EMOJI1]",
       "🇺🇸  [ENGLISH_TRANSLATION]",
@@ -63,13 +63,13 @@
       "🇩🇪  [SHORT_FUNNY_GERMAN_SENTENCE]",
       "🇺🇸  [ENGLISH_TRANSLATION_OF_SENTENCE]  [EMOJI2][EMOJI2]",
       "",
-      "↩️ Reply with your own sentence!"
+      "↩️  Reply with your own sentence!"
     ]
   },
   {
     "name": "Pro Tip",
     "template": [
-      "💡 #DeutschLernen [LEVEL]",
+      "💡  #DeutschLernen [LEVEL]",
       "",
       "🇩🇪  [ARTICLE] [GERMAN_WORD]",
       "🇺🇸  [ENGLISH_TRANSLATION]  [EMOJI1][EMOJI1]",
