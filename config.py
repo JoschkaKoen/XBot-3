@@ -26,6 +26,11 @@ DEEPL_AUTH_KEY: str = os.getenv("DEEPL_AUTH_KEY", "")
 # ── Midjourney via TTAPI ─────────────────────────────────────────────────────
 TT_API_KEY: str = os.getenv("TT_API_KEY", "")
 
+# ── Image style ──────────────────────────────────────────────────────────────
+# "photographic" = realistic editorial photography (default)
+# "disney"       = cute 3D Disney / Pixar CGI animation style
+IMAGE_STYLE: str = os.getenv("IMAGE_STYLE", "photographic").lower().strip()
+
 # ── Image generation provider ────────────────────────────────────────────────
 # "midjourney" = Midjourney via TTAPI (default, requires TT_API_KEY)
 # "grok"       = xAI Grok Imagine API  (requires XAI_API_KEY)
@@ -35,6 +40,12 @@ IMAGE_PROVIDER: str = os.getenv("IMAGE_PROVIDER", "midjourney").lower().strip()
 # If Grok Imagine ignores this and always returns a fixed count, all returned
 # images are still ranked and the best one is selected automatically.
 GROK_IMAGE_COUNT: int = int(os.getenv("GROK_IMAGE_COUNT", "1"))
+
+# ── Tweet constraints ────────────────────────────────────────────────────────
+# Maximum character length of a posted tweet. X's hard limit is 280 for free
+# accounts; Premium accounts support up to 25 000. Adjust if your account has
+# an extended limit.
+MAX_TWEET_LENGTH: int = int(os.getenv("MAX_TWEET_LENGTH", "280"))
 
 # ── Bot behaviour ─────────────────────────────────────────────────────────────
 POST_INTERVAL_SECONDS: int = int(os.getenv("POST_INTERVAL_SECONDS", "18000"))
@@ -62,10 +73,16 @@ IMPROVEMENT_SCORE_THRESHOLD: float = float(os.getenv("IMPROVEMENT_SCORE_THRESHOL
 # Set to "false" to use warm, neutral sentences instead.
 FUNNY_MODE: bool = os.getenv("FUNNY_MODE", "false").lower().strip() == "true"
 
-# When True, one Grok Imagine video is generated per calendar day from the selected
-# image and used as the animated base for the KTV overlay.  All other cycles that day
-# fall back to the static KTV video.  Requires XAI_API_KEY.
+# When True, Grok Imagine animates the selected image into a short video used as the
+# animated base for the KTV overlay.  Requires XAI_API_KEY.
 ENABLE_GROK_VIDEO: bool = os.getenv("ENABLE_GROK_VIDEO", "false").lower().strip() == "true"
+
+# How often to generate a Grok video: every Nth tweet.
+#   1 = every tweet  (default)
+#   2 = every 2nd tweet
+#   3 = every 3rd tweet  …etc.
+# Only used when ENABLE_GROK_VIDEO=true.
+GROK_VIDEO_FREQUENCY: int = int(os.getenv("GROK_VIDEO_FREQUENCY", "1"))
 
 # When True, a US-to-German flag overlay is added to the top-right corner of
 # each generated image, reinforcing the German-for-English-speakers branding.
@@ -109,6 +126,13 @@ WORD_PICK_MODEL: str = os.getenv("WORD_PICK_MODEL", "non-reasoning").lower().str
 #   "non-reasoning" = grok-4-1-fast-non-reasoning  (default)
 # Only applies when AI_PROVIDER=grok.
 SIMILARITY_MODEL: str = os.getenv("SIMILARITY_MODEL", "non-reasoning").lower().strip()
+
+# Model used to pick the best TTS voice for the tweet:
+#   "flagship"      = grok-4
+#   "reasoning"     = grok-4-1-fast
+#   "non-reasoning" = grok-4-1-fast-non-reasoning  (default — fast and cheap)
+# Only applies when AI_PROVIDER=grok.
+VOICE_PICKER_MODEL: str = os.getenv("VOICE_PICKER_MODEL", "non-reasoning").lower().strip()
 
 # How many hours must pass before metrics are refreshed and strategy is re-analysed.
 # Both steps are skipped together when the interval has not elapsed (default: 24h).

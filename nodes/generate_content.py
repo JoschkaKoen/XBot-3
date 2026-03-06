@@ -13,7 +13,7 @@ from typing import Any, Optional
 
 from config import (
     USE_TRENDS, TWEET_MODEL, TWEET_PICKER_MODEL, AI_PROVIDER, FUNNY_MODE,
-    TREND_FILTER_MODEL, WORD_PICK_MODEL, SIMILARITY_MODEL,
+    TREND_FILTER_MODEL, WORD_PICK_MODEL, SIMILARITY_MODEL, MAX_TWEET_LENGTH,
 )
 from services.ai_client import get_ai_response
 from services.x_trends import get_germany_trends
@@ -194,12 +194,14 @@ def _build_tweet_prompt(
         "- The example sentence MUST contain the exact word\n"
         "- The English translations must be natural, not robotic\n"
         "- The emojis should help the reader visually understand the meaning. Don't just use laughing emojis\n"
-        "- Each [EMOJI1] or [EMOJI2] placeholder stands for exactly ONE emoji character. "
-        "The scaffold writes them twice (e.g. [EMOJI1][EMOJI1]) to show you should repeat the same emoji. "
-        "Replace the entire [EMOJI1][EMOJI1] with exactly 2 identical emojis (e.g. 🚗🚗). "
-        "Do NOT add any emojis beyond what the scaffold specifies.\n"
-        "- Preserve the exact spacing from the scaffold: if the scaffold shows two spaces between an emoji and the text "
-        "(e.g. '🇩🇪  [GERMAN_WORD]'), use exactly two spaces in the output. Do not collapse spaces or add more.\n"
+       
+        # "- Each [EMOJI1] or [EMOJI2] placeholder stands for exactly ONE emoji character. "
+        # "The scaffold writes them twice (e.g. [EMOJI1][EMOJI1]) to show you should repeat the same emoji. "
+        # "Replace the entire [EMOJI1][EMOJI1] with exactly 2 identical emojis (e.g. 🚗🚗). "
+        # "Do NOT add any emojis beyond what the scaffold specifies.\n"
+        # "- Preserve the exact spacing from the scaffold: if the scaffold shows two spaces between an emoji and the text "
+        # "(e.g. '🇩🇪  [GERMAN_WORD]'), use exactly two spaces in the output. Do not collapse spaces or add more.\n"
+       
         #"- Each line gets a pair of 2 identical emojis that visually represent the meaning\n"
         # "- The two emoji PAIRS must be DIFFERENT from each other "
         # "(e.g. 🚗🚗 for word line, 🎉🎉 for sentence line — NOT the same pair twice)\n"
@@ -252,11 +254,11 @@ def _call_tweet_ai(
         )
     else:
         system_prompt = (
-            "You are a German language teacher creating engaging tweets for "
+            "You are a German language teacher and comedian creating funny tweets for "
             "X (Twitter). You always respond with valid JSON only."
         )
 
-    _R    = "\033[0m"
+    _R = "\033[0m"
     _BOLD = "\033[1m"
     _CYAN = "\033[96m"
     _GRAY = "\033[90m"
@@ -740,7 +742,7 @@ def generate_content(state: dict) -> dict:
     max_retries = 2
     for attempt in range(max_retries + 1):
         tweet_len = len(result["full_tweet"])
-        if tweet_len <= 280:
+        if tweet_len <= MAX_TWEET_LENGTH:
             break
         if attempt < max_retries:
             logger.warning(
@@ -751,7 +753,7 @@ def generate_content(state: dict) -> dict:
             retry_candidates = _call_tweet_ai(
                 german_word, scaffold, strategy, top_tweets, tweet_ai,
                 cefr_level=word_cefr,
-                extra_instruction="Keep total length under 260 characters",
+                extra_instruction=f"Keep total length under {MAX_TWEET_LENGTH - 20} characters",
                 word_from_trends=word_from_trends,
             )
             result = _select_best_tweet(retry_candidates, german_word, word_cefr)

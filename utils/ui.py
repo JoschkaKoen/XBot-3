@@ -76,17 +76,13 @@ def stage_banner(step: int):
 
 
 def tweet_box(tweet_text: str):
-    """Print the assembled tweet inside a bordered box."""
+    """Print the assembled tweet inside a bordered box, with no added indentation
+    so spacing and emojis appear exactly as they will be posted."""
     w = _w()
-    lines = tweet_text.split("\n")
     print()
-    print(f"{_GREEN}{_BOLD}┌{'─' * (w - 2)}┐{_R}")
-    header = "  TWEET READY"
-    print(f"{_GREEN}{_BOLD}│{header:<{w - 2}}│{_R}")
-    print(f"{_GREEN}{_BOLD}├{'─' * (w - 2)}┤{_R}")
-    for line in lines:
-        # Pad to fill the box (emoji are wide, so keep right border simple)
-        print(f"{_GREEN}│{_R}  {line}")
+    print(f"{_GREEN}{_BOLD}┌─ TWEET READY {'─' * max(w - 16, 2)}┐{_R}")
+    for line in tweet_text.split("\n"):
+        print(f"{_GREEN}│{_R} {line}")
     print(f"{_GREEN}{_BOLD}└{'─' * (w - 2)}┘{_R}")
     print()
 

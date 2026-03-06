@@ -18,7 +18,7 @@ import requests
 from typing import List
 from datetime import datetime
 
-from config import TT_API_KEY, IMAGES_DIR, FUNNY_MODE, FLAG_OVERLAY, IMAGE_PROVIDER, GROK_IMAGE_COUNT
+from config import TT_API_KEY, IMAGES_DIR, FUNNY_MODE, FLAG_OVERLAY, IMAGE_PROVIDER, GROK_IMAGE_COUNT, IMAGE_STYLE
 from services.ai_client import get_ai_response
 from services.image_ranker import pick_best_image
 from utils.retry import retry_call, with_retry
@@ -113,7 +113,7 @@ class MidjourneyClient:
 
 # ── Grok Imagine client ───────────────────────────────────────────────────────
 
-_GROK_IMAGE_MODEL = "grok-2-image-1212"
+_GROK_IMAGE_MODEL = "grok-imagine-image"
 _XAI_BASE_URL = "https://api.x.ai/v1"
 
 
@@ -145,11 +145,12 @@ class GrokImagineClient:
         logger.debug("Downloaded Grok image → %s", path)
         return path
 
-    def generate(self, prompt: str, n: int = 1) -> List[str]:
+    def generate(self, prompt: str, n: int = 1, aspect_ratio: str = "16:9") -> List[str]:
         payload = {
             "model": _GROK_IMAGE_MODEL,
             "prompt": prompt,
             "n": n,
+            "aspect_ratio": aspect_ratio,
             "response_format": "url",
         }
         print(f"\r  ⏳  Requesting {n} image(s) from Grok Imagine …", flush=True)
@@ -325,90 +326,167 @@ def generate_image(state: dict) -> dict:
         "- Do NOT use quotation marks in the output"
     )
 
-    _IMMERSIVE = (
-        "Frame the shot so the viewer feels placed directly inside the scene: "
-        "The composition should feel lived-in and immediate, as if the viewer just walked into the moment. "
-    )
-
-    _CLEAN_AESTHETIC = (
-        "Composition: ONE clear subject, uncluttered frame, minimal background elements. "
-        "The joke or mood must be immediately readable at a glance — never crowd the scene. "
-    )
-
-    _AESTHETIC = (
-        "Aesthetics: make this image genuinely beautiful — not just technically correct. "
-        "Think carefully about: harmonious colour palette (warm, vibrant, or richly contrasted), "
-        "flattering and dramatic natural light (golden hour, soft side-light, or crisp morning sun), "
-        "shallow depth of field to isolate the subject against a beautifully blurred background, "
-        "and a composition that would stop someone mid-scroll. "
-        "The image should look like a professional editorial photo that people want to share for its looks alone. "
-    )
-
-    if FUNNY_MODE and example_de:
-        tweet_context = f"Full tweet:\n{full_tweet}\n\n" if full_tweet else ""
-        img_req = (
-            "A German learning tweet contains a joke. Your job is to create an image generation prompt that is "
-            "BOTH visually stunning AND makes the punchline of the joke instantly obvious.\n\n"
-            f"{tweet_context}"
-            f"German sentence: \"{example_de}\"\n"
-            f"English sentence: \"{example_en}\"\n\n"
-            "Step 1 — Identify the punchline: find the ironic twist, the subverted expectation, or the absurd contrast.\n"
-            "Step 2 — Stage it visually: design a scene that shows the punchline in action with exaggerated expressions "
-            "or body language. The comedy must land from the image alone — the viewer should laugh before reading the tweet.\n"
-            "Step 3 — Make it beautiful: apply deliberate aesthetic choices — golden-hour light, rich colours, "
-            "shallow depth of field, a composition worth sharing for its looks alone. "
-            "Beauty and humour must coexist: a stunning image that is also funny.\n"
-            "Step 4 — Keep it clean and readable: ONE subject, ONE joke, uncluttered frame.\n"
-            "Step 5 — Keep it positive and cute: warm, light-hearted, family-friendly. "
-            "The viewer should feel amused and uplifted — never unsettled.\n"
-            "IMPORTANT: If the scene is absurd or impossible in real life (e.g. a walking cake, "
-            "a talking animal, an object behaving like a person), do NOT render it photorealistically — "
-            "that would look disturbing or uncanny. Instead, describe it as a charming 3D render in "
-            "a Pixar/Disney style: soft rounded shapes, pastel colours, big expressive eyes, warm lighting. "
-            "Cute and whimsical always beats realistic for impossible subjects.\n\n"
-            f"{_IMMERSIVE}"
-            f"{_CLEAN_AESTHETIC}"
-            f"{_AESTHETIC}"
-            "Photorealistic photography, NOT illustration or cartoon."
-            f"{gender_hint}"
-            f"{_RULES}"
+    # ── Disney / Pixar style prompts ──────────────────────────────────────────
+    if IMAGE_STYLE == "disney":
+        _DISNEY_AESTHETIC = (
+            "Style: ultra-cute 3D CGI animation in the style of Pixar and Walt Disney. "
+            "Soft, perfectly rounded shapes on every surface. "
+            "Characters have large sparkling eyes with long lashes, chubby rosy cheeks, and tiny button noses. "
+            "Colour palette: warm pastels and candy-bright jewel tones — soft creams, blush pinks, "
+            "sky blues, mint greens, and golden yellows. "
+            "Lighting: warm golden studio light with gentle rim highlights and a subtle iridescent glow, "
+            "as if lit for a Pixar feature film. "
+            "Background: a simple, painterly environment with soft bokeh and delicate depth of field — "
+            "cosy, inviting, and never cluttered. "
+            "Everything feels plush, huggable, and bursting with personality. "
+            "The image should look like a still from a beloved Disney or Pixar movie."
         )
-        system_prompt = (
-            "You are an expert image generation prompt engineer who creates images that are both visually stunning "
-            "and instantly funny. Your prompts always combine two things: (1) a clear visual punchline that "
-            "lands from the image alone, and (2) deliberately beautiful aesthetics — perfect light, rich colours, "
-            "shallow depth of field, editorial composition. "
-            "You never sacrifice beauty for the joke or the joke for beauty — the best prompt delivers both. "
-            "Humour is always warm and family-friendly. "
-            "EXCEPTION — absurd or impossible subjects: if the scene involves something physically impossible "
-            "(e.g. a walking food item, a talking object, an animal in a human role), do NOT render it "
-            "photorealistically — that looks uncanny and disturbing. Instead use a charming Pixar/Disney 3D "
-            "render style: soft rounded shapes, pastel tones, big expressive eyes, warm lighting. "
-            "For all other (realistic) scenes: always include specific camera model, lens, and lighting "
-            "descriptors (e.g. 'shot on Sony A7IV, 50mm f/1.4, golden hour backlight'). "
-            "Never use words like 'painting', 'illustration', 'artistic', 'rendered', 'digital art'. "
-            "No parameter flags. No double hyphens. Output only the description."
-        )
+        _DISNEY_GENDER = ""
+        if article == "der":
+            _DISNEY_GENDER = (
+                f' The main character represents the German word "{german_word}" (masculine — der). '
+                "If the scene shows a person or character, make them clearly male."
+            )
+        elif article == "die":
+            _DISNEY_GENDER = (
+                f' The main character represents the German word "{german_word}" (feminine — die). '
+                "If the scene shows a person or character, make them clearly female."
+            )
+
+        if FUNNY_MODE and example_de:
+            tweet_context = f"Full tweet:\n{full_tweet}\n\n" if full_tweet else ""
+            img_req = (
+                "A German learning tweet contains a joke. "
+                "Create an image generation prompt for an adorable Disney/Pixar-style 3D animated scene "
+                "that shows the punchline of the joke in the most cute and charming way possible.\n\n"
+                f"{tweet_context}"
+                f"German sentence: \"{example_de}\"\n"
+                f"English sentence: \"{example_en}\"\n\n"
+                "Step 1 — Identify the punchline: find the ironic twist, absurd contrast, or subverted expectation.\n"
+                "Step 2 — Stage it as the cutest possible scene: exaggerated surprised or delighted expressions, "
+                "big wide eyes, puffed-out cheeks, tiny gasp — the comedy should melt hearts AND make people laugh.\n"
+                "Step 3 — Make it breathtakingly adorable: every element should feel soft, round, warm, and huggable. "
+                "Think of the most charming frame from a Pixar short — that level of cuteness and polish.\n"
+                "Step 4 — Keep it clean: ONE main character, ONE clear joke, uncluttered cosy background.\n"
+                "Step 5 — Keep it sweet and family-friendly: warm, uplifting, never dark or unsettling.\n\n"
+                f"{_DISNEY_AESTHETIC}"
+                f"{_DISNEY_GENDER}"
+                f"{_RULES}"
+            )
+            system_prompt = (
+                "You are an expert Disney/Pixar 3D animation prompt engineer. "
+                "You write image prompts that result in breathtakingly cute, polished, and funny animated stills. "
+                "Every prompt you write feels like a frame from a beloved Pixar short: "
+                "round soft shapes, giant sparkling eyes, warm pastel colours, golden studio lighting. "
+                "Humour is always conveyed through adorable over-the-top expressions, never through darkness. "
+                "Never mention photography, cameras, lenses, or film. "
+                "No parameter flags. No double hyphens. Output only the image description."
+            )
+        else:
+            img_req = (
+                "Create an image generation prompt for an adorable Disney/Pixar-style 3D animated scene.\n\n"
+                f"Sentence: \"{example_en}\"\n\n"
+                "Design the most charming, cute, and visually delightful scene that brings this sentence to life. "
+                "Characters should have oversized expressive eyes, soft rounded features, and feel instantly lovable. "
+                "The scene should look like a still from a heartwarming Pixar or Disney animated film.\n\n"
+                f"{_DISNEY_AESTHETIC}"
+                f"{_DISNEY_GENDER}"
+                "No text in the image."
+                f"{_RULES}"
+            )
+            system_prompt = (
+                "You are an expert Disney/Pixar 3D animation prompt engineer. "
+                "You write image prompts that produce breathtakingly cute, heartwarming, Pixar-quality stills. "
+                "Soft rounded shapes, giant sparkling eyes, warm pastels, golden studio light — "
+                "every element should feel plush, polished, and bursting with personality. "
+                "Never mention photography, cameras, lenses, or film. "
+                "No parameter flags. No double hyphens. Output only the image description."
+            )
+
+    # ── Photographic style prompts (default) ──────────────────────────────────
     else:
-        img_req = (
-            "Generate an image generation prompt for a photorealistic, aesthetically stunning 16:9 photograph.\n\n"
-            f"Sentence: \"{example_en}\"\n\n"
-            f"{_IMMERSIVE}"
-            f"{_CLEAN_AESTHETIC}"
-            f"{_AESTHETIC}"
-            "No text in the image."
-            f"{gender_hint}"
-            f"{_RULES}"
+        _IMMERSIVE = (
+            "Frame the shot so the viewer feels placed directly inside the scene: "
+            "The composition should feel lived-in and immediate, as if the viewer just walked into the moment. "
         )
-        system_prompt = (
-            "You are an expert image generation prompt engineer who creates images that look like professional "
-            "editorial photography. Every prompt you write is deliberately beautiful: perfect light, "
-            "rich harmonious colours, shallow depth of field, and a composition people want to share. "
-            "ONE clear subject, uncluttered frame — every element serves the main subject. "
-            "Always include specific camera model, lens, and lighting descriptors (e.g. 'shot on Sony A7IV, 50mm f/1.4, golden hour'). "
-            "Never use words like 'painting', 'illustration', 'artistic', 'rendered', 'digital art'. "
-            "No parameter flags. No double hyphens. Output only the description."
+        _CLEAN_AESTHETIC = (
+            "Composition: ONE clear subject, uncluttered frame, minimal background elements. "
+            "The joke or mood must be immediately readable at a glance — never crowd the scene. "
         )
+        _AESTHETIC = (
+            "Aesthetics: make this image genuinely beautiful — not just technically correct. "
+            "Think carefully about: harmonious colour palette (warm, vibrant, or richly contrasted), "
+            "flattering and dramatic natural light (golden hour, soft side-light, or crisp morning sun), "
+            "shallow depth of field to isolate the subject against a beautifully blurred background, "
+            "and a composition that would stop someone mid-scroll. "
+            "The image should look like a professional editorial photo that people want to share for its looks alone. "
+        )
+
+        if FUNNY_MODE and example_de:
+            tweet_context = f"Full tweet:\n{full_tweet}\n\n" if full_tweet else ""
+            img_req = (
+                "A German learning tweet contains a joke. Your job is to create an image generation prompt that is "
+                "BOTH visually stunning AND makes the punchline of the joke instantly obvious.\n\n"
+                f"{tweet_context}"
+                f"German sentence: \"{example_de}\"\n"
+                f"English sentence: \"{example_en}\"\n\n"
+                "Step 1 — Identify the punchline: find the ironic twist, the subverted expectation, or the absurd contrast.\n"
+                "Step 2 — Stage it visually: design a scene that shows the punchline in action with exaggerated expressions "
+                "or body language. The comedy must land from the image alone — the viewer should laugh before reading the tweet.\n"
+                "Step 3 — Make it beautiful: apply deliberate aesthetic choices — golden-hour light, rich colours, "
+                "shallow depth of field, a composition worth sharing for its looks alone. "
+                "Beauty and humour must coexist: a stunning image that is also funny.\n"
+                "Step 4 — Keep it clean and readable: ONE subject, ONE joke, uncluttered frame.\n"
+                "Step 5 — Keep it positive: warm, light-hearted, family-friendly. "
+                "The viewer should feel amused and uplifted — never unsettled.\n"
+                "IMPORTANT: If the scene is absurd or impossible in real life (e.g. a walking cake, "
+                "a talking animal, an object behaving like a person), do NOT render it photorealistically — "
+                "that would look disturbing or uncanny. Instead, describe it as a charming 3D render in "
+                "a Pixar/Disney style: soft rounded shapes, pastel colours, big expressive eyes, warm lighting. "
+                "Cute and whimsical always beats realistic for impossible subjects.\n\n"
+                f"{_IMMERSIVE}"
+                f"{_CLEAN_AESTHETIC}"
+                f"{_AESTHETIC}"
+                "Photorealistic photography, NOT illustration or cartoon."
+                f"{gender_hint}"
+                f"{_RULES}"
+            )
+            system_prompt = (
+                "You are an expert image generation prompt engineer who creates images that are both visually stunning "
+                "and instantly funny. Your prompts always combine two things: (1) a clear visual punchline that "
+                "lands from the image alone, and (2) deliberately beautiful aesthetics — perfect light, rich colours, "
+                "shallow depth of field, editorial composition. "
+                "You never sacrifice beauty for the joke or the joke for beauty — the best prompt delivers both. "
+                "Humour is always warm and family-friendly. "
+                "EXCEPTION — absurd or impossible subjects: if the scene involves something physically impossible "
+                "(e.g. a walking food item, a talking object, an animal in a human role), do NOT render it "
+                "photorealistically — that looks uncanny and disturbing. Instead use a charming Pixar/Disney 3D "
+                "render style: soft rounded shapes, pastel tones, big expressive eyes, warm lighting. "
+                "For all other (realistic) scenes: always include specific camera model, lens, and lighting "
+                "descriptors (e.g. 'shot on Sony A7IV, 50mm f/1.4, golden hour backlight'). "
+                "Never use words like 'painting', 'illustration', 'artistic', 'rendered', 'digital art'. "
+                "No parameter flags. No double hyphens. Output only the description."
+            )
+        else:
+            img_req = (
+                "Generate an image generation prompt for a photorealistic, aesthetically stunning 16:9 photograph.\n\n"
+                f"Sentence: \"{example_en}\"\n\n"
+                f"{_IMMERSIVE}"
+                f"{_CLEAN_AESTHETIC}"
+                f"{_AESTHETIC}"
+                "No text in the image."
+                f"{gender_hint}"
+                f"{_RULES}"
+            )
+            system_prompt = (
+                "You are an expert image generation prompt engineer who creates images that look like professional "
+                "editorial photography. Every prompt you write is deliberately beautiful: perfect light, "
+                "rich harmonious colours, shallow depth of field, and a composition people want to share. "
+                "ONE clear subject, uncluttered frame — every element serves the main subject. "
+                "Always include specific camera model, lens, and lighting descriptors (e.g. 'shot on Sony A7IV, 50mm f/1.4, golden hour'). "
+                "Never use words like 'painting', 'illustration', 'artistic', 'rendered', 'digital art'. "
+                "No parameter flags. No double hyphens. Output only the description."
+            )
 
     image_prompt: str = retry_call(
         get_ai_response,
@@ -426,12 +504,19 @@ def generate_image(state: dict) -> dict:
     if IMAGE_PROVIDER == "midjourney":
         # Strip any --parameter flags the AI may have included despite instructions.
         image_prompt = re.sub(r"\s*--\w[\w\d]*.*$", "", image_prompt).strip()
-        PHOTO_SUFFIX = (
-            ", shot on Canon EOS R5, 35mm lens, natural lighting, "
-            "RAW photo, ultra realistic, 8k UHD, "
-            "positive joyful atmosphere, warm and welcoming, bright uplifting mood"
-        )
-        image_prompt = image_prompt.rstrip(".") + PHOTO_SUFFIX
+        if IMAGE_STYLE == "disney":
+            STYLE_SUFFIX = (
+                ", Pixar 3D animation style, ultra-cute characters, "
+                "soft rounded shapes, big sparkling eyes, warm pastel colours, "
+                "golden studio lighting, 8K render, heartwarming and delightful"
+            )
+        else:
+            STYLE_SUFFIX = (
+                ", shot on Canon EOS R5, 35mm lens, natural lighting, "
+                "RAW photo, ultra realistic, 8k UHD, "
+                "positive joyful atmosphere, warm and welcoming, bright uplifting mood"
+            )
+        image_prompt = image_prompt.rstrip(".") + STYLE_SUFFIX
 
     logger.debug("Image prompt (%s): %s", IMAGE_PROVIDER, image_prompt)
     print(f"  Prompt: {image_prompt}", flush=True)
@@ -442,6 +527,7 @@ def generate_image(state: dict) -> dict:
             _image_client.generate,
             image_prompt,
             n=GROK_IMAGE_COUNT,
+            aspect_ratio="16:9",
             max_attempts=3,
             base_delay=5.0,
             label="grok_generate",

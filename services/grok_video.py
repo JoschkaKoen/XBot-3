@@ -15,7 +15,6 @@ import json
 import logging
 import os
 import time
-from datetime import date
 from pathlib import Path
 
 import requests
@@ -29,30 +28,50 @@ _VIDEO_STATE_FILE = "data/video_state.json"
 _VIDEOS_DIR = "Videos"  # mirrored from config to avoid a circular import
 
 
-# ── daily gate ────────────────────────────────────────────────────────────────
+# ── cycle-frequency gate ───────────────────────────────────────────────────────
 
-def has_run_today() -> bool:
-    """Return True if a Grok video was already generated today."""
+def _load_state() -> dict:
     try:
         with open(_VIDEO_STATE_FILE, encoding="utf-8") as f:
-            data = json.load(f)
-        return data.get("last_grok_video_date") == date.today().isoformat()
+            return json.load(f)
     except (FileNotFoundError, ValueError, json.JSONDecodeError):
-        return False
+        return {}
 
 
-def mark_run_today() -> None:
-    """Persist today's date as the last Grok video generation date."""
+def _save_state(data: dict) -> None:
     os.makedirs(os.path.dirname(_VIDEO_STATE_FILE), exist_ok=True)
-    try:
-        with open(_VIDEO_STATE_FILE, encoding="utf-8") as f:
-            data = json.load(f)
-    except (FileNotFoundError, json.JSONDecodeError):
-        data = {}
-    data["last_grok_video_date"] = date.today().isoformat()
     with open(_VIDEO_STATE_FILE, "w", encoding="utf-8") as f:
         json.dump(data, f, indent=2)
-    logger.info("Grok video daily gate updated: %s", date.today().isoformat())
+
+
+def should_generate_video() -> bool:
+    """Return True if this cycle should generate a Grok video.
+
+    The cycle index stored in state is 0-based; video is generated when it
+    equals 0 (i.e., on the first cycle after the counter rolls over).
+    """
+    from config import GROK_VIDEO_FREQUENCY
+    if GROK_VIDEO_FREQUENCY <= 1:
+        return True
+    data = _load_state()
+    cycle_index = data.get("grok_video_cycle_index", 0)
+    return cycle_index == 0
+
+
+def advance_cycle() -> None:
+    """Advance the cycle counter by 1, rolling over at GROK_VIDEO_FREQUENCY.
+
+    Must be called once per cycle (regardless of whether a video was generated).
+    """
+    from config import GROK_VIDEO_FREQUENCY
+    data = _load_state()
+    current = data.get("grok_video_cycle_index", 0)
+    data["grok_video_cycle_index"] = (current + 1) % max(GROK_VIDEO_FREQUENCY, 1)
+    _save_state(data)
+    logger.info(
+        "Grok video cycle advanced: index now %d (frequency=%d)",
+        data["grok_video_cycle_index"], GROK_VIDEO_FREQUENCY,
+    )
 
 
 # ── motion prompt generation ──────────────────────────────────────────────────

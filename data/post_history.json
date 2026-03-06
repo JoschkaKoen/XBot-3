@@ -15,9 +15,9 @@
       "like_count": 0,
       "quote_count": 0,
       "bookmark_count": 0,
-      "impression_count": 247
+      "impression_count": 248
     },
-    "engagement_score": 2.47,
+    "engagement_score": 2.48,
     "cycle": 0
   },
   {
@@ -36,9 +36,9 @@
       "like_count": 0,
       "quote_count": 0,
       "bookmark_count": 0,
-      "impression_count": 37
+      "impression_count": 40
     },
-    "engagement_score": 0.37,
+    "engagement_score": 0.4,
     "cycle": 0
   },
   {
@@ -57,9 +57,9 @@
       "like_count": 0,
       "quote_count": 0,
       "bookmark_count": 0,
-      "impression_count": 174
+      "impression_count": 175
     },
-    "engagement_score": 1.74,
+    "engagement_score": 1.75,
     "cycle": 0
   },
   {
@@ -78,9 +78,9 @@
       "like_count": 1,
       "quote_count": 0,
       "bookmark_count": 0,
-      "impression_count": 25
+      "impression_count": 26
     },
-    "engagement_score": 1.25,
+    "engagement_score": 1.26,
     "cycle": 0
   },
   {
@@ -120,9 +120,9 @@
       "like_count": 0,
       "quote_count": 0,
       "bookmark_count": 0,
-      "impression_count": 26
+      "impression_count": 32
     },
-    "engagement_score": 0.26,
+    "engagement_score": 0.32,
     "cycle": 0
   },
   {
@@ -162,9 +162,9 @@
       "like_count": 1,
       "quote_count": 0,
       "bookmark_count": 0,
-      "impression_count": 31
+      "impression_count": 32
     },
-    "engagement_score": 1.31,
+    "engagement_score": 1.32,
     "cycle": 0
   },
   {
@@ -183,9 +183,9 @@
       "like_count": 0,
       "quote_count": 0,
       "bookmark_count": 0,
-      "impression_count": 10
+      "impression_count": 12
     },
-    "engagement_score": 0.1,
+    "engagement_score": 0.12,
     "cycle": 0
   },
   {
@@ -204,9 +204,9 @@
       "like_count": 0,
       "quote_count": 0,
       "bookmark_count": 0,
-      "impression_count": 12
+      "impression_count": 16
     },
-    "engagement_score": 0.12,
+    "engagement_score": 0.16,
     "cycle": 0
   },
   {
@@ -225,9 +225,9 @@
       "like_count": 0,
       "quote_count": 0,
       "bookmark_count": 0,
-      "impression_count": 19
+      "impression_count": 30
     },
-    "engagement_score": 0.19,
+    "engagement_score": 0.3,
     "cycle": 0
   },
   {
@@ -246,9 +246,9 @@
       "like_count": 0,
       "quote_count": 0,
       "bookmark_count": 0,
-      "impression_count": 19
+      "impression_count": 20
     },
-    "engagement_score": 0.19,
+    "engagement_score": 0.2,
     "cycle": 0
   },
   {
@@ -267,9 +267,9 @@
       "like_count": 0,
       "quote_count": 0,
       "bookmark_count": 0,
-      "impression_count": 28
+      "impression_count": 29
     },
-    "engagement_score": 0.28,
+    "engagement_score": 0.29,
     "cycle": 0
   },
   {
@@ -288,9 +288,9 @@
       "like_count": 0,
       "quote_count": 0,
       "bookmark_count": 0,
-      "impression_count": 22
+      "impression_count": 23
     },
-    "engagement_score": 0.22,
+    "engagement_score": 0.23,
     "cycle": 0
   },
   {
@@ -309,9 +309,9 @@
       "like_count": 0,
       "quote_count": 0,
       "bookmark_count": 0,
-      "impression_count": 44
+      "impression_count": 54
     },
-    "engagement_score": 25.44,
+    "engagement_score": 25.54,
     "cycle": 0
   },
   {
@@ -330,9 +330,9 @@
       "like_count": 0,
       "quote_count": 0,
       "bookmark_count": 0,
-      "impression_count": 65
+      "impression_count": 70
     },
-    "engagement_score": 0.65,
+    "engagement_score": 0.7,
     "cycle": 0
   },
   {
@@ -351,9 +351,9 @@
       "like_count": 0,
       "quote_count": 0,
       "bookmark_count": 0,
-      "impression_count": 104
+      "impression_count": 107
     },
-    "engagement_score": 1.04,
+    "engagement_score": 1.07,
     "cycle": 1
   },
   {
@@ -370,11 +370,11 @@
       "retweet_count": 0,
       "reply_count": 0,
       "like_count": 0,
-      "quote_count": 0,
+      "quote_count": 1,
       "bookmark_count": 0,
-      "impression_count": 62
+      "impression_count": 100
     },
-    "engagement_score": 0.62,
+    "engagement_score": 3.0,
     "cycle": 3
   },
   {
@@ -393,9 +393,9 @@
       "like_count": 0,
       "quote_count": 0,
       "bookmark_count": 0,
-      "impression_count": 33
+      "impression_count": 40
     },
-    "engagement_score": 0.33,
+    "engagement_score": 0.4,
     "cycle": 0
   },
   {
@@ -411,12 +411,12 @@
     "metrics": {
       "retweet_count": 0,
       "reply_count": 0,
-      "like_count": 0,
+      "like_count": 1,
       "quote_count": 0,
       "bookmark_count": 0,
-      "impression_count": 24
+      "impression_count": 33
     },
-    "engagement_score": 0.24,
+    "engagement_score": 1.33,
     "cycle": 0
   },
   {
@@ -435,9 +435,9 @@
       "like_count": 1,
       "quote_count": 0,
       "bookmark_count": 0,
-      "impression_count": 28
+      "impression_count": 40
     },
-    "engagement_score": 1.28,
+    "engagement_score": 1.4,
     "cycle": 0
   },
   {
@@ -456,9 +456,9 @@
       "like_count": 0,
       "quote_count": 0,
       "bookmark_count": 0,
-      "impression_count": 36
+      "impression_count": 44
     },
-    "engagement_score": 0.36,
+    "engagement_score": 0.44,
     "cycle": 0
   },
   {
@@ -477,9 +477,9 @@
       "like_count": 0,
       "quote_count": 0,
       "bookmark_count": 0,
-      "impression_count": 35
+      "impression_count": 46
     },
-    "engagement_score": 0.35,
+    "engagement_score": 0.46,
     "cycle": 0
   },
   {
@@ -498,9 +498,9 @@
       "like_count": 0,
       "quote_count": 0,
       "bookmark_count": 0,
-      "impression_count": 33
+      "impression_count": 44
     },
-    "engagement_score": 0.33,
+    "engagement_score": 0.44,
     "cycle": 0
   },
   {
@@ -519,9 +519,9 @@
       "like_count": 0,
       "quote_count": 0,
       "bookmark_count": 0,
-      "impression_count": 62
+      "impression_count": 74
     },
-    "engagement_score": 0.62,
+    "engagement_score": 0.74,
     "cycle": 1
   },
   {
@@ -540,9 +540,9 @@
       "like_count": 0,
       "quote_count": 0,
       "bookmark_count": 0,
-      "impression_count": 30
+      "impression_count": 39
     },
-    "engagement_score": 0.3,
+    "engagement_score": 0.39,
     "cycle": 2
   },
   {
@@ -561,9 +561,9 @@
       "like_count": 0,
       "quote_count": 0,
       "bookmark_count": 0,
-      "impression_count": 25
+      "impression_count": 46
     },
-    "engagement_score": 0.25,
+    "engagement_score": 0.46,
     "cycle": 0
   },
   {
@@ -579,12 +579,75 @@
     "metrics": {
       "retweet_count": 0,
       "reply_count": 0,
+      "like_count": 1,
+      "quote_count": 0,
+      "bookmark_count": 1,
+      "impression_count": 74
+    },
+    "engagement_score": 1.74,
+    "cycle": 1
+  },
+  {
+    "timestamp": "2026-03-05T10:02:01.152626+00:00",
+    "tweet_id": "2029497649343455344",
+    "tweet_url": "https://x.com/i/web/status/2029497649343455344",
+    "full_tweet": "💡  #DeutschLernen B1\n\n🇩🇪  die Lehrerin\n🇺🇸  female teacher  👩‍🏫👩‍🏫\n\n„Die Lehrerin hat den Klassenclown geheiratet. Jetzt ist jeder Tag ein Zirkus!“\n= The teacher married the class clown. Now every day is a circus!  🤡🤡\n\n🔖 Save for later!",
+    "german_word": "Lehrerin",
+    "article": "die",
+    "cefr_level": "B1",
+    "example_sentence_de": "Die Lehrerin hat den Klassenclown geheiratet. Jetzt ist jeder Tag ein Zirkus!",
+    "example_sentence_en": "The teacher married the class clown. Now every day is a circus!",
+    "metrics": {
+      "retweet_count": 0,
+      "reply_count": 0,
       "like_count": 0,
       "quote_count": 0,
       "bookmark_count": 0,
-      "impression_count": 26
+      "impression_count": 32
     },
-    "engagement_score": 0.26,
-    "cycle": 1
+    "engagement_score": 0.32,
+    "cycle": 0
+  },
+  {
+    "timestamp": "2026-03-05T10:12:05.553411+00:00",
+    "tweet_id": "2029500185047646652",
+    "tweet_url": "https://x.com/i/web/status/2029500185047646652",
+    "full_tweet": "#DeutschLernen A2\n\n🇩🇪  der Schüler\n🇺🇸  student  👨‍🎓👨‍🎓\n\n🇩🇪  Der Schüler füttert seinen Hund mit Hausaufgaben.\n🇺🇸  The student feeds his dog with homework.  🐶🐶",
+    "german_word": "Schüler",
+    "article": "der",
+    "cefr_level": "A2",
+    "example_sentence_de": "Der Schüler füttert seinen Hund mit Hausaufgaben.",
+    "example_sentence_en": "The student feeds his dog with homework.",
+    "metrics": {
+      "retweet_count": 0,
+      "reply_count": 0,
+      "like_count": 0,
+      "quote_count": 0,
+      "bookmark_count": 0,
+      "impression_count": 34
+    },
+    "engagement_score": 0.34,
+    "cycle": 0
+  },
+  {
+    "timestamp": "2026-03-05T10:31:52.071802+00:00",
+    "tweet_id": "2029505162025525458",
+    "tweet_url": "https://x.com/i/web/status/2029505162025525458",
+    "full_tweet": "Did you know? 🤔\n\n🇩🇪  der Kuchen  🍰🍰\n🇺🇸  cake\n\n🗣️  Der Kuchen feiert eine Party in meinem Bauch.\n💬  The cake is having a party in my belly.  🎉🎉\n\n#DeutschLernen A2",
+    "german_word": "Kuchen",
+    "article": "der",
+    "cefr_level": "A2",
+    "example_sentence_de": "Der Kuchen feiert eine Party in meinem Bauch.",
+    "example_sentence_en": "The cake is having a party in my belly.",
+    "metrics": {
+      "retweet_count": 0,
+      "reply_count": 0,
+      "like_count": 0,
+      "quote_count": 0,
+      "bookmark_count": 0,
+      "impression_count": 23
+    },
+    "engagement_score": 0.23,
+    "cycle": 0
   }
 ]

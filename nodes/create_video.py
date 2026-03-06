@@ -301,13 +301,16 @@ def create_video(state: dict) -> dict:
 
     if ENABLE_GROK_VIDEO:
         from services import grok_video as _gv
-        if _gv.has_run_today():
-            logger.info("Grok video daily gate: already used today — falling back to static.")
-            ui_warn("Grok video already used today — using static KTV video.")
+        from config import GROK_VIDEO_FREQUENCY
+        if not _gv.should_generate_video():
+            freq_str = f"every {GROK_VIDEO_FREQUENCY} tweets" if GROK_VIDEO_FREQUENCY > 1 else "every tweet"
+            logger.info("Grok video frequency gate: skipping this cycle (%s).", freq_str)
+            ui_warn(f"Grok video: skipping this cycle ({freq_str}) — using static KTV video.")
+            _gv.advance_cycle()
         else:
             try:
                 from utils.ui import info as ui_info
-                ui_info("🎬  Grok Imagine video enabled — animating today's image …")
+                ui_info("🎬  Grok Imagine video enabled — animating image …")
 
                 example_en: str = state.get("example_sentence_en", "")
                 mj_prompt: str  = state.get("midjourney_prompt", "")
@@ -318,7 +321,6 @@ def create_video(state: dict) -> dict:
 
                 ui_info("  Step 2/3  Submitting image to Grok Imagine API …")
                 grok_video_path = _gv.generate_video(image_path, motion_prompt)
-                _gv.mark_run_today()
                 ok(f"  Step 2/3  Grok video downloaded → {os.path.basename(grok_video_path)}")
 
                 ui_info("  Step 3/3  Applying KTV overlay on animated video …")
@@ -326,6 +328,8 @@ def create_video(state: dict) -> dict:
                 logger.warning("Grok video generation failed (%s) — falling back to static.", exc)
                 ui_warn(f"Grok video failed ({exc}) — falling back to static KTV video.")
                 grok_video_path = None
+            finally:
+                _gv.advance_cycle()
 
     if grok_video_path and style == "ktv":
         video_path = create_ktv_video_from_motion(
