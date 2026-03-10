@@ -18,7 +18,7 @@ import requests
 from typing import List
 from datetime import datetime
 
-from config import TT_API_KEY, IMAGES_DIR, FUNNY_MODE, FLAG_OVERLAY, IMAGE_PROVIDER, GROK_IMAGE_COUNT, IMAGE_STYLE
+from config import TT_API_KEY, IMAGES_DIR, FUNNY_MODE, FLAG_OVERLAY, IMAGE_PROVIDER, GROK_IMAGE_COUNT, resolve_image_style
 from services.ai_client import get_ai_response
 from services.image_ranker import pick_best_image
 from utils.retry import retry_call, with_retry
@@ -297,6 +297,9 @@ def generate_image(state: dict) -> dict:
     article: str     = state.get("article", "")
     german_word: str = state.get("german_word", "")
     full_tweet: str  = state.get("full_tweet", "")
+    cycle: int       = state.get("cycle", 0)
+    image_style: str = resolve_image_style(cycle)
+    logger.info("Image style for cycle %d: %s", cycle, image_style)
 
     # Build a gender hint so the image shows the right sex when the word is
     # a gendered noun (der → male, die → female, das / non-noun → no hint).
@@ -327,7 +330,7 @@ def generate_image(state: dict) -> dict:
     )
 
     # ── Disney / Pixar style prompts ──────────────────────────────────────────
-    if IMAGE_STYLE == "disney":
+    if image_style == "disney":
         _DISNEY_AESTHETIC = (
             "Style: ultra-cute 3D CGI animation in the style of Pixar and Walt Disney. "
             "Soft, perfectly rounded shapes on every surface. "
@@ -504,7 +507,7 @@ def generate_image(state: dict) -> dict:
     if IMAGE_PROVIDER == "midjourney":
         # Strip any --parameter flags the AI may have included despite instructions.
         image_prompt = re.sub(r"\s*--\w[\w\d]*.*$", "", image_prompt).strip()
-        if IMAGE_STYLE == "disney":
+        if image_style == "disney":
             STYLE_SUFFIX = (
                 ", Pixar 3D animation style, ultra-cute characters, "
                 "soft rounded shapes, big sparkling eyes, warm pastel colours, "

@@ -12,7 +12,7 @@ import string
 from typing import Any, Optional
 
 from config import (
-    USE_TRENDS, TWEET_MODEL, TWEET_PICKER_MODEL, AI_PROVIDER, FUNNY_MODE,
+    USE_TRENDS, TREND_CANDIDATE_LIMIT, TWEET_MODEL, TWEET_PICKER_MODEL, AI_PROVIDER, FUNNY_MODE,
     TREND_FILTER_MODEL, WORD_PICK_MODEL, SIMILARITY_MODEL, MAX_TWEET_LENGTH,
 )
 from services.ai_client import get_ai_response
@@ -491,7 +491,9 @@ def _pick_word_from_trends(avoid_words: list) -> Optional[tuple[str, str]]:
 
         _VALID_CEFR = {"A1", "A2", "B1", "B2", "C1", "C2"}
 
-        # Pre-scan to find chosen word and count free slots
+        # Pre-scan to find chosen word and count free slots.
+        # Only the top TREND_CANDIDATE_LIMIT entries are considered; the rest are
+        # shown in the display but never selected (triggers AI fallback instead).
         clean_entries = []
         for entry in candidates:
             word = (entry.get("word") or "").lstrip("#@").strip()
@@ -502,17 +504,22 @@ def _pick_word_from_trends(avoid_words: list) -> Optional[tuple[str, str]]:
                 cefr = "?"
             word_tokens = set(word.lower().split())
             used = word.lower() in avoid_set or bool(word_tokens & avoid_set)
+            in_window = len(clean_entries) < TREND_CANDIDATE_LIMIT
             clean_entries.append((word, cefr, used))
-            if not used:
+            if in_window and not used:
                 free_count += 1
                 if chosen_word is None:
                     chosen_word = word
                     chosen_cefr = cefr
 
-        print(f"\n  {_CYAN}{_BOLD}🏆  Trend word shortlist  ({free_count} free):{_R}", flush=True)
+        print(f"\n  {_CYAN}{_BOLD}🏆  Trend word shortlist  ({free_count} free, top {TREND_CANDIDATE_LIMIT} considered):{_R}", flush=True)
         for i, (word, cefr, used) in enumerate(clean_entries, 1):
             cefr_fmt = f"{_CYAN}{cefr:<3}{_R}"
-            if used:
+            in_window = i <= TREND_CANDIDATE_LIMIT
+            if not in_window:
+                status   = f"{_GRAY}– beyond limit{_R}"
+                word_fmt = f"{_GRAY}{word:<20}{_R}"
+            elif used:
                 status   = f"{_RED}✖ already used{_R}"
                 word_fmt = f"{_GRAY}{word:<20}{_R}"
             elif word == chosen_word:
@@ -530,8 +537,13 @@ def _pick_word_from_trends(avoid_words: list) -> Optional[tuple[str, str]]:
             ok(f"Trend word: '{chosen_word}' [{chosen_cefr}]")
             return chosen_word, chosen_cefr
 
-        logger.warning("All %d trend candidates already used — falling back to AI word selection.", len(candidates))
-        ui_warn(f"All suitable trend words already used ({len(candidates)} checked) — falling back to AI word selection.")
+        logger.warning(
+            "All top-%d trend candidates already used — falling back to AI word selection.",
+            TREND_CANDIDATE_LIMIT,
+        )
+        ui_warn(
+            f"All top-{TREND_CANDIDATE_LIMIT} trend words already used — falling back to AI word selection."
+        )
         return None
 
     except (json.JSONDecodeError, Exception) as exc:

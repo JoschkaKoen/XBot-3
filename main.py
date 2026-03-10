@@ -2,7 +2,9 @@
 Entry point for the German Learning X Bot.
 
 Run with:
-    source "/home/y/Programming/XBot 2/venv/bin/activate"
+    ubuntu: source "/home/y/Programming/XBot 2/venv/bin/activate"
+    macos:  source venv/bin/activate
+
     python main.py
 
     python main.py --single-cycle   # run exactly one cycle then exit (used by improvement engine)
@@ -29,7 +31,11 @@ import logging
 os.environ.setdefault("PYTHONUNBUFFERED", "1")
 sys.stdout.reconfigure(line_buffering=True)
 
-from config import setup_logging, AI_PROVIDER, TWEET_MODEL, STRATEGY_MODEL, USE_TRENDS, FUNNY_MODE, ENABLE_GROK_VIDEO, GROK_VIDEO_FREQUENCY
+from config import (
+    setup_logging, AI_PROVIDER, TWEET_MODEL, STRATEGY_MODEL,
+    USE_TRENDS, FUNNY_MODE, ENABLE_GROK_VIDEO, GROK_VIDEO_FREQUENCY,
+    IMAGE_STYLE_CYCLE, TREND_CANDIDATE_LIMIT,
+)
 from utils.ui import startup_banner, cycle_banner, cycle_summary, err, warn
 
 
@@ -55,8 +61,16 @@ def _model_lines() -> list:
     ]
     if USE_TRENDS:
         lines.append(("  (trend filtering):", trend_model))
+    if len(IMAGE_STYLE_CYCLE) == 1:
+        image_style_label = IMAGE_STYLE_CYCLE[0]
+    else:
+        image_style_label = "  ↺  ".join(IMAGE_STYLE_CYCLE) + "  (cycle)"
+
     lines.append(("─" * 22, "─" * 30))   # visual separator
     lines.append(("Use trends:",          "ON" if USE_TRENDS else "off"))
+    if USE_TRENDS:
+        lines.append(("  Candidate limit:", f"{TREND_CANDIDATE_LIMIT}  (top-{TREND_CANDIDATE_LIMIT}, then AI fallback)"))
+    lines.append(("Image style:",         image_style_label))
     lines.append(("Funny mode:",          "ON 😄" if FUNNY_MODE else "off"))
     if ENABLE_GROK_VIDEO:
         freq_label = "every tweet" if GROK_VIDEO_FREQUENCY <= 1 else f"every {GROK_VIDEO_FREQUENCY} tweets"

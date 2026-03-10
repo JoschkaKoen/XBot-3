@@ -785,5 +785,44 @@
       "Kuchen"
     ],
     "scaffold": "#DeutschLernen [LEVEL]\n\n🇩🇪  [ARTICLE] [GERMAN_WORD]\n🇬🇧  [ENGLISH_TRANSLATION]  [EMOJI][EMOJI]\n\n🇩🇪  [SHORT_FUNNY_GERMAN_SENTENCE]\n🇬🇧  [ENGLISH_TRANSLATION_OF_SENTENCE]  [EMOJI][EMOJI]"
+  },
+  {
+    "timestamp": "2026-03-10T09:16:29.523034+00:00",
+    "preferred_cefr": "A1, A2, B1, B2, C1, C2",
+    "next_topic": "untranslatable German concepts",
+    "style": "use a twist ending",
+    "avoid_words": [
+      "Zucker",
+      "Abitur",
+      "Infrastruktur",
+      "Hagel",
+      "Wochenstart",
+      "Stimmrecht",
+      "Heizung",
+      "Steuer",
+      "Ziel",
+      "Woche",
+      "Gesetz",
+      "Wärme",
+      "Klima",
+      "Mädchenschule",
+      "Rakete",
+      "Gelb",
+      "Sonntag",
+      "Sorge",
+      "Seite",
+      "deutsche",
+      "schön",
+      "Hausaufgaben",
+      "das",
+      "Tatort",
+      "Hunger",
+      "Raketen",
+      "deutsch",
+      "Lehrerin",
+      "Schüler",
+      "Kuchen"
+    ],
+    "scaffold": "#DeutschLernen [LEVEL]\n\n🇩🇪  [ARTICLE] [GERMAN_WORD]\n🇬🇧  [ENGLISH_TRANSLATION]  [EMOJI][EMOJI]\n\n🇩🇪  [SHORT_FUNNY_GERMAN_SENTENCE]\n🇬🇧  [ENGLISH_TRANSLATION_OF_SENTENCE]  [EMOJI][EMOJI]"
   }
 ]

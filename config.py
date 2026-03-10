@@ -1,4 +1,5 @@
 import os
+import platform
 import logging
 from dotenv import load_dotenv
 
@@ -27,9 +28,23 @@ DEEPL_AUTH_KEY: str = os.getenv("DEEPL_AUTH_KEY", "")
 TT_API_KEY: str = os.getenv("TT_API_KEY", "")
 
 # ── Image style ──────────────────────────────────────────────────────────────
-# "photographic" = realistic editorial photography (default)
-# "disney"       = cute 3D Disney / Pixar CGI animation style
-IMAGE_STYLE: str = os.getenv("IMAGE_STYLE", "photographic").lower().strip()
+# Single value  → every tweet uses that style.
+# Comma-separated → cycles deterministically across tweets.
+#   "photographic"              → always photographic
+#   "disney"                    → always disney
+#   "photographic,disney,disney"→ tweet 0: photographic, 1: disney, 2: disney, 3: photographic, …
+_IMAGE_STYLE_RAW: str = os.getenv("IMAGE_STYLE", "photographic")
+IMAGE_STYLE_CYCLE: list[str] = [s.lower().strip() for s in _IMAGE_STYLE_RAW.split(",") if s.strip()]
+if not IMAGE_STYLE_CYCLE:
+    IMAGE_STYLE_CYCLE = ["photographic"]
+
+# Convenience alias for single-style setups (first element of the cycle).
+IMAGE_STYLE: str = IMAGE_STYLE_CYCLE[0]
+
+
+def resolve_image_style(cycle: int) -> str:
+    """Return the effective image style for the given tweet cycle index."""
+    return IMAGE_STYLE_CYCLE[cycle % len(IMAGE_STYLE_CYCLE)]
 
 # ── Image generation provider ────────────────────────────────────────────────
 # "midjourney" = Midjourney via TTAPI (default, requires TT_API_KEY)
@@ -56,6 +71,11 @@ ANALYZE_LAST_N: int = int(os.getenv("ANALYZE_LAST_N", "10"))
 # When True, word selection is based on real-time German trending topics.
 # When False (default), the AI picks the word freely. Currently: picking the word freely.
 USE_TRENDS: bool = os.getenv("USE_TRENDS", "false").lower().strip() == "true"
+
+# How many of the AI's top-ranked trend word candidates to try before falling back to
+# pure AI word selection. Once the top N candidates are all already used, the bot gives
+# up on trends and lets the AI pick freely instead.
+TREND_CANDIDATE_LIMIT: int = int(os.getenv("TREND_CANDIDATE_LIMIT", "5"))
 
 # ── Self-Improvement Engine ────────────────────────────────────────────────────
 # When True, the improvement engine runs automatically after every
@@ -139,7 +159,33 @@ VOICE_PICKER_MODEL: str = os.getenv("VOICE_PICKER_MODEL", "non-reasoning").lower
 STRATEGY_UPDATE_INTERVAL_HOURS: int = int(os.getenv("STRATEGY_UPDATE_INTERVAL_HOURS", "24"))
 
 # ── Folder layout ─────────────────────────────────────────────────────────────
-KTV_FONT = "/usr/share/fonts/truetype/lato/Lato-Bold.ttf"
+
+def _resolve_ktv_font() -> str:
+    """Return the path to the first available bold TTF font on this OS."""
+    if platform.system() == "Darwin":
+        candidates = [
+            "/Library/Fonts/Lato-Bold.ttf",                          # brew install --cask font-lato
+            "/Library/Fonts/Arial Bold.ttf",
+            "/System/Library/Fonts/Supplemental/Arial Bold.ttf",
+            "/System/Library/Fonts/Supplemental/Helvetica Bold.ttf",
+            "/System/Library/Fonts/Helvetica.ttc",
+        ]
+    else:
+        candidates = [
+            "/usr/share/fonts/truetype/lato/Lato-Bold.ttf",          # Ubuntu default
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+            "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf",
+        ]
+    for path in candidates:
+        if os.path.isfile(path):
+            return path
+    raise FileNotFoundError(
+        f"No KTV font found. Tried: {candidates}\n"
+        "On macOS: brew install --cask font-lato\n"
+        "On Ubuntu: sudo apt install fonts-lato"
+    )
+
+KTV_FONT = _resolve_ktv_font()
 
 STRATEGY_FILE: str = "data/strategy.json"
 STRATEGY_HISTORY_FILE: str = "data/strategy_history.json"
