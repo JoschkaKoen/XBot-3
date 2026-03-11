@@ -2,13 +2,13 @@
   {
     "name": "Classic",
     "template": [
-      "#LearnGerman #GermanVocabulary",
-      "",
       "🇩🇪  [ARTICLE] [GERMAN_WORD]",
       "🇬🇧  [ENGLISH_TRANSLATION]  [EMOJI1][EMOJI1]",
       "",
       "🇩🇪  [SHORT_FUNNY_GERMAN_SENTENCE]",
-      "🇬🇧  [ENGLISH_TRANSLATION_OF_SENTENCE]  [EMOJI2][EMOJI2]"
+      "🇬🇧  [ENGLISH_TRANSLATION_OF_SENTENCE]  [EMOJI2][EMOJI2]",
+      "",
+      "#LearnGerman #GermanVocabulary"
     ]
   },
   {
@@ -38,12 +38,12 @@
   {
     "name": "Equals",
     "template": [
-      "#LearnGerman #GermanWords",
-      "",
       "[ARTICLE] [GERMAN_WORD] = [ENGLISH_TRANSLATION]  [EMOJI1][EMOJI1]",
       "",
       "🇩🇪  [SHORT_FUNNY_GERMAN_SENTENCE]",
-      "🇬🇧  [ENGLISH_TRANSLATION_OF_SENTENCE]  [EMOJI2][EMOJI2]"
+      "🇬🇧  [ENGLISH_TRANSLATION_OF_SENTENCE]  [EMOJI2][EMOJI2]",
+      "",
+      "#LearnGerman #GermanWords"
     ]
   },
   {
@@ -63,13 +63,13 @@
   {
     "name": "Quotes",
     "template": [
-      "#LearnGerman #LanguageLearning",
-      "",
       "🇩🇪  [ARTICLE] [GERMAN_WORD]",
       "🇬🇧  [ENGLISH_TRANSLATION]  [EMOJI1][EMOJI1]",
       "",
       "\u201e[SHORT_FUNNY_GERMAN_SENTENCE]\u201c",
-      "= [ENGLISH_TRANSLATION_OF_SENTENCE]  [EMOJI2][EMOJI2]"
+      "= [ENGLISH_TRANSLATION_OF_SENTENCE]  [EMOJI2][EMOJI2]",
+      "",
+      "#LearnGerman #LanguageLearning"
     ]
   }
 ]
