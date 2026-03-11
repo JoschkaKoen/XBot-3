@@ -11,7 +11,8 @@ import base64
 import logging
 from datetime import datetime
 
-from config import VIDEO_STYLE, VOICES_DIR, ELEVENLABS_API_KEY, VOICE_PICKER_MODEL, AI_PROVIDER
+import config
+from config import VOICES_DIR, ELEVENLABS_API_KEY
 from utils.retry import with_retry, retry_call
 from utils.ui import stage_banner, ok, warn as ui_warn, info as ui_info
 
@@ -66,7 +67,7 @@ def _voice_settings(speed: float) -> VoiceSettings:
 def _get_voice_picker_ai():
     """Return the AI function to use for voice selection."""
     from nodes.generate_content import _model_to_ai_fn
-    return _model_to_ai_fn(VOICE_PICKER_MODEL)
+    return _model_to_ai_fn(config.VOICE_PICKER_MODEL)
 
 
 def _pick_random_voice() -> tuple[str, str]:
@@ -253,7 +254,7 @@ def generate_audio(state: dict) -> dict:
 
     text: str = state["example_sentence_de"]
     full_tweet: str = state.get("full_tweet", "")
-    style: str = VIDEO_STYLE
+    style: str = config.VIDEO_STYLE
 
     if full_tweet:
         ui_info("🎙️  Selecting voice with AI …")

@@ -14,14 +14,15 @@ import logging
 import os
 from datetime import datetime, timezone
 
-from config import HISTORY_FILE, ANALYZE_LAST_N, STRATEGY_FILE, STRATEGY_HISTORY_FILE, STRATEGY_MODEL, AI_PROVIDER, FUNNY_MODE
+import config
+from config import HISTORY_FILE, STRATEGY_FILE, STRATEGY_HISTORY_FILE
 from services.ai_client import get_ai_response
 from nodes.score import _load_history
 
 
 def _get_strategy_ai() -> callable:
     """Return the AI function to use for strategy analysis."""
-    if AI_PROVIDER == "grok" and STRATEGY_MODEL == "reasoning":
+    if config.AI_PROVIDER == "grok" and config.STRATEGY_MODEL == "reasoning":
         from services.grok_ai import get_grok_reasoning_response
         return get_grok_reasoning_response
     return get_ai_response
@@ -321,13 +322,13 @@ def analyze_and_improve(state: dict) -> dict:
         logger.info("Not enough history (%d records) — using current strategy.", len(history))
         return {**state, "strategy": old_strategy}
 
-    history_slice = history[-ANALYZE_LAST_N:]
+    history_slice = history[-config.ANALYZE_LAST_N:]
     current_scaffold = old_strategy.get("scaffold", _DEFAULT_SCAFFOLD)
     frozen, cefr_counts_pre = _cefr_frozen(history)
-    prompt = _build_analysis_prompt(history_slice, current_scaffold, funny_mode=FUNNY_MODE, cefr_frozen=frozen)
+    prompt = _build_analysis_prompt(history_slice, current_scaffold, funny_mode=config.FUNNY_MODE, cefr_frozen=frozen)
 
     strategy_ai = _get_strategy_ai()
-    model_label = "grok-reasoning" if (AI_PROVIDER == "grok" and STRATEGY_MODEL == "reasoning") else "default"
+    model_label = "grok-reasoning" if (config.AI_PROVIDER == "grok" and config.STRATEGY_MODEL == "reasoning") else "default"
     logger.info("Running strategy analysis with model: %s", model_label)
 
     raw_strategy: str = retry_call(

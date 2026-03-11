@@ -18,7 +18,8 @@ import requests
 from typing import List
 from datetime import datetime
 
-from config import TT_API_KEY, IMAGES_DIR, FUNNY_MODE, FLAG_OVERLAY, IMAGE_PROVIDER, GROK_IMAGE_COUNT, resolve_image_style
+import config
+from config import TT_API_KEY, IMAGES_DIR, resolve_image_style
 from services.ai_client import get_ai_response
 from services.image_ranker import pick_best_image
 from utils.retry import retry_call, with_retry
@@ -194,11 +195,9 @@ class GrokImagineClient:
 # ── lazy client init (only the active provider is instantiated) ───────────────
 
 def _make_client():
-    if IMAGE_PROVIDER == "grok":
+    if config.IMAGE_PROVIDER == "grok":
         return GrokImagineClient()
     return MidjourneyClient()
-
-_image_client = _make_client()
 
 
 # ── flag overlay (PIL, applied after image download) ──────────────────────────
@@ -300,6 +299,7 @@ def generate_image(state: dict) -> dict:
     cycle: int       = state.get("cycle", 0)
     image_style: str = resolve_image_style(cycle)
     logger.info("Image style for cycle %d: %s", cycle, image_style)
+    _image_client = _make_client()
 
     # Build a gender hint so the image shows the right sex when the word is
     # a gendered noun (der → male, die → female, das / non-noun → no hint).
@@ -318,7 +318,7 @@ def generate_image(state: dict) -> dict:
     # 1. Generate image prompt via LLM
     _param_flag_rule = (
         "- Do NOT include any parameter flags (no --v, --q, --style, --ar, etc.) — they are added automatically\n"
-        if IMAGE_PROVIDER == "midjourney" else
+        if config.IMAGE_PROVIDER == "midjourney" else
         "- Do NOT include any parameter flags (no --v, --q, --style, --ar, etc.)\n"
     )
     _RULES = (
@@ -332,17 +332,16 @@ def generate_image(state: dict) -> dict:
     # ── Disney / Pixar style prompts ──────────────────────────────────────────
     if image_style == "disney":
         _DISNEY_AESTHETIC = (
-            "Style: ultra-cute 3D CGI animation in the style of Pixar and Walt Disney. "
-            "Soft, perfectly rounded shapes on every surface. "
-            "Characters have large sparkling eyes with long lashes, chubby rosy cheeks, and tiny button noses. "
-            "Colour palette: warm pastels and candy-bright jewel tones — soft creams, blush pinks, "
-            "sky blues, mint greens, and golden yellows. "
-            "Lighting: warm golden studio light with gentle rim highlights and a subtle iridescent glow, "
+            "Style: polished 3D CGI animation in the style of Pixar and Walt Disney. "
+            "Stylised shapes with clear, confident silhouettes. "
+            "Characters have expressive eyes and readable facial features — personality-driven, not overly saccharine. "
+            "Colour palette: rich, harmonious tones — warm ambers, deep blues, forest greens, and saturated accents "
+            "grounded by neutral mid-tones. "
+            "Lighting: cinematic directional light with strong contrast, rim highlights, and atmospheric depth, "
             "as if lit for a Pixar feature film. "
-            "Background: a simple, painterly environment with soft bokeh and delicate depth of field — "
-            "cosy, inviting, and never cluttered. "
-            "Everything feels plush, huggable, and bursting with personality. "
-            "The image should look like a still from a beloved Disney or Pixar movie."
+            "Background: a purposeful environment with painterly detail, soft depth of field, and clear visual hierarchy. "
+            "Everything feels polished, characterful, and cinematic. "
+            "The image should look like a still from a Pixar or Disney animated feature."
         )
         _DISNEY_GENDER = ""
         if article == "der":
@@ -356,42 +355,43 @@ def generate_image(state: dict) -> dict:
                 "If the scene shows a person or character, make them clearly female."
             )
 
-        if FUNNY_MODE and example_de:
+        if config.FUNNY_MODE and example_de:
             tweet_context = f"Full tweet:\n{full_tweet}\n\n" if full_tweet else ""
             img_req = (
                 "A German learning tweet contains a joke. "
-                "Create an image generation prompt for an adorable Disney/Pixar-style 3D animated scene "
-                "that shows the punchline of the joke in the most cute and charming way possible.\n\n"
+                "Create an image generation prompt for a Disney/Pixar-style 3D animated scene "
+                "that shows the punchline of the joke clearly and with visual wit.\n\n"
                 f"{tweet_context}"
                 f"German sentence: \"{example_de}\"\n"
                 f"English sentence: \"{example_en}\"\n\n"
                 "Step 1 — Identify the punchline: find the ironic twist, absurd contrast, or subverted expectation.\n"
-                "Step 2 — Stage it as the cutest possible scene: exaggerated surprised or delighted expressions, "
-                "big wide eyes, puffed-out cheeks, tiny gasp — the comedy should melt hearts AND make people laugh.\n"
-                "Step 3 — Make it breathtakingly adorable: every element should feel soft, round, warm, and huggable. "
-                "Think of the most charming frame from a Pixar short — that level of cuteness and polish.\n"
-                "Step 4 — Keep it clean: ONE main character, ONE clear joke, uncluttered cosy background.\n"
-                "Step 5 — Keep it sweet and family-friendly: warm, uplifting, never dark or unsettling.\n\n"
+                "Step 2 — Stage it visually: use expressive body language and facial expressions to land the joke — "
+                "the comedy should be immediately readable from the image alone.\n"
+                "Step 3 — Make it cinematic and polished: deliberate lighting, strong composition, rich colours. "
+                "Think of a memorable frame from a Pixar feature — that level of craft and visual storytelling.\n"
+                "Step 4 — Keep it clean: ONE main character, ONE clear joke, uncluttered focused background.\n"
+                "Step 5 — Keep it family-friendly: warm, uplifting, never dark or unsettling.\n\n"
                 f"{_DISNEY_AESTHETIC}"
                 f"{_DISNEY_GENDER}"
                 f"{_RULES}"
             )
             system_prompt = (
                 "You are an expert Disney/Pixar 3D animation prompt engineer. "
-                "You write image prompts that result in breathtakingly cute, polished, and funny animated stills. "
-                "Every prompt you write feels like a frame from a beloved Pixar short: "
-                "round soft shapes, giant sparkling eyes, warm pastel colours, golden studio lighting. "
-                "Humour is always conveyed through adorable over-the-top expressions, never through darkness. "
+                "You write image prompts that produce polished, expressive, and funny animated stills. "
+                "Every prompt you write feels like a frame from a Pixar feature: "
+                "strong character silhouettes, expressive faces, cinematic lighting, rich cohesive colours. "
+                "Humour is conveyed through clear visual storytelling and expressive performance, never saccharine excess. "
                 "Never mention photography, cameras, lenses, or film. "
                 "No parameter flags. No double hyphens. Output only the image description."
             )
         else:
             img_req = (
-                "Create an image generation prompt for an adorable Disney/Pixar-style 3D animated scene.\n\n"
+                "Create an image generation prompt for a Disney/Pixar-style 3D animated scene.\n\n"
                 f"Sentence: \"{example_en}\"\n\n"
-                "Design the most charming, cute, and visually delightful scene that brings this sentence to life. "
-                "Characters should have oversized expressive eyes, soft rounded features, and feel instantly lovable. "
-                "The scene should look like a still from a heartwarming Pixar or Disney animated film.\n\n"
+                "Design a visually compelling, characterful scene that brings this sentence to life. "
+                "Characters should have expressive features and strong readable silhouettes. "
+                "The scene should look like a cinematic still from a Pixar or Disney animated feature — "
+                "polished, purposeful, and full of personality without being saccharine.\n\n"
                 f"{_DISNEY_AESTHETIC}"
                 f"{_DISNEY_GENDER}"
                 "No text in the image."
@@ -399,9 +399,10 @@ def generate_image(state: dict) -> dict:
             )
             system_prompt = (
                 "You are an expert Disney/Pixar 3D animation prompt engineer. "
-                "You write image prompts that produce breathtakingly cute, heartwarming, Pixar-quality stills. "
-                "Soft rounded shapes, giant sparkling eyes, warm pastels, golden studio light — "
-                "every element should feel plush, polished, and bursting with personality. "
+                "You write image prompts that produce cinematic, expressive, Pixar-quality stills. "
+                "Strong character design, deliberate lighting, rich cohesive colour palette — "
+                "every element should feel polished, purposeful, and full of personality. "
+                "Avoid over-sweetening: aim for charming and engaging, not saccharine. "
                 "Never mention photography, cameras, lenses, or film. "
                 "No parameter flags. No double hyphens. Output only the image description."
             )
@@ -425,7 +426,7 @@ def generate_image(state: dict) -> dict:
             "The image should look like a professional editorial photo that people want to share for its looks alone. "
         )
 
-        if FUNNY_MODE and example_de:
+        if config.FUNNY_MODE and example_de:
             tweet_context = f"Full tweet:\n{full_tweet}\n\n" if full_tweet else ""
             img_req = (
                 "A German learning tweet contains a joke. Your job is to create an image generation prompt that is "
@@ -504,14 +505,14 @@ def generate_image(state: dict) -> dict:
     import re
     image_prompt = image_prompt.replace("\u2018", "'").replace("\u2019", "'").replace("\u201c", "").replace("\u201d", "")
 
-    if IMAGE_PROVIDER == "midjourney":
+    if config.IMAGE_PROVIDER == "midjourney":
         # Strip any --parameter flags the AI may have included despite instructions.
         image_prompt = re.sub(r"\s*--\w[\w\d]*.*$", "", image_prompt).strip()
         if image_style == "disney":
             STYLE_SUFFIX = (
-                ", Pixar 3D animation style, ultra-cute characters, "
-                "soft rounded shapes, big sparkling eyes, warm pastel colours, "
-                "golden studio lighting, 8K render, heartwarming and delightful"
+                ", Pixar 3D animation style, expressive character design, "
+                "strong silhouettes, cinematic directional lighting, rich saturated colours, "
+                "8K render, polished and characterful"
             )
         else:
             STYLE_SUFFIX = (
@@ -521,15 +522,15 @@ def generate_image(state: dict) -> dict:
             )
         image_prompt = image_prompt.rstrip(".") + STYLE_SUFFIX
 
-    logger.debug("Image prompt (%s): %s", IMAGE_PROVIDER, image_prompt)
+    logger.debug("Image prompt (%s): %s", config.IMAGE_PROVIDER, image_prompt)
     print(f"  Prompt: {image_prompt}", flush=True)
 
     # 2. Generate images via the configured provider
-    if IMAGE_PROVIDER == "grok":
+    if config.IMAGE_PROVIDER == "grok":
         image_paths = retry_call(
             _image_client.generate,
             image_prompt,
-            n=GROK_IMAGE_COUNT,
+            n=config.GROK_IMAGE_COUNT,
             aspect_ratio="16:9",
             max_attempts=3,
             base_delay=5.0,
@@ -555,7 +556,7 @@ def generate_image(state: dict) -> dict:
     ok(f"Best image: #{idx}/{len(image_paths)} → {os.path.basename(chosen)}")
     logger.info("Best image selected: %s (from %d options)", chosen, len(image_paths))
 
-    if FLAG_OVERLAY:
+    if config.FLAG_OVERLAY:
         _overlay_flags(chosen)
 
     return {

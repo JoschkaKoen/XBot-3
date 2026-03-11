@@ -31,49 +31,47 @@ import logging
 os.environ.setdefault("PYTHONUNBUFFERED", "1")
 sys.stdout.reconfigure(line_buffering=True)
 
-from config import (
-    setup_logging, AI_PROVIDER, TWEET_MODEL, STRATEGY_MODEL,
-    USE_TRENDS, FUNNY_MODE, ENABLE_GROK_VIDEO, GROK_VIDEO_FREQUENCY,
-    IMAGE_STYLE_CYCLE, TREND_CANDIDATE_LIMIT,
-)
+import config as _config
+from config import setup_logging, reload_settings
 from utils.ui import startup_banner, cycle_banner, cycle_summary, err, warn
 
 
 def _model_lines() -> list:
-    """Build (label, model-name) pairs for the startup banner."""
-    if AI_PROVIDER == "grok":
+    """Build (label, model-name) pairs for the startup banner (reads live config)."""
+    if _config.AI_PROVIDER == "grok":
         _model_names = {
             "flagship":      "grok-4  (flagship)",
             "reasoning":     "grok-4-1-fast  (reasoning)",
             "non-reasoning": "grok-4-1-fast-non-reasoning",
         }
-        tweet_model    = _model_names.get(TWEET_MODEL, TWEET_MODEL)
-        strategy_model = _model_names.get(STRATEGY_MODEL, STRATEGY_MODEL)
+        tweet_model    = _model_names.get(_config.TWEET_MODEL, _config.TWEET_MODEL)
+        strategy_model = _model_names.get(_config.STRATEGY_MODEL, _config.STRATEGY_MODEL)
         trend_model    = "grok-4-1-fast  (reasoning)"
         word_model     = "grok-4-1-fast-non-reasoning"
     else:
-        tweet_model = strategy_model = trend_model = word_model = f"{AI_PROVIDER} (default)"
+        tweet_model = strategy_model = trend_model = word_model = f"{_config.AI_PROVIDER} (default)"
 
     lines = [
         ("Tweet generation:",  tweet_model),
         ("Strategy analysis:", strategy_model),
-        ("Word selection:",    trend_model if USE_TRENDS else word_model),
+        ("Word selection:",    trend_model if _config.USE_TRENDS else word_model),
     ]
-    if USE_TRENDS:
+    if _config.USE_TRENDS:
         lines.append(("  (trend filtering):", trend_model))
-    if len(IMAGE_STYLE_CYCLE) == 1:
-        image_style_label = IMAGE_STYLE_CYCLE[0]
+
+    if len(_config.IMAGE_STYLE_CYCLE) == 1:
+        image_style_label = _config.IMAGE_STYLE_CYCLE[0]
     else:
-        image_style_label = "  ↺  ".join(IMAGE_STYLE_CYCLE) + "  (cycle)"
+        image_style_label = "  ↺  ".join(_config.IMAGE_STYLE_CYCLE) + "  (cycle)"
 
     lines.append(("─" * 22, "─" * 30))   # visual separator
-    lines.append(("Use trends:",          "ON" if USE_TRENDS else "off"))
-    if USE_TRENDS:
-        lines.append(("  Candidate limit:", f"{TREND_CANDIDATE_LIMIT}  (top-{TREND_CANDIDATE_LIMIT}, then AI fallback)"))
+    lines.append(("Use trends:",          "ON" if _config.USE_TRENDS else "off"))
+    if _config.USE_TRENDS:
+        lines.append(("  Candidate limit:", f"{_config.TREND_CANDIDATE_LIMIT}  (top-{_config.TREND_CANDIDATE_LIMIT}, then AI fallback)"))
     lines.append(("Image style:",         image_style_label))
-    lines.append(("Funny mode:",          "ON 😄" if FUNNY_MODE else "off"))
-    if ENABLE_GROK_VIDEO:
-        freq_label = "every tweet" if GROK_VIDEO_FREQUENCY <= 1 else f"every {GROK_VIDEO_FREQUENCY} tweets"
+    lines.append(("Funny mode:",          "ON 😄" if _config.FUNNY_MODE else "off"))
+    if _config.ENABLE_GROK_VIDEO:
+        freq_label = "every tweet" if _config.GROK_VIDEO_FREQUENCY <= 1 else f"every {_config.GROK_VIDEO_FREQUENCY} tweets"
         lines.append(("Grok video (I2V):", f"ON 🎬  ({freq_label} via Grok Imagine)"))
     else:
         lines.append(("Grok video (I2V):", "off"))
@@ -127,7 +125,9 @@ def main():
     cycle = 0
 
     while not _shutdown:
+        reload_settings()
         cycle += 1
+        startup_banner(_model_lines())
         cycle_banner(cycle)
         logger.info("Starting cycle %d …", cycle)
 

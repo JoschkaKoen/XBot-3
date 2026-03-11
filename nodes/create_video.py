@@ -25,14 +25,8 @@ from moviepy import (
     VideoFileClip,
 )
 
-from config import (
-    ENABLE_GROK_VIDEO,
-    VIDEO_STYLE,
-    BACKGROUND_MUSIC_PATH,
-    VOICES_MUSIC_DIR,
-    VIDEOS_DIR,
-    KTV_FONT,
-)
+import config
+from config import BACKGROUND_MUSIC_PATH, VOICES_MUSIC_DIR, VIDEOS_DIR, KTV_FONT
 from utils.ui import stage_banner, ok, warn as ui_warn
 
 _FONT = KTV_FONT
@@ -277,7 +271,7 @@ def create_video(state: dict) -> dict:
     image_path: str   = state["image_path"]
     german_text: str  = state["example_sentence_de"]
     word_timings: list = state.get("word_timings", [])
-    style: str        = VIDEO_STYLE
+    style: str        = config.VIDEO_STYLE
 
     # ── Step 1: Mix voice with background music ───────────────────────────────
     if not os.path.exists(BACKGROUND_MUSIC_PATH):
@@ -299,11 +293,10 @@ def create_video(state: dict) -> dict:
     # ── Step 2: Render video ──────────────────────────────────────────────────
     grok_video_path: str | None = None
 
-    if ENABLE_GROK_VIDEO:
+    if config.ENABLE_GROK_VIDEO:
         from services import grok_video as _gv
-        from config import GROK_VIDEO_FREQUENCY
         if not _gv.should_generate_video():
-            freq_str = f"every {GROK_VIDEO_FREQUENCY} tweets" if GROK_VIDEO_FREQUENCY > 1 else "every tweet"
+            freq_str = f"every {config.GROK_VIDEO_FREQUENCY} tweets" if config.GROK_VIDEO_FREQUENCY > 1 else "every tweet"
             logger.info("Grok video frequency gate: skipping this cycle (%s).", freq_str)
             ui_warn(f"Grok video: skipping this cycle ({freq_str}) — using static KTV video.")
             _gv.advance_cycle()

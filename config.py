@@ -46,6 +46,59 @@ def resolve_image_style(cycle: int) -> str:
     """Return the effective image style for the given tweet cycle index."""
     return IMAGE_STYLE_CYCLE[cycle % len(IMAGE_STYLE_CYCLE)]
 
+
+def reload_settings() -> None:
+    """
+    Re-read settings.env (and .env) so any changes made between cycles take
+    effect on the next cycle without restarting the bot.
+
+    Only the 'live' behavioural settings are updated — static things like file
+    paths, API keys, and the KTV font are left unchanged.
+    """
+    load_dotenv("settings.env", override=True)
+    load_dotenv(override=True)  # .env (API keys) always wins
+
+    global AI_PROVIDER
+    global USE_TRENDS, TREND_CANDIDATE_LIMIT
+    global IMAGE_STYLE_CYCLE, IMAGE_STYLE
+    global IMAGE_PROVIDER, GROK_IMAGE_COUNT
+    global MAX_TWEET_LENGTH, MAX_EXAMPLE_WORDS, POST_INTERVAL_SECONDS, VIDEO_STYLE, ANALYZE_LAST_N
+    global FUNNY_MODE, FLAG_OVERLAY
+    global ENABLE_GROK_VIDEO, GROK_VIDEO_FREQUENCY
+    global ENABLE_SELF_IMPROVEMENT, IMPROVEMENT_INTERVAL_CYCLES, IMPROVEMENT_SCORE_THRESHOLD
+    global STRATEGY_UPDATE_INTERVAL_HOURS
+    global TWEET_MODEL, TWEET_PICKER_MODEL, STRATEGY_MODEL
+    global TREND_FILTER_MODEL, WORD_PICK_MODEL, SIMILARITY_MODEL, VOICE_PICKER_MODEL
+
+    AI_PROVIDER                    = os.getenv("AI_PROVIDER", "grok").lower().strip()
+    USE_TRENDS                     = os.getenv("USE_TRENDS", "false").lower().strip() == "true"
+    TREND_CANDIDATE_LIMIT          = int(os.getenv("TREND_CANDIDATE_LIMIT", "5"))
+    _raw                           = os.getenv("IMAGE_STYLE", "photographic")
+    IMAGE_STYLE_CYCLE              = [s.lower().strip() for s in _raw.split(",") if s.strip()] or ["photographic"]
+    IMAGE_STYLE                    = IMAGE_STYLE_CYCLE[0]
+    IMAGE_PROVIDER                 = os.getenv("IMAGE_PROVIDER", "midjourney").lower().strip()
+    GROK_IMAGE_COUNT               = int(os.getenv("GROK_IMAGE_COUNT", "1"))
+    MAX_TWEET_LENGTH               = int(os.getenv("MAX_TWEET_LENGTH", "280"))
+    MAX_EXAMPLE_WORDS              = int(os.getenv("MAX_EXAMPLE_WORDS", "13"))
+    POST_INTERVAL_SECONDS          = int(os.getenv("POST_INTERVAL_SECONDS", "18000"))
+    VIDEO_STYLE                    = os.getenv("VIDEO_STYLE", "ktv").lower().strip()
+    ANALYZE_LAST_N                 = int(os.getenv("ANALYZE_LAST_N", "10"))
+    FUNNY_MODE                     = os.getenv("FUNNY_MODE", "false").lower().strip() == "true"
+    FLAG_OVERLAY                   = os.getenv("FLAG_OVERLAY", "true").lower().strip() == "true"
+    ENABLE_GROK_VIDEO              = os.getenv("ENABLE_GROK_VIDEO", "false").lower().strip() == "true"
+    GROK_VIDEO_FREQUENCY           = int(os.getenv("GROK_VIDEO_FREQUENCY", "1"))
+    ENABLE_SELF_IMPROVEMENT        = os.getenv("ENABLE_SELF_IMPROVEMENT", "false").lower().strip() == "true"
+    IMPROVEMENT_INTERVAL_CYCLES    = int(os.getenv("IMPROVEMENT_INTERVAL_CYCLES", "5"))
+    IMPROVEMENT_SCORE_THRESHOLD    = float(os.getenv("IMPROVEMENT_SCORE_THRESHOLD", "9999"))
+    STRATEGY_UPDATE_INTERVAL_HOURS = int(os.getenv("STRATEGY_UPDATE_INTERVAL_HOURS", "24"))
+    TWEET_MODEL                    = os.getenv("TWEET_MODEL", "flagship").lower().strip()
+    TWEET_PICKER_MODEL             = os.getenv("TWEET_PICKER_MODEL", "flagship").lower().strip()
+    STRATEGY_MODEL                 = os.getenv("STRATEGY_MODEL", "reasoning").lower().strip()
+    TREND_FILTER_MODEL             = os.getenv("TREND_FILTER_MODEL", "non-reasoning").lower().strip()
+    WORD_PICK_MODEL                = os.getenv("WORD_PICK_MODEL", "non-reasoning").lower().strip()
+    SIMILARITY_MODEL               = os.getenv("SIMILARITY_MODEL", "non-reasoning").lower().strip()
+    VOICE_PICKER_MODEL             = os.getenv("VOICE_PICKER_MODEL", "non-reasoning").lower().strip()
+
 # ── Image generation provider ────────────────────────────────────────────────
 # "midjourney" = Midjourney via TTAPI (default, requires TT_API_KEY)
 # "grok"       = xAI Grok Imagine API  (requires XAI_API_KEY)
@@ -61,6 +114,9 @@ GROK_IMAGE_COUNT: int = int(os.getenv("GROK_IMAGE_COUNT", "1"))
 # accounts; Premium accounts support up to 25 000. Adjust if your account has
 # an extended limit.
 MAX_TWEET_LENGTH: int = int(os.getenv("MAX_TWEET_LENGTH", "280"))
+
+# Maximum number of words allowed in the German example sentence.
+MAX_EXAMPLE_WORDS: int = int(os.getenv("MAX_EXAMPLE_WORDS", "13"))
 
 # ── Bot behaviour ─────────────────────────────────────────────────────────────
 POST_INTERVAL_SECONDS: int = int(os.getenv("POST_INTERVAL_SECONDS", "18000"))
