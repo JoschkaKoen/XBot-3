@@ -11,9 +11,10 @@ import base64
 import logging
 from datetime import datetime
 
-from config import VIDEO_STYLE, VOICES_DIR, ELEVENLABS_API_KEY
-from utils.retry import with_retry
-from utils.ui import stage_banner, ok, warn as ui_warn
+import config
+from config import VOICES_DIR, ELEVENLABS_API_KEY
+from utils.retry import with_retry, retry_call
+from utils.ui import stage_banner, ok, warn as ui_warn, info as ui_info
 
 from elevenlabs.client import ElevenLabs
 from elevenlabs import save
@@ -22,29 +23,30 @@ from elevenlabs.types import VoiceSettings
 logger = logging.getLogger("german_bot.generate_audio")
 
 # Curated pool of authentic German-native ElevenLabs voices.
-# A random voice is picked on every cycle to add variety.
+# Each entry: (name, voice_id, description)
+# The description is used by the AI voice picker to match the best voice to the tweet.
 _GERMAN_VOICES = [
     # Female
-    ("Luisa",           "z0gdR3nhVl1Ig2kiEigL"),  # young, calm — news/audiobook
-    ("Carola Ferstl",   "K75lPKuh15SyVhQC1LrE"),  # warm, educational, middle-aged
-    ("Anna from Munich","wDvyXJwxWHsjOKSUVvpG"),  # authentic Bavarian female
-    ("Franziska Lenz",  "NX39CipaoYitJ3sMwH5I"),  # German female, professional
-    ("Laura",           "Qy4b2JlSGxY7I9M9Bqxb"),  # calm and smooth, documentary
-    ("Irene",           "NkMe1eztMQReztnhYfeX"),  # friendly and approachable
-    ("Selena",          "sWuGr24LIqDil2oFD3xs"),  # melancholic and expressive
-    ("Laura (Pro)",     "2aL479c8D3QMIPExj0tw"),  # sharp and professional
-    ("Carrie",          "zKHQdbB8oaQ7roNTiDTK"),  # the gentle storyteller
+    ("Luisa",           "z0gdR3nhVl1Ig2kiEigL", "young, calm — news/audiobook"),
+    ("Carola Ferstl",   "K75lPKuh15SyVhQC1LrE", "warm, educational, middle-aged"),
+    ("Anna from Munich","wDvyXJwxWHsjOKSUVvpG", "authentic Bavarian female"),
+    ("Franziska Lenz",  "NX39CipaoYitJ3sMwH5I", "German female, professional"),
+    ("Laura",           "Qy4b2JlSGxY7I9M9Bqxb", "calm and smooth, documentary"),
+    ("Irene",           "NkMe1eztMQReztnhYfeX", "friendly and approachable"),
+    ("Selena",          "sWuGr24LIqDil2oFD3xs",  "melancholic and expressive"),
+    ("Laura (Pro)",     "2aL479c8D3QMIPExj0tw", "sharp and professional"),
+    ("Carrie",          "zKHQdbB8oaQ7roNTiDTK", "the gentle storyteller"),
     # Male
-    ("Marc",            "SfXg52J54dixBlOl016v"),  # warm, expressive, storytelling
-    ("Leo liest",       "QtXsTvuI72CiSlfxczvg"),  # relaxed, warm, deep — reading
-    ("Marcel",          "neSsqAiYj0KThbslcqPj"),  # deep, pleasant, tutorials
-    ("Marcus KvE",      "6V1EWbNGUufEsfPFe5VA"),  # clean no-accent voice-over
-    ("William",         "oae6GCCzwoEbfc5FHdEu"),  # soothing and calm
-    ("Moritz Wegner",   "PhufIH7nYh2Up1uej6aY"),  # confident, friendly & informative
-    ("Helmut",          "5KvpaGteYkNayiswuX2h"),  # distinctive and authentic
-    ("Tristan",         "yU41gRVGrkgofLTfIbzK"),  # dark, deep, captivating
-    ("Jantosch",        "CVcPLXStXPeDxhrSflDZ"),  # charismatic and charming
-    ("Dan",             "utkd5fchbspYG3Ld0zt0"),  # radio host & moderator
+    ("Marc",            "SfXg52J54dixBlOl016v", "warm, expressive, storytelling"),
+    ("Leo liest",       "QtXsTvuI72CiSlfxczvg", "relaxed, warm, deep — reading"),
+    ("Marcel",          "neSsqAiYj0KThbslcqPj", "deep, pleasant, tutorials"),
+    ("Marcus KvE",      "6V1EWbNGUufEsfPFe5VA", "clean no-accent voice-over"),
+    ("William",         "oae6GCCzwoEbfc5FHdEu", "soothing and calm"),
+    ("Moritz Wegner",   "PhufIH7nYh2Up1uej6aY", "confident, friendly & informative"),
+    ("Helmut",          "5KvpaGteYkNayiswuX2h", "distinctive and authentic"),
+    ("Tristan",         "yU41gRVGrkgofLTfIbzK", "dark, deep, captivating"),
+    ("Jantosch",        "CVcPLXStXPeDxhrSflDZ", "charismatic and charming"),
+    ("Dan",             "utkd5fchbspYG3Ld0zt0", "radio host & moderator"),
 ]
 
 _DEFAULT_SPEED = 0.70
@@ -62,10 +64,65 @@ def _voice_settings(speed: float) -> VoiceSettings:
     return VoiceSettings(stability=0.75, similarity_boost=0.85, speed=speed)
 
 
+def _get_voice_picker_ai():
+    """Return the AI function to use for voice selection."""
+    from nodes.generate_content import _model_to_ai_fn
+    return _model_to_ai_fn(config.VOICE_PICKER_MODEL)
+
+
 def _pick_random_voice() -> tuple[str, str]:
     """Return a random (name, voice_id) from the German voice pool."""
     import random
-    return random.choice(_GERMAN_VOICES)
+    v = random.choice(_GERMAN_VOICES)
+    return v[0], v[1]
+
+
+def _pick_voice_by_ai(full_tweet: str) -> tuple[str, str]:
+    """Use AI to pick the most suitable voice for the given tweet.
+
+    Returns (name, voice_id). Falls back to a random voice on any error.
+    """
+    import re as _re
+    voice_list = "\n".join(
+        f"{i + 1}. {name} — {desc}"
+        for i, (name, _vid, desc) in enumerate(_GERMAN_VOICES)
+    )
+    prompt = (
+        "You are selecting the best German text-to-speech voice for a tweet.\n\n"
+        f"Tweet:\n{full_tweet}\n\n"
+        f"Available voices:\n{voice_list}\n\n"
+        "Pick the voice whose character and tone best matches the mood and content of the tweet. "
+        "Reply with ONLY the number of the chosen voice (e.g. '7'). Nothing else."
+    )
+    system = (
+        "You are a voice casting expert. "
+        "Reply with only the number of the best-matching voice — no explanation."
+    )
+    try:
+        raw = retry_call(
+            _get_voice_picker_ai(),
+            prompt,
+            system,
+            max_tokens=10,
+            temperature=0.0,
+            label="voice_pick",
+        ).strip()
+        m = _re.search(r'\b(\d+)\b', raw)
+        if m:
+            idx = int(m.group(1)) - 1
+            if 0 <= idx < len(_GERMAN_VOICES):
+                name, voice_id, desc = _GERMAN_VOICES[idx]
+                logger.info("AI picked voice %d: %s", idx + 1, name)
+                ui_info(f"AI selected voice: {name} — {desc}")
+                return name, voice_id
+        logger.warning("Voice picker returned unparseable response %r — using random.", raw)
+        ui_warn(f"Voice picker returned unexpected response ({raw!r}) — falling back to random voice.")
+    except Exception as exc:
+        logger.warning("Voice picker failed (%s) — using random voice.", exc)
+        ui_warn(f"Voice picker failed ({exc}) — falling back to random voice.")
+    name, voice_id = _pick_random_voice()
+    ui_info(f"Random voice selected: {name}")
+    return name, voice_id
 
 
 @with_retry(max_attempts=4, base_delay=3.0, label="elevenlabs_simple")
@@ -196,11 +253,15 @@ def generate_audio(state: dict) -> dict:
     logger.info("Node: generate_audio")
 
     text: str = state["example_sentence_de"]
-    style: str = VIDEO_STYLE
+    full_tweet: str = state.get("full_tweet", "")
+    style: str = config.VIDEO_STYLE
 
-    voice_name, voice_id = _pick_random_voice()
-    from utils.ui import info
-    info(f"Voice: {voice_name}")
+    if full_tweet:
+        ui_info("🎙️  Selecting voice with AI …")
+        voice_name, voice_id = _pick_voice_by_ai(full_tweet)
+    else:
+        voice_name, voice_id = _pick_random_voice()
+        ui_info(f"Voice: {voice_name}")
     logger.info("Selected voice: %s (%s)", voice_name, voice_id)
 
     try:

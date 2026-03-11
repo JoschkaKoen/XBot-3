@@ -2,7 +2,9 @@
 Entry point for the German Learning X Bot.
 
 Run with:
-    source "/home/y/Programming/XBot 2/venv/bin/activate"
+    ubuntu: source "/home/y/Programming/XBot 2/venv/bin/activate"
+    macos:  source venv/bin/activate
+
     python main.py
 
     python main.py --single-cycle   # run exactly one cycle then exit (used by improvement engine)
@@ -29,36 +31,50 @@ import logging
 os.environ.setdefault("PYTHONUNBUFFERED", "1")
 sys.stdout.reconfigure(line_buffering=True)
 
-from config import setup_logging, AI_PROVIDER, SENTENCE_MODEL, STRATEGY_MODEL, USE_TRENDS, FUNNY_MODE
+import config as _config
+from config import setup_logging, reload_settings
 from utils.ui import startup_banner, cycle_banner, cycle_summary, err, warn
-from services.image_ranker import warmup as _warmup_image_ranker
 
 
 def _model_lines() -> list:
-    """Build (label, model-name) pairs for the startup banner."""
-    if AI_PROVIDER == "grok":
+    """Build (label, model-name) pairs for the startup banner (reads live config)."""
+    if _config.AI_PROVIDER == "grok":
         _model_names = {
             "flagship":      "grok-4  (flagship)",
             "reasoning":     "grok-4-1-fast  (reasoning)",
             "non-reasoning": "grok-4-1-fast-non-reasoning",
         }
-        tweet_model    = _model_names.get(SENTENCE_MODEL, SENTENCE_MODEL)
-        strategy_model = _model_names.get(STRATEGY_MODEL, STRATEGY_MODEL)
+        tweet_model    = _model_names.get(_config.TWEET_MODEL, _config.TWEET_MODEL)
+        strategy_model = _model_names.get(_config.STRATEGY_MODEL, _config.STRATEGY_MODEL)
         trend_model    = "grok-4-1-fast  (reasoning)"
         word_model     = "grok-4-1-fast-non-reasoning"
     else:
-        tweet_model = strategy_model = trend_model = word_model = f"{AI_PROVIDER} (default)"
+        tweet_model = strategy_model = trend_model = word_model = f"{_config.AI_PROVIDER} (default)"
 
     lines = [
         ("Tweet generation:",  tweet_model),
         ("Strategy analysis:", strategy_model),
-        ("Word selection:",    trend_model if USE_TRENDS else word_model),
+        ("Word selection:",    trend_model if _config.USE_TRENDS else word_model),
     ]
-    if USE_TRENDS:
+    if _config.USE_TRENDS:
         lines.append(("  (trend filtering):", trend_model))
+
+    if len(_config.IMAGE_STYLE_CYCLE) == 1:
+        image_style_label = _config.IMAGE_STYLE_CYCLE[0]
+    else:
+        image_style_label = "  ↺  ".join(_config.IMAGE_STYLE_CYCLE) + "  (cycle)"
+
     lines.append(("─" * 22, "─" * 30))   # visual separator
-    lines.append(("Use trends:",          "ON" if USE_TRENDS else "off"))
-    lines.append(("Funny mode:",          "ON 😄" if FUNNY_MODE else "off"))
+    lines.append(("Use trends:",          "ON" if _config.USE_TRENDS else "off"))
+    if _config.USE_TRENDS:
+        lines.append(("  Candidate limit:", f"{_config.TREND_CANDIDATE_LIMIT}  (top-{_config.TREND_CANDIDATE_LIMIT}, then AI fallback)"))
+    lines.append(("Image style:",         image_style_label))
+    lines.append(("Funny mode:",          "ON 😄" if _config.FUNNY_MODE else "off"))
+    if _config.ENABLE_GROK_VIDEO:
+        freq_label = "every tweet" if _config.GROK_VIDEO_FREQUENCY <= 1 else f"every {_config.GROK_VIDEO_FREQUENCY} tweets"
+        lines.append(("Grok video (I2V):", f"ON 🎬  ({freq_label} via Grok Imagine)"))
+    else:
+        lines.append(("Grok video (I2V):", "off"))
     return lines
 
 setup_logging()
@@ -100,10 +116,6 @@ def main():
     startup_banner(_model_lines())
     logger.info("German Learning X Bot starting …")
 
-    # Start loading ImageReward in the background immediately so it is ready
-    # by the time the first image ranking call happens (~5+ minutes into cycle 1).
-    _warmup_image_ranker()
-
     graph = get_graph()
 
     thread_id = "german_bot_main"
@@ -113,7 +125,9 @@ def main():
     cycle = 0
 
     while not _shutdown:
+        reload_settings()
         cycle += 1
+        startup_banner(_model_lines())
         cycle_banner(cycle)
         logger.info("Starting cycle %d …", cycle)
 
@@ -159,7 +173,6 @@ def _single_cycle() -> None:
     from graph import get_graph
 
     setup_logging()
-    _warmup_image_ranker()
 
     graph = get_graph()
     thread_id = f"single_cycle_{uuid.uuid4().hex[:8]}"

@@ -14,14 +14,15 @@ import logging
 import os
 from datetime import datetime, timezone
 
-from config import HISTORY_FILE, ANALYZE_LAST_N, STRATEGY_FILE, STRATEGY_HISTORY_FILE, STRATEGY_MODEL, AI_PROVIDER, FUNNY_MODE
+import config
+from config import HISTORY_FILE, STRATEGY_FILE, STRATEGY_HISTORY_FILE
 from services.ai_client import get_ai_response
 from nodes.score import _load_history
 
 
 def _get_strategy_ai() -> callable:
     """Return the AI function to use for strategy analysis."""
-    if AI_PROVIDER == "grok" and STRATEGY_MODEL == "reasoning":
+    if config.AI_PROVIDER == "grok" and config.STRATEGY_MODEL == "reasoning":
         from services.grok_ai import get_grok_reasoning_response
         return get_grok_reasoning_response
     return get_ai_response
@@ -50,8 +51,8 @@ _CEFR_MIN_TWEETS = 10   # minimum tweets per level before CEFR bias is allowed
 
 _DEFAULT_STRATEGY = {
     "preferred_cefr": "A1, A2, B1, B2, C1, C2",
-    "preferred_themes": "food, travel, daily life, emotions, work, weather, relationships",
-    "focus": "",
+    "next_topic": "",
+    "style": "",
     "avoid_words": [],
     "scaffold": _DEFAULT_SCAFFOLD,
 }
@@ -147,7 +148,7 @@ def _log_strategy_diff(old: dict, new: dict) -> bool:
     """
     _Y    = "\033[93m"
 
-    scalar_keys = ["preferred_cefr", "preferred_themes", "focus"]
+    scalar_keys = ["preferred_cefr", "next_topic", "style"]
     changed = False
     lines = []
 
@@ -224,6 +225,10 @@ def _build_analysis_prompt(history_slice: list, current_scaffold: str, funny_mod
         indent=2,
     )
 
+    # Summarise which theme-words have appeared recently so the AI can avoid them
+    recent_words = [r.get("german_word", "") for r in history_slice if r.get("german_word")]
+    recent_words_str = ", ".join(recent_words) if recent_words else "none"
+
     return (
         f"Here are the last {len(history_slice)} posts with their engagement data:\n\n"
         f"{posts_summary}\n\n"
@@ -231,23 +236,33 @@ def _build_analysis_prompt(history_slice: list, current_scaffold: str, funny_mod
         "performance metric — NOT 'score_raw'. A tweet that is 10 hours old with score_per_hour=0.5 "
         "outperforms a tweet that is 100 hours old with score_per_hour=0.1, even if the older tweet "
         "has a higher raw score.\n\n"
+        f"Recently used words (avoid clustering around the same topics): {recent_words_str}\n\n"
         "Based on this data, output a JSON object with these keys:\n"
         + (
-            '  "preferred_cefr":    (string) IGNORE — this field is controlled by the system and will be overridden. '
+            '  "preferred_cefr":  (string) IGNORE — this field is controlled by the system and will be overridden. '
             'Set it to "A1, A2, B1, B2, C1, C2" — there is not yet enough data per level to bias it.\n'
             if cefr_frozen else
-            '  "preferred_cefr":    (string) comma-separated CEFR levels that performed best, '
+            '  "preferred_cefr":  (string) comma-separated CEFR levels that performed best, '
             'chosen from A1, A2, B1, B2, C1, C2, e.g. "A2, B1, C1"\n'
         )
-        + '  "preferred_themes":  (string) comma-separated themes to focus on next, e.g. "food, travel, emotions"\n'
-        '  "focus":             (string) a short instruction covering vocabulary style and theme'
+        + '  "next_topic":      (string) ONE fresh topic or angle for the next tweet that has NOT been covered '
+        'in recent posts and that you anticipate will resonate with English-speaking German learners. '
+        'Pick something new and specific — do NOT repeat any theme already seen in the recent post list. '
+        'Examples: "German workplace culture", "untranslatable German concepts", "German food idioms", '
+        '"emotions Germans express that English lacks a word for". '
+        'Leave empty string "" if you cannot identify a genuinely fresh angle.\n'
+        '  "style":           (string) a short instruction about sentence style, tone, grammatical patterns, '
+        'or humour style for the next tweet — STYLE ONLY, NO topics or themes. '
         + (
-            ' — DO NOT mention any specific CEFR levels (A1/A2/B1/B2/C1/C2) or language difficulty here; '
-            'CEFR is frozen and controlled separately. Focus only on themes, topics, or vocabulary style.'
+            'DO NOT mention any specific CEFR levels (A1/A2/B1/B2/C1/C2) here. '
             if cefr_frozen else
-            f" — {'NOTE: tone/humour is controlled externally — do NOT set focus to override tone direction. Focus on vocabulary themes and CEFR only.' if funny_mode else 'e.g. use funnier sentences, focus on daily life themes'}"
-        ) + "\n"
-        '  "avoid_words":       (array)  list of German words recently used that should not be repeated\n\n'
+            ('NOTE: tone/humour direction is controlled externally — do NOT override it here. '
+             if funny_mode else '')
+        )
+        + 'Examples of good style instructions: "use a twist ending", "use self-aware irony", '
+        '"write in second person (du)", "use short punchy sentences". '
+        'Examples of BAD style instructions (DO NOT do this): "focus on food topics", "use daily life themes".\n'
+        '  "avoid_words":     (array)  list of German words recently used that should not be repeated\n\n'
         "Return ONLY the raw JSON object. No markdown, no explanation."
     )
 
@@ -291,6 +306,13 @@ def analyze_and_improve(state: dict) -> dict:
     stage_banner(2)
     logger.info("Node: analyze_and_improve")
 
+    # Skip if metrics were not refreshed this cycle — no new signal to learn from.
+    if not state.get("metrics_refreshed", True):
+        old_strategy = load_strategy()
+        ui_info("Metrics not refreshed — skipping strategy analysis, reusing current strategy.")
+        logger.info("Strategy analysis skipped (metrics_refreshed=False).")
+        return {**state, "strategy": old_strategy}
+
     # Load the previous strategy to diff against
     old_strategy = load_strategy()
 
@@ -300,13 +322,13 @@ def analyze_and_improve(state: dict) -> dict:
         logger.info("Not enough history (%d records) — using current strategy.", len(history))
         return {**state, "strategy": old_strategy}
 
-    history_slice = history[-ANALYZE_LAST_N:]
+    history_slice = history[-config.ANALYZE_LAST_N:]
     current_scaffold = old_strategy.get("scaffold", _DEFAULT_SCAFFOLD)
     frozen, cefr_counts_pre = _cefr_frozen(history)
-    prompt = _build_analysis_prompt(history_slice, current_scaffold, funny_mode=FUNNY_MODE, cefr_frozen=frozen)
+    prompt = _build_analysis_prompt(history_slice, current_scaffold, funny_mode=config.FUNNY_MODE, cefr_frozen=frozen)
 
     strategy_ai = _get_strategy_ai()
-    model_label = "grok-reasoning" if (AI_PROVIDER == "grok" and STRATEGY_MODEL == "reasoning") else "default"
+    model_label = "grok-reasoning" if (config.AI_PROVIDER == "grok" and config.STRATEGY_MODEL == "reasoning") else "default"
     logger.info("Running strategy analysis with model: %s", model_label)
 
     raw_strategy: str = retry_call(
@@ -331,10 +353,10 @@ def analyze_and_improve(state: dict) -> dict:
         merged["preferred_cefr"] = ", ".join(_ALL_CEFR_LEVELS)
         # Safety-net: strip any stray CEFR level tokens the LLM may have written into 'focus'
         import re as _re
-        merged["focus"] = _re.sub(
+        merged["style"] = _re.sub(
             r"\b(A1|A2|B1|B2|C1|C2)\b[\s,/]*",
             "",
-            merged.get("focus", ""),
+            merged.get("style", ""),
             flags=_re.IGNORECASE,
         ).strip(" ,;—-")
         under = {lvl: n for lvl, n in cefr_counts_pre.items() if n < _CEFR_MIN_TWEETS}
@@ -356,8 +378,8 @@ def analyze_and_improve(state: dict) -> dict:
     _save_strategy(merged)
     _append_strategy_history(merged)
 
-    ok(f"Strategy saved — CEFR: {merged['preferred_cefr']} | Focus: {merged['focus'] or 'none'}")
-    ui_info(f"Themes: {merged['preferred_themes']}")
+    ok(f"Strategy saved — CEFR: {merged['preferred_cefr']} | Style: {merged['style'] or 'none'}")
+    ui_info(f"Next topic: {merged['next_topic'] or 'none'}")
     ui_info(f"Avoiding {len(merged['avoid_words'])} recent word(s)")
     logger.info("Updated strategy: %s", {k: v for k, v in merged.items() if k != "avoid_words"})
     logger.info("Avoid words (%d): %s", len(merged["avoid_words"]), merged["avoid_words"][-10:])

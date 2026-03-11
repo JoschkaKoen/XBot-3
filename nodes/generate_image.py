@@ -1,9 +1,14 @@
 """
 Node: generate_image
 
-Generates a Midjourney prompt via LLM, submits to Midjourney via TTAPI,
-polls until done, downloads all images, and picks the best one using
-ImageReward-v1.0. Falls back to the first image if the model is unavailable.
+Generates an image prompt via LLM, then submits to the configured image
+provider (Midjourney via TTAPI, or xAI Grok Imagine), polls until done,
+downloads all images, and picks the best one using ImageReward-v1.0.
+Falls back to the first image if the ranker model is unavailable.
+
+IMAGE_PROVIDER setting controls which backend is used:
+  "midjourney" (default) — requires TT_API_KEY
+  "grok"                 — requires XAI_API_KEY
 """
 
 import os
@@ -13,7 +18,8 @@ import requests
 from typing import List
 from datetime import datetime
 
-from config import TT_API_KEY, IMAGES_DIR, FUNNY_MODE, FLAG_OVERLAY
+import config
+from config import TT_API_KEY, IMAGES_DIR, resolve_image_style
 from services.ai_client import get_ai_response
 from services.image_ranker import pick_best_image
 from utils.retry import retry_call, with_retry
@@ -106,7 +112,92 @@ class MidjourneyClient:
         return paths
 
 
-_mj_client = MidjourneyClient()
+# ── Grok Imagine client ───────────────────────────────────────────────────────
+
+_GROK_IMAGE_MODEL = "grok-imagine-image"
+_XAI_BASE_URL = "https://api.x.ai/v1"
+
+
+class GrokImagineClient:
+    """Image generation via the xAI Grok Imagine API."""
+
+    def __init__(self):
+        self._api_key = os.getenv("XAI_API_KEY", "")
+        if not self._api_key:
+            raise ValueError("❌ XAI_API_KEY not found in .env — required for IMAGE_PROVIDER=grok")
+        os.makedirs(IMAGES_DIR, exist_ok=True)
+
+    def _headers(self) -> dict:
+        return {
+            "Authorization": f"Bearer {self._api_key}",
+            "Content-Type": "application/json",
+        }
+
+    @with_retry(max_attempts=3, base_delay=2.0, label="grok_download")
+    def _download_image(self, img_url: str, idx: int) -> str:
+        resp = requests.get(img_url, stream=True, timeout=60)
+        resp.raise_for_status()
+        ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+        filename = f"grok_{ts}_{idx}.png"
+        path = os.path.join(IMAGES_DIR, filename)
+        with open(path, "wb") as f:
+            for chunk in resp.iter_content(8192):
+                f.write(chunk)
+        logger.debug("Downloaded Grok image → %s", path)
+        return path
+
+    def generate(self, prompt: str, n: int = 1, aspect_ratio: str = "16:9") -> List[str]:
+        payload = {
+            "model": _GROK_IMAGE_MODEL,
+            "prompt": prompt,
+            "n": n,
+            "aspect_ratio": aspect_ratio,
+            "response_format": "url",
+        }
+        print(f"\r  ⏳  Requesting {n} image(s) from Grok Imagine …", flush=True)
+        resp = requests.post(
+            f"{_XAI_BASE_URL}/images/generations",
+            headers=self._headers(),
+            json=payload,
+            timeout=120,
+        )
+        resp.raise_for_status()
+        data = resp.json()
+        items = data.get("data", [])
+        if not items:
+            raise RuntimeError(f"Grok Imagine returned no images: {data}")
+        print()
+        logger.info("Grok Imagine returned %d image(s).", len(items))
+        paths = []
+        for i, item in enumerate(items):
+            url = item.get("url") or item.get("b64_json")
+            if not url:
+                logger.warning("Grok Imagine item %d has no URL — skipping.", i + 1)
+                continue
+            if url.startswith("data:") or not url.startswith("http"):
+                # base64 fallback
+                import base64
+                b64 = url.split(",", 1)[-1] if "," in url else url
+                ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+                filename = f"grok_{ts}_{i + 1}.png"
+                path = os.path.join(IMAGES_DIR, filename)
+                with open(path, "wb") as f:
+                    f.write(base64.b64decode(b64))
+                logger.debug("Saved Grok b64 image → %s", path)
+                paths.append(path)
+            else:
+                paths.append(self._download_image(url, i + 1))
+        if not paths:
+            raise RuntimeError("Grok Imagine: all returned items had no usable image data.")
+        return paths
+
+
+# ── lazy client init (only the active provider is instantiated) ───────────────
+
+def _make_client():
+    if config.IMAGE_PROVIDER == "grok":
+        return GrokImagineClient()
+    return MidjourneyClient()
 
 
 # ── flag overlay (PIL, applied after image download) ──────────────────────────
@@ -205,8 +296,12 @@ def generate_image(state: dict) -> dict:
     article: str     = state.get("article", "")
     german_word: str = state.get("german_word", "")
     full_tweet: str  = state.get("full_tweet", "")
+    cycle: int       = state.get("cycle", 0)
+    image_style: str = resolve_image_style(cycle)
+    logger.info("Image style for cycle %d: %s", cycle, image_style)
+    _image_client = _make_client()
 
-    # Build a gender hint so Midjourney shows the right sex when the word is
+    # Build a gender hint so the image shows the right sex when the word is
     # a gendered noun (der → male, die → female, das / non-noun → no hint).
     gender_hint = ""
     if article == "der":
@@ -220,138 +315,252 @@ def generate_image(state: dict) -> dict:
             "If the image shows a person, they must be clearly female (a woman or a girl)."
         )
 
-    # 1. Generate Midjourney prompt via LLM
+    # 1. Generate image prompt via LLM
+    _param_flag_rule = (
+        "- Do NOT include any parameter flags (no --v, --q, --style, --ar, etc.) — they are added automatically\n"
+        if config.IMAGE_PROVIDER == "midjourney" else
+        "- Do NOT include any parameter flags (no --v, --q, --style, --ar, etc.)\n"
+    )
     _RULES = (
         "\n\nRULES:\n"
         "- Output ONLY the image description — no explanations, no preamble, no markdown\n"
-        "- Do NOT include any parameter flags (no --v, --q, --style, --ar, etc.) — they are added automatically\n"
+        + _param_flag_rule +
         "- Do NOT use double hyphens (--) anywhere in the text\n"
         "- Do NOT use quotation marks in the output"
     )
 
-    _IMMERSIVE = (
-        "Frame the shot so the viewer feels placed directly inside the scene: "
-        "The composition should feel lived-in and immediate, as if the viewer just walked into the moment. "
-    )
-
-    _CLEAN_AESTHETIC = (
-        "Composition: ONE clear subject, uncluttered frame, minimal background elements. "
-        "The joke or mood must be immediately readable at a glance — never crowd the scene. "
-    )
-
-    _AESTHETIC = (
-        "Aesthetics: make this image genuinely beautiful — not just technically correct. "
-        "Think carefully about: harmonious colour palette (warm, vibrant, or richly contrasted), "
-        "flattering and dramatic natural light (golden hour, soft side-light, or crisp morning sun), "
-        "shallow depth of field to isolate the subject against a beautifully blurred background, "
-        "and a composition that would stop someone mid-scroll. "
-        "The image should look like a professional editorial photo that people want to share for its looks alone. "
-    )
-
-    if FUNNY_MODE and example_de:
-        tweet_context = f"Full tweet:\n{full_tweet}\n\n" if full_tweet else ""
-        mj_req = (
-            "A German learning tweet contains a joke. Your job is to create a Midjourney prompt that is "
-            "BOTH visually stunning AND makes the punchline of the joke instantly obvious.\n\n"
-            f"{tweet_context}"
-            f"German sentence: \"{example_de}\"\n"
-            f"English sentence: \"{example_en}\"\n\n"
-            "Step 1 — Identify the punchline: find the ironic twist, the subverted expectation, or the absurd contrast.\n"
-            "Step 2 — Stage it visually: design a scene that shows the punchline in action with exaggerated expressions "
-            "or body language. The comedy must land from the image alone — the viewer should laugh before reading the tweet.\n"
-            "Step 3 — Make it beautiful: apply deliberate aesthetic choices — golden-hour light, rich colours, "
-            "shallow depth of field, a composition worth sharing for its looks alone. "
-            "Beauty and humour must coexist: a stunning image that is also funny.\n"
-            "Step 4 — Keep it clean and readable: ONE subject, ONE joke, uncluttered frame.\n"
-            "Step 5 — Keep it positive: warm, light-hearted, family-friendly. "
-            "The viewer should feel amused and uplifted — never unsettled.\n\n"
-            f"{_IMMERSIVE}"
-            f"{_CLEAN_AESTHETIC}"
-            f"{_AESTHETIC}"
-            "Photorealistic photography, NOT illustration or cartoon."
-            f"{gender_hint}"
-            f"{_RULES}"
+    # ── Disney / Pixar style prompts ──────────────────────────────────────────
+    if image_style == "disney":
+        _DISNEY_AESTHETIC = (
+            "Style: polished 3D CGI animation in the style of Pixar and Walt Disney. "
+            "Stylised shapes with clear, confident silhouettes. "
+            "Characters have expressive eyes and readable facial features — personality-driven, not overly saccharine. "
+            "Colour palette: rich, harmonious tones — warm ambers, deep blues, forest greens, and saturated accents "
+            "grounded by neutral mid-tones. "
+            "Lighting: cinematic directional light with strong contrast, rim highlights, and atmospheric depth, "
+            "as if lit for a Pixar feature film. "
+            "Background: a purposeful environment with painterly detail, soft depth of field, and clear visual hierarchy. "
+            "Everything feels polished, characterful, and cinematic. "
+            "The image should look like a still from a Pixar or Disney animated feature."
         )
-        system_prompt = (
-            "You are an expert Midjourney prompt engineer who creates images that are both visually stunning "
-            "and instantly funny. Your prompts always combine two things: (1) a clear visual punchline that "
-            "lands from the image alone, and (2) deliberately beautiful aesthetics — perfect light, rich colours, "
-            "shallow depth of field, editorial composition. "
-            "You never sacrifice beauty for the joke or the joke for beauty — the best prompt delivers both. "
-            "Humour is always warm and family-friendly. "
-            "Always include specific camera model, lens, and lighting descriptors (e.g. 'shot on Sony A7IV, 50mm f/1.4, golden hour backlight'). "
-            "Never use words like 'painting', 'illustration', 'artistic', 'rendered', 'digital art'. "
-            "No parameter flags. No double hyphens. Output only the description."
-        )
+        _DISNEY_GENDER = ""
+        if article == "der":
+            _DISNEY_GENDER = (
+                f' The main character represents the German word "{german_word}" (masculine — der). '
+                "If the scene shows a person or character, make them clearly male."
+            )
+        elif article == "die":
+            _DISNEY_GENDER = (
+                f' The main character represents the German word "{german_word}" (feminine — die). '
+                "If the scene shows a person or character, make them clearly female."
+            )
+
+        if config.FUNNY_MODE and example_de:
+            tweet_context = f"Full tweet:\n{full_tweet}\n\n" if full_tweet else ""
+            img_req = (
+                "A German learning tweet contains a joke. "
+                "Create an image generation prompt for a Disney/Pixar-style 3D animated scene "
+                "that shows the punchline of the joke clearly and with visual wit.\n\n"
+                f"{tweet_context}"
+                f"German sentence: \"{example_de}\"\n"
+                f"English sentence: \"{example_en}\"\n\n"
+                "Step 1 — Identify the punchline: find the ironic twist, absurd contrast, or subverted expectation.\n"
+                "Step 2 — Stage it visually: use expressive body language and facial expressions to land the joke — "
+                "the comedy should be immediately readable from the image alone.\n"
+                "Step 3 — Make it cinematic and polished: deliberate lighting, strong composition, rich colours. "
+                "Think of a memorable frame from a Pixar feature — that level of craft and visual storytelling.\n"
+                "Step 4 — Keep it clean: ONE main character, ONE clear joke, uncluttered focused background.\n"
+                "Step 5 — Keep it family-friendly: warm, uplifting, never dark or unsettling.\n\n"
+                f"{_DISNEY_AESTHETIC}"
+                f"{_DISNEY_GENDER}"
+                f"{_RULES}"
+            )
+            system_prompt = (
+                "You are an expert Disney/Pixar 3D animation prompt engineer. "
+                "You write image prompts that produce polished, expressive, and funny animated stills. "
+                "Every prompt you write feels like a frame from a Pixar feature: "
+                "strong character silhouettes, expressive faces, cinematic lighting, rich cohesive colours. "
+                "Humour is conveyed through clear visual storytelling and expressive performance, never saccharine excess. "
+                "Never mention photography, cameras, lenses, or film. "
+                "No parameter flags. No double hyphens. Output only the image description."
+            )
+        else:
+            img_req = (
+                "Create an image generation prompt for a Disney/Pixar-style 3D animated scene.\n\n"
+                f"Sentence: \"{example_en}\"\n\n"
+                "Design a visually compelling, characterful scene that brings this sentence to life. "
+                "Characters should have expressive features and strong readable silhouettes. "
+                "The scene should look like a cinematic still from a Pixar or Disney animated feature — "
+                "polished, purposeful, and full of personality without being saccharine.\n\n"
+                f"{_DISNEY_AESTHETIC}"
+                f"{_DISNEY_GENDER}"
+                "No text in the image."
+                f"{_RULES}"
+            )
+            system_prompt = (
+                "You are an expert Disney/Pixar 3D animation prompt engineer. "
+                "You write image prompts that produce cinematic, expressive, Pixar-quality stills. "
+                "Strong character design, deliberate lighting, rich cohesive colour palette — "
+                "every element should feel polished, purposeful, and full of personality. "
+                "Avoid over-sweetening: aim for charming and engaging, not saccharine. "
+                "Never mention photography, cameras, lenses, or film. "
+                "No parameter flags. No double hyphens. Output only the image description."
+            )
+
+    # ── Photographic style prompts (default) ──────────────────────────────────
     else:
-        mj_req = (
-            "Generate a Midjourney prompt for a photorealistic, aesthetically stunning 16:9 photograph.\n\n"
-            f"Sentence: \"{example_en}\"\n\n"
-            f"{_IMMERSIVE}"
-            f"{_CLEAN_AESTHETIC}"
-            f"{_AESTHETIC}"
-            "No text in the image."
-            f"{gender_hint}"
-            f"{_RULES}"
+        _IMMERSIVE = (
+            "Frame the shot so the viewer feels placed directly inside the scene: "
+            "The composition should feel lived-in and immediate, as if the viewer just walked into the moment. "
         )
-        system_prompt = (
-            "You are an expert Midjourney prompt engineer who creates images that look like professional "
-            "editorial photography. Every prompt you write is deliberately beautiful: perfect light, "
-            "rich harmonious colours, shallow depth of field, and a composition people want to share. "
-            "ONE clear subject, uncluttered frame — every element serves the main subject. "
-            "Always include specific camera model, lens, and lighting descriptors (e.g. 'shot on Sony A7IV, 50mm f/1.4, golden hour'). "
-            "Never use words like 'painting', 'illustration', 'artistic', 'rendered', 'digital art'. "
-            "No parameter flags. No double hyphens. Output only the description."
+        _CLEAN_AESTHETIC = (
+            "Composition: ONE clear subject, uncluttered frame, minimal background elements. "
+            "The joke or mood must be immediately readable at a glance — never crowd the scene. "
+        )
+        _AESTHETIC = (
+            "Aesthetics: make this image genuinely beautiful — not just technically correct. "
+            "Think carefully about: harmonious colour palette (warm, vibrant, or richly contrasted), "
+            "flattering and dramatic natural light (golden hour, soft side-light, or crisp morning sun), "
+            "shallow depth of field to isolate the subject against a beautifully blurred background, "
+            "and a composition that would stop someone mid-scroll. "
+            "The image should look like a professional editorial photo that people want to share for its looks alone. "
         )
 
-    midjourney_prompt: str = retry_call(
+        if config.FUNNY_MODE and example_de:
+            tweet_context = f"Full tweet:\n{full_tweet}\n\n" if full_tweet else ""
+            img_req = (
+                "A German learning tweet contains a joke. Your job is to create an image generation prompt that is "
+                "BOTH visually stunning AND makes the punchline of the joke instantly obvious.\n\n"
+                f"{tweet_context}"
+                f"German sentence: \"{example_de}\"\n"
+                f"English sentence: \"{example_en}\"\n\n"
+                "Step 1 — Identify the punchline: find the ironic twist, the subverted expectation, or the absurd contrast.\n"
+                "Step 2 — Stage it visually: design a scene that shows the punchline in action with exaggerated expressions "
+                "or body language. The comedy must land from the image alone — the viewer should laugh before reading the tweet.\n"
+                "Step 3 — Make it beautiful: apply deliberate aesthetic choices — golden-hour light, rich colours, "
+                "shallow depth of field, a composition worth sharing for its looks alone. "
+                "Beauty and humour must coexist: a stunning image that is also funny.\n"
+                "Step 4 — Keep it clean and readable: ONE subject, ONE joke, uncluttered frame.\n"
+                "Step 5 — Keep it positive: warm, light-hearted, family-friendly. "
+                "The viewer should feel amused and uplifted — never unsettled.\n"
+                "IMPORTANT: If the scene is absurd or impossible in real life (e.g. a walking cake, "
+                "a talking animal, an object behaving like a person), do NOT render it photorealistically — "
+                "that would look disturbing or uncanny. Instead, describe it as a charming 3D render in "
+                "a Pixar/Disney style: soft rounded shapes, pastel colours, big expressive eyes, warm lighting. "
+                "Cute and whimsical always beats realistic for impossible subjects.\n\n"
+                f"{_IMMERSIVE}"
+                f"{_CLEAN_AESTHETIC}"
+                f"{_AESTHETIC}"
+                "Photorealistic photography, NOT illustration or cartoon."
+                f"{gender_hint}"
+                f"{_RULES}"
+            )
+            system_prompt = (
+                "You are an expert image generation prompt engineer who creates images that are both visually stunning "
+                "and instantly funny. Your prompts always combine two things: (1) a clear visual punchline that "
+                "lands from the image alone, and (2) deliberately beautiful aesthetics — perfect light, rich colours, "
+                "shallow depth of field, editorial composition. "
+                "You never sacrifice beauty for the joke or the joke for beauty — the best prompt delivers both. "
+                "Humour is always warm and family-friendly. "
+                "EXCEPTION — absurd or impossible subjects: if the scene involves something physically impossible "
+                "(e.g. a walking food item, a talking object, an animal in a human role), do NOT render it "
+                "photorealistically — that looks uncanny and disturbing. Instead use a charming Pixar/Disney 3D "
+                "render style: soft rounded shapes, pastel tones, big expressive eyes, warm lighting. "
+                "For all other (realistic) scenes: always include specific camera model, lens, and lighting "
+                "descriptors (e.g. 'shot on Sony A7IV, 50mm f/1.4, golden hour backlight'). "
+                "Never use words like 'painting', 'illustration', 'artistic', 'rendered', 'digital art'. "
+                "No parameter flags. No double hyphens. Output only the description."
+            )
+        else:
+            img_req = (
+                "Generate an image generation prompt for a photorealistic, aesthetically stunning 16:9 photograph.\n\n"
+                f"Sentence: \"{example_en}\"\n\n"
+                f"{_IMMERSIVE}"
+                f"{_CLEAN_AESTHETIC}"
+                f"{_AESTHETIC}"
+                "No text in the image."
+                f"{gender_hint}"
+                f"{_RULES}"
+            )
+            system_prompt = (
+                "You are an expert image generation prompt engineer who creates images that look like professional "
+                "editorial photography. Every prompt you write is deliberately beautiful: perfect light, "
+                "rich harmonious colours, shallow depth of field, and a composition people want to share. "
+                "ONE clear subject, uncluttered frame — every element serves the main subject. "
+                "Always include specific camera model, lens, and lighting descriptors (e.g. 'shot on Sony A7IV, 50mm f/1.4, golden hour'). "
+                "Never use words like 'painting', 'illustration', 'artistic', 'rendered', 'digital art'. "
+                "No parameter flags. No double hyphens. Output only the description."
+            )
+
+    image_prompt: str = retry_call(
         get_ai_response,
-        mj_req,
+        img_req,
         system_prompt,
         max_tokens=400,
         temperature=0.8,
-        label="mj_prompt",
+        label="img_prompt",
     ).strip()
 
-    # Strip any --parameter flags the AI may have included despite instructions,
-    # and replace any curly/smart quotes with straight ones to avoid parsing issues.
+    # Clean up smart/curly quotes that can cause API parsing issues.
     import re
-    midjourney_prompt = re.sub(r"\s*--\w[\w\d]*.*$", "", midjourney_prompt).strip()
-    midjourney_prompt = midjourney_prompt.replace("\u2018", "'").replace("\u2019", "'").replace("\u201c", "").replace("\u201d", "")
-    PHOTO_SUFFIX = (
-        ", shot on Canon EOS R5, 35mm lens, natural lighting, "
-        "RAW photo, ultra realistic, 8k UHD, "
-        "positive joyful atmosphere, warm and welcoming, bright uplifting mood"
-    )
-    midjourney_prompt = midjourney_prompt.rstrip(".") + PHOTO_SUFFIX
-    logger.debug("Midjourney prompt: %s", midjourney_prompt)
-    print(f"  Prompt: {midjourney_prompt}", flush=True)
+    image_prompt = image_prompt.replace("\u2018", "'").replace("\u2019", "'").replace("\u201c", "").replace("\u201d", "")
 
-    # 2. Generate images
-    image_paths = retry_call(
-        _mj_client.generate,
-        midjourney_prompt,
-        mode="fast",
-        aspect_ratio="16:9",
-        max_attempts=3,
-        base_delay=5.0,
-        label="mj_generate",
-    )
+    if config.IMAGE_PROVIDER == "midjourney":
+        # Strip any --parameter flags the AI may have included despite instructions.
+        image_prompt = re.sub(r"\s*--\w[\w\d]*.*$", "", image_prompt).strip()
+        if image_style == "disney":
+            STYLE_SUFFIX = (
+                ", Pixar 3D animation style, expressive character design, "
+                "strong silhouettes, cinematic directional lighting, rich saturated colours, "
+                "8K render, polished and characterful"
+            )
+        else:
+            STYLE_SUFFIX = (
+                ", shot on Canon EOS R5, 35mm lens, natural lighting, "
+                "RAW photo, ultra realistic, 8k UHD, "
+                "positive joyful atmosphere, warm and welcoming, bright uplifting mood"
+            )
+        image_prompt = image_prompt.rstrip(".") + STYLE_SUFFIX
+
+    logger.debug("Image prompt (%s): %s", config.IMAGE_PROVIDER, image_prompt)
+    print(f"  Prompt: {image_prompt}", flush=True)
+
+    # 2. Generate images via the configured provider
+    if config.IMAGE_PROVIDER == "grok":
+        image_paths = retry_call(
+            _image_client.generate,
+            image_prompt,
+            n=config.GROK_IMAGE_COUNT,
+            aspect_ratio="16:9",
+            max_attempts=3,
+            base_delay=5.0,
+            label="grok_generate",
+        )
+    else:
+        image_paths = retry_call(
+            _image_client.generate,
+            image_prompt,
+            mode="fast",
+            aspect_ratio="16:9",
+            max_attempts=3,
+            base_delay=5.0,
+            label="mj_generate",
+        )
 
     # 3. Rank images with ImageReward and pick the best one
-    # Use the English example sentence as the scoring prompt — it's the closest
-    # natural-language description of what we wanted the image to depict.
+    # Use the image prompt as the scoring reference — closest natural-language
+    # description of what we wanted the image to depict.
     print(f"  ⏳  Ranking {len(image_paths)} images with ImageReward …", flush=True)
-    chosen = pick_best_image(midjourney_prompt, image_paths)
+    chosen = pick_best_image(image_prompt, image_paths)
     idx = image_paths.index(chosen) + 1
     ok(f"Best image: #{idx}/{len(image_paths)} → {os.path.basename(chosen)}")
     logger.info("Best image selected: %s (from %d options)", chosen, len(image_paths))
 
-    if FLAG_OVERLAY:
+    if config.FLAG_OVERLAY:
         _overlay_flags(chosen)
 
     return {
         **state,
-        "midjourney_prompt": midjourney_prompt,
+        "midjourney_prompt": image_prompt,   # key kept for backwards compatibility
         "image_path": chosen,
     }

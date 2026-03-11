@@ -1,0 +1,83 @@
+[
+  {
+    "name": "Classic",
+    "template": [
+      "#DeutschLernen [LEVEL]",
+      "",
+      "🇩🇪  [ARTICLE] [GERMAN_WORD]",
+      "🇺🇸  [ENGLISH_TRANSLATION]  [EMOJI1][EMOJI1]",
+      "",
+      "🇩🇪  [SHORT_FUNNY_GERMAN_SENTENCE]",
+      "🇺🇸  [ENGLISH_TRANSLATION_OF_SENTENCE]  [EMOJI2][EMOJI2]"
+    ]
+  },
+  {
+    "name": "Flip Card",
+    "template": [
+      "🇩🇪 → 🇺🇸",
+      "",
+      "[ARTICLE] [GERMAN_WORD] = [ENGLISH_TRANSLATION]  [EMOJI1][EMOJI1]",
+      "",
+      "📝  [SHORT_FUNNY_GERMAN_SENTENCE]",
+      "✏️  [ENGLISH_TRANSLATION_OF_SENTENCE]  [EMOJI2][EMOJI2]",
+      "",
+      "#DeutschLernen [LEVEL]"
+    ]
+  },
+  {
+    "name": "Did You Know",
+    "template": [
+      "Did you know? 🤔",
+      "",
+      "🇩🇪  [ARTICLE] [GERMAN_WORD]  [EMOJI1][EMOJI1]",
+      "🇺🇸  [ENGLISH_TRANSLATION]",
+      "",
+      "🗣️  [SHORT_FUNNY_GERMAN_SENTENCE]",
+      "💬  [ENGLISH_TRANSLATION_OF_SENTENCE]  [EMOJI2][EMOJI2]",
+      "",
+      "#DeutschLernen [LEVEL]"
+    ]
+  },
+  {
+    "name": "Word of the Day",
+    "template": [
+      "🇩🇪  Word of the Day  [EMOJI1][EMOJI1]",
+      "",
+      "[ARTICLE] [GERMAN_WORD]",
+      "→ [ENGLISH_TRANSLATION]",
+      "",
+      "🇩🇪  [SHORT_FUNNY_GERMAN_SENTENCE]",
+      "🇺🇸  [ENGLISH_TRANSLATION_OF_SENTENCE]  [EMOJI2][EMOJI2]",
+      "",
+      "#DeutschLernen [LEVEL]"
+    ]
+  },
+  {
+    "name": "Reply Challenge",
+    "template": [
+      "🧠  New German word!  #DeutschLernen [LEVEL]",
+      "",
+      "🇩🇪  [ARTICLE] [GERMAN_WORD]  [EMOJI1][EMOJI1]",
+      "🇺🇸  [ENGLISH_TRANSLATION]",
+      "",
+      "🇩🇪  [SHORT_FUNNY_GERMAN_SENTENCE]",
+      "🇺🇸  [ENGLISH_TRANSLATION_OF_SENTENCE]  [EMOJI2][EMOJI2]",
+      "",
+      "↩️  Reply with your own sentence!"
+    ]
+  },
+  {
+    "name": "Pro Tip",
+    "template": [
+      "💡  #DeutschLernen [LEVEL]",
+      "",
+      "🇩🇪  [ARTICLE] [GERMAN_WORD]",
+      "🇺🇸  [ENGLISH_TRANSLATION]  [EMOJI1][EMOJI1]",
+      "",
+      "\u201e[SHORT_FUNNY_GERMAN_SENTENCE]\u201c",
+      "= [ENGLISH_TRANSLATION_OF_SENTENCE]  [EMOJI2][EMOJI2]",
+      "",
+      "🔖 Save for later!"
+    ]
+  }
+]

@@ -11,7 +11,7 @@ import logging
 import string
 from typing import Any, Optional
 
-from config import USE_TRENDS, SENTENCE_MODEL, AI_PROVIDER, FUNNY_MODE
+import config
 from services.ai_client import get_ai_response
 from services.x_trends import get_germany_trends
 from utils.retry import retry_call
@@ -20,14 +20,48 @@ from utils.ui import stage_banner, ok, tweet_box, info, warn as ui_warn
 
 def _get_tweet_ai() -> callable:
     """Return the AI function to use for tweet generation."""
-    if AI_PROVIDER == "grok":
-        if SENTENCE_MODEL == "flagship":
+    if config.AI_PROVIDER == "grok":
+        if config.TWEET_MODEL == "flagship":
             from services.grok_ai import get_grok_flagship_response
             return get_grok_flagship_response
-        if SENTENCE_MODEL == "reasoning":
+        if config.TWEET_MODEL == "reasoning":
             from services.grok_ai import get_grok_reasoning_response
             return get_grok_reasoning_response
     return get_ai_response
+
+
+def _get_tweet_picker_ai() -> callable:
+    """Return the AI function to use for picking the best tweet candidate (TWEET_PICKER_MODEL)."""
+    return _model_to_ai_fn(TWEET_PICKER_MODEL)
+
+
+def _model_to_ai_fn(model: str) -> callable:
+    """Resolve a model name string to the corresponding Grok AI function."""
+    if config.AI_PROVIDER == "grok":
+        if model == "flagship":
+            from services.grok_ai import get_grok_flagship_response
+            return get_grok_flagship_response
+        if model == "reasoning":
+            from services.grok_ai import get_grok_reasoning_response
+            return get_grok_reasoning_response
+        from services.grok_ai import get_grok_response
+        return get_grok_response
+    return get_ai_response
+
+
+def _get_trend_filter_ai() -> callable:
+    """AI function for filtering trend keywords (TREND_FILTER_MODEL)."""
+    return _model_to_ai_fn(config.TREND_FILTER_MODEL)
+
+
+def _get_word_pick_ai() -> callable:
+    """AI function for free-form word selection (WORD_PICK_MODEL)."""
+    return _model_to_ai_fn(config.WORD_PICK_MODEL)
+
+
+def _get_similarity_ai() -> callable:
+    """AI function for semantic duplicate / similarity check (SIMILARITY_MODEL)."""
+    return _model_to_ai_fn(config.SIMILARITY_MODEL)
 
 
 def _load_strategy_from_file() -> dict:
@@ -69,21 +103,26 @@ def _truncate_emoji_pairs(tweet: str) -> str:
 
 
 def _build_word_prompt(strategy: dict) -> str:
-    focus = strategy.get("focus", "")
+    style = strategy.get("style", "")
+    next_topic = strategy.get("next_topic", "")
     cefr_hint = strategy.get("preferred_cefr", "A1, A2, B1, B2, C1, C2")
-    theme_hint = strategy.get("preferred_themes", "food, travel, daily life, emotions")
     avoid = strategy.get("avoid_words", [])
     avoid_str = ", ".join(avoid[-20:]) if avoid else "none"
+
+    topic_line = f"- Thema / Fokus für diesen Tweet: {next_topic}\n" if next_topic else ""
+    style_line  = f"- Stilhinweis: {style}\n" if style else ""
 
     return (
         "Du bist ein Deutschlehrer und erstellst Inhalte für einen X-Account, "
         "der englischsprachigen Nutzern deutsche Vokabeln beibringt.\n\n"
         "Wähle GENAU EIN deutsches Wort (Nomen, Verb, Adjektiv oder gebräuchliche Phrase), das:\n"
+        f"- Häufig vorkommt und im echten Alltag weit verbreitet ist (kein Fachwort, kein seltenes Wort)\n"
+        f"- Eine positive oder neutrale Bedeutung hat — vermeide Wörter mit negativer, trauriger oder bedrückender Konnotation\n"
         f"- Im Alltag praktisch und nützlich ist\n"
         f"- Zu einem dieser GER-Niveaus passt: {cefr_hint}\n"
-        f"- Einem dieser Themen entspricht: {theme_hint}\n"
+        f"{topic_line}"
         f"- Nicht kürzlich verwendet wurde (vermeiden: {avoid_str})\n"
-        f"{'- Zusätzlicher Fokus: ' + focus if focus else ''}\n\n"
+        f"{style_line}\n"
         "Antworte NUR mit einem gültigen JSON-Objekt – keine Erklärung, kein Artikel außer im JSON:\n"
         '{"word": "<das deutsche Wort ohne Artikel>", "cefr": "<A1|A2|B1|B2|C1|C2>"}'
     )
@@ -96,10 +135,14 @@ def _build_tweet_prompt(
     top_tweets: list,
     cefr_level: str = "",
     extra_instruction: str = "",
+    word_from_trends: bool = False,
 ) -> str:
     preferred_cefr = strategy.get("preferred_cefr", "A1, A2, B1, B2, C1, C2")
-    preferred_themes = strategy.get("preferred_themes", "food, travel, daily life, emotions")
-    focus = strategy.get("focus", "")
+    # next_topic and style only make sense when the word was chosen freely (not from trends).
+    # When word_from_trends=True the topic is already fixed by the trend; injecting a
+    # separate next_topic would contradict the chosen word.
+    next_topic = "" if word_from_trends else strategy.get("next_topic", "")
+    style      = "" if word_from_trends else strategy.get("style", "")
 
     examples_section = ""
     for i, tweet in enumerate(top_tweets[:3], 1):
@@ -110,43 +153,32 @@ def _build_tweet_prompt(
         examples_section = "\n(No past tweets available yet)\n"
 
     funny_tone_section = ""
-    if FUNNY_MODE:
+    if config.FUNNY_MODE:
         funny_tone_section = (
-            "## Tone — FUNNY IS MANDATORY\n"
-            "The example sentence MUST be genuinely funny. A sentence that is merely pleasant, warm, or relatable is NOT acceptable.\n"
-            "Every sentence must have a real punchline: a twist, a subverted expectation, a self-aware absurdity, or a dry ironic contrast.\n\n"
-            "Techniques that work well:\n"
-            "- Set up a reasonable expectation, then knock it down in the same sentence (e.g. 'Schön wäre es, den Montag zu überspringen.')\n"
-            "- Self-aware irony: the speaker admits something silly or embarrassing about themselves\n"
-            "- Dry understatement: describe something obviously painful or absurd as if it were normal\n"
-            "- Contrast two things that don't belong together\n\n"
-            "Examples of the right tone:\n"
-            "- 'Ich brauche keine Motivation — ich brauche Kaffee.' (subverted expectation)\n"
-            "- 'Mit genug Ausdauer schafft man alles. Außer vielleicht den frühen Bus.' (twist ending)\n"
-            "- 'Mein Wortschatz ist beeindruckend. Nur mein Mut, ihn zu benutzen, fehlt noch.' (self-aware irony)\n"
-            "- 'Das Wetter soll heute schön werden — sagt meine App zum dritten Mal diese Woche.' (dry sarcasm)\n\n"
-            "Self-test before finalising each candidate: 'Would a real person actually laugh or smirk at this?' "
-            "If the answer is no, rewrite it until it is funny.\n\n"
+            "## Tone\n"
+            "The example sentence MUST be genuinely very funny — it should make the reader laugh and smirk. "
+            "The humor should be positive and uplifting, not negative and cynical."
+            # "A sentence that is merely pleasant or informative is not acceptable.\n\n"
         )
 
     cefr_rule = (
-        f"- The CEFR level for this word is **{cefr_level}** — use exactly this level in the tweet\n"
-        f"- The grammar and vocabulary of the example sentence must match {cefr_level}: "
-        + (
-            "very simple present/past tense, everyday words, short sentences\n"
-            if cefr_level in ("A1", "A2") else
-            "moderate complexity, some subordinate clauses allowed\n"
-            if cefr_level in ("B1", "B2") else
-            "idiomatic expressions and complex structures are welcome\n"
-        )
+        f"- The CEFR level for this word is **{cefr_level}** — use this level in the tweet\n"
+        f"- The grammar and vocabulary of the example sentence should match {cefr_level}: "
+        # + (
+        #     "very simple present/past tense, everyday words, short sentences\n"
+        #     if cefr_level in ("A1", "A2") else
+        #     "moderate complexity, some subordinate clauses allowed\n"
+        #     if cefr_level in ("B1", "B2") else
+        #     "idiomatic expressions and complex structures are welcome\n"
+        # )
         if cefr_level else
         "- Pick an appropriate CEFR level (A1-C2) for this word\n"
-        "- The grammar and vocabulary of the example sentence must match the CEFR level: "
+        "- The grammar and vocabulary of the example sentence should match the CEFR level: "
         "A1/A2 → simple; B1/B2 → moderate; C1/C2 → complex/idiomatic\n"
     )
 
     prompt = (
-        "You are a German language teacher running a popular X (Twitter) account that teaches "
+        "You are a German language teacher and comedian running a very popular X (Twitter) account that teaches "
         "German to English speakers.\n\n"
         f"## Your task\n"
         f'Create a complete tweet about this German word: "{trending_word}"\n\n'
@@ -155,22 +187,31 @@ def _build_tweet_prompt(
         f"{funny_tone_section}"
         "## Rules\n"
         "- The German word must include the correct article (der/die/das) if it's a noun\n"
-        "- If the word has no grammatical article (adjective, phrase, verb, etc.), omit the [ARTICLE] slot entirely — write nothing before the word. NEVER write 'no known noun' in the tweet\n"
+        "- If the word has no grammatical article (adjective, phrase, verb, etc.), omit the [ARTICLE] slot entirely\n"
         f"{cefr_rule}"
-        "- The example sentence must be short, warm, and authentic — something a German would actually say\n"
-        "- Vary the sentence ending: most sentences should end with a period (.) — only use an exclamation mark (!) when it is genuinely funny or surprising, and occasionally use a question (?)\n"
+        #"- The example sentence must be short, warm, and authentic — something a German would actually say\n"
+        #"- Vary the sentence ending: most sentences should end with a period (.) — only use an exclamation mark (!) when it is genuinely funny or surprising, and occasionally use a question (?)\n"
         "- The example sentence MUST contain the exact word\n"
+        f"- The German example sentence must be at most {config.MAX_EXAMPLE_WORDS} words long\n"
         "- The English translations must be natural, not robotic\n"
-        "- Each line gets a pair of 2 identical emojis that visually represent the meaning\n"
-        "- The two emoji PAIRS must be DIFFERENT from each other "
-        "(e.g. 🚗🚗 for word line, 🎉🎉 for sentence line — NOT the same pair twice)\n"
-        "- Do NOT wrap the output in quotes or markdown\n\n"
+        "- The emojis should help the reader visually understand the meaning. Don't just use laughing emojis\n"
+       
+        # "- Each [EMOJI1] or [EMOJI2] placeholder stands for exactly ONE emoji character. "
+        # "The scaffold writes them twice (e.g. [EMOJI1][EMOJI1]) to show you should repeat the same emoji. "
+        # "Replace the entire [EMOJI1][EMOJI1] with exactly 2 identical emojis (e.g. 🚗🚗). "
+        # "Do NOT add any emojis beyond what the scaffold specifies.\n"
+        # "- Preserve the exact spacing from the scaffold: if the scaffold shows two spaces between an emoji and the text "
+        # "(e.g. '🇩🇪  [GERMAN_WORD]'), use exactly two spaces in the output. Do not collapse spaces or add more.\n"
+       
+        #"- Each line gets a pair of 2 identical emojis that visually represent the meaning\n"
+        # "- The two emoji PAIRS must be DIFFERENT from each other "
+        # "(e.g. 🚗🚗 for word line, 🎉🎉 for sentence line — NOT the same pair twice)\n"
+        # "- Do NOT wrap the output in quotes or markdown\n\n"
         "## Strategy guidance\n"
         f"- Preferred CEFR levels: {preferred_cefr}\n"
-        f"- Preferred themes: {preferred_themes}\n"
-        f"- Focus: {focus}\n\n"
-        "## Best-performing past tweets (imitate their style and quality):\n"
-        f"{examples_section}\n"
+        + (f"- Topic / angle for this tweet: {next_topic}\n" if next_topic else "")
+        + (f"- Style instruction: {style}\n" if style else "")
+        + "\n"
         "## Output\n"
         "Return ONLY a single valid JSON object with these fields:\n\n"
         "{\n"
@@ -181,7 +222,7 @@ def _build_tweet_prompt(
         '  "example_sentence_de": "<just the German example sentence>",\n'
         '  "example_sentence_en": "<just the English translation of the sentence>"\n'
         "}\n\n"
-        "No markdown. No explanation. Just the JSON object."
+        "Just the JSON object."
     )
 
     if extra_instruction:
@@ -198,26 +239,27 @@ def _call_tweet_ai(
     tweet_ai: callable,
     cefr_level: str = "",
     extra_instruction: str = "",
+    word_from_trends: bool = False,
 ) -> list:
     """Fire 3 parallel API calls, each generating one tweet candidate. Returns list of dicts."""
     import threading
     from concurrent.futures import ThreadPoolExecutor, as_completed
 
-    prompt = _build_tweet_prompt(trending_word, scaffold, strategy, top_tweets, cefr_level, extra_instruction)
-    if FUNNY_MODE:
+    prompt = _build_tweet_prompt(trending_word, scaffold, strategy, top_tweets, cefr_level, extra_instruction, word_from_trends=word_from_trends)
+    if config.FUNNY_MODE:
         system_prompt = (
-            "You are a German language teacher and comedy writer creating vocabulary content for X (Twitter). "
-            "Your hallmark is genuine wit — every example sentence you write has a real punchline. "
-            "You never settle for a sentence that is merely pleasant or relatable; it must make the reader smirk. "
+            "You are a German language teacher and comedy writer creating funny tweets for X (Twitter). "
+            "Every example sentence must be genuinely very funny — it must make the reader laugh."
+            "It should be positive and uplifting, not negative and cynical."
             "You always respond with valid JSON only."
         )
     else:
         system_prompt = (
-            "You are a German language teacher creating engaging vocabulary content for "
+            "You are a German language teacher and comedian creating funny and uplifting tweets for "
             "X (Twitter). You always respond with valid JSON only."
         )
 
-    _R    = "\033[0m"
+    _R = "\033[0m"
     _BOLD = "\033[1m"
     _CYAN = "\033[96m"
     _GRAY = "\033[90m"
@@ -268,10 +310,9 @@ def _call_tweet_ai(
 
 def _select_best_tweet(candidates: list, german_word: str, cefr_level: str) -> dict:
     """
-    Print all candidates to the terminal, use grok-4 (flagship) to pick the best one,
-    and highlight the winner. Falls back to the first candidate if selection fails.
+    Print all candidates to the terminal, use the configured TWEET_PICKER_MODEL to pick
+    the best one, and highlight the winner. Falls back to the first candidate if selection fails.
     """
-    from services.grok_ai import get_grok_flagship_response
 
     _R    = "\033[0m"
     _BOLD = "\033[1m"
@@ -288,26 +329,33 @@ def _select_best_tweet(candidates: list, german_word: str, cefr_level: str) -> d
         for i, c in enumerate(candidates)
     )
 
-    if FUNNY_MODE:
+    _fmt_instruction = (
+        "Your entire response must be exactly this format and nothing else:\n"
+        "<N> — <reason up to 12 words>\n"
+        "where <N> is the candidate number (1, 2 or 3). "
+        "Do NOT write 'Candidate', do NOT add any text before the number. "
+        "Example: 2 — sharpest punchline, warm and instantly relatable"
+    )
+
+    if config.FUNNY_MODE:
         selection_prompt = (
             f"You are evaluating {len(candidates)} German vocabulary tweet candidates for the word "
             f"'{german_word}' (CEFR: {cefr_level or 'unknown'}).\n\n"
             f"{numbered}\n\n"
-            "Pick the best candidate using exactly these two criteria, in this order:\n\n"
+            "Pick the BEST tweet using these criteria:\n"
             "1. FUNNINESS (primary): Which sentence has the sharpest punchline, the best ironic twist, "
             "or the most absurd contrast? Would a real person laugh or smirk? "
             "A genuinely funny tweet always beats a merely pleasant one.\n"
             "2. POSITIVITY (tiebreaker): If two candidates are equally funny, pick the one that feels "
             "warm, uplifting, and good-natured. Avoid anything that feels mean, cynical, or negative.\n\n"
-            "Reply with the winning number followed by a single short reason (max 12 words), e.g.:\n"
-            "2 — sharpest punchline, warm and instantly relatable\n\n"
+            f"{_fmt_instruction}\n\n"
             "Your answer:"
         )
         system_prompt_selector = (
-            "You are a comedy editor selecting the best German vocabulary tweet. "
+            "You are a comedy editor selecting the funniest German vocabulary tweet. "
             "Your two criteria are: (1) funniness — always pick the sharpest joke, "
             "(2) positivity as tiebreaker — warm beats cynical. "
-            "Reply with a number (1, 2 or 3) followed by a short reason — nothing else."
+            "Reply with ONLY a number (1, 2 or 3) followed by a short reason — nothing else before the number."
         )
     else:
         selection_prompt = (
@@ -320,32 +368,38 @@ def _select_best_tweet(candidates: list, german_word: str, cefr_level: str) -> d
             "- Shareability: Is it quotable, relatable, or surprising enough to share?\n"
             "- Learning effect: Does the example sentence make the German word memorable and easy to understand?\n"
             "- Sentence quality: Is the German sentence natural, correctly matched to the CEFR level, and short enough to read at a glance?\n\n"
-            "Reply with the winning number followed by a single short reason (max 12 words), e.g.:\n"
-            "2 — most relatable, clearest vocabulary hook\n\n"
+            f"{_fmt_instruction}\n\n"
             "Your answer:"
         )
         system_prompt_selector = (
             "You are a social media expert and German teacher evaluating tweet quality. "
-            "Reply with a number (1, 2 or 3) followed by a short reason — nothing else."
+            "Reply with ONLY a number (1, 2 or 3) followed by a short reason — nothing else before the number."
         )
 
     chosen_idx = 0
     reason = ""
     try:
+        import re as _re
         raw = retry_call(
-            get_grok_flagship_response,
+            _get_tweet_picker_ai(),
             selection_prompt,
             system_prompt_selector,
-            max_tokens=40,
+            max_tokens=60,
             temperature=0.0,
             label="select_tweet",
         )
         raw = raw.strip()
-        idx = int(raw[0]) - 1
-        reason = raw[2:].strip(" —-") if len(raw) > 1 else ""
-        if 0 <= idx < len(candidates):
-            chosen_idx = idx
-            logger.info("Tweet selection: picked candidate %d — %s", idx + 1, reason)
+        m = _re.search(r'\b([123])\b', raw)
+        if m:
+            idx = int(m.group(1)) - 1
+            reason = raw[m.end():].strip(" —-") if m.end() < len(raw) else ""
+            if 0 <= idx < len(candidates):
+                chosen_idx = idx
+                logger.info("Tweet selection: picked candidate %d — %s", idx + 1, reason)
+            else:
+                logger.warning("Tweet selection: parsed index %d out of range — using first candidate.", idx + 1)
+        else:
+            logger.warning("Tweet selection: could not parse a candidate number from %r — using first candidate.", raw)
     except Exception as exc:
         logger.warning("Tweet selection failed (%s) — using first candidate.", exc)
 
@@ -403,9 +457,8 @@ def _pick_word_from_trends(avoid_words: list) -> Optional[tuple[str, str]]:
     )
 
     try:
-        from services.grok_ai import get_grok_reasoning_response
         raw = retry_call(
-            get_grok_reasoning_response,
+            _get_trend_filter_ai(),
             pick_req,
             "Du bist ein erfahrener Deutschlehrer. Dein einziges Ziel ist es, Wörter auszuwählen, die für englischsprachige Deutschlernende im echten Alltag möglichst nützlich sind. Trendrelevanz ist zweitrangig — Lernwert hat absolute Priorität. Du antwortest ausschließlich mit gültigem JSON.",
             max_tokens=1200,
@@ -439,7 +492,10 @@ def _pick_word_from_trends(avoid_words: list) -> Optional[tuple[str, str]]:
 
         _VALID_CEFR = {"A1", "A2", "B1", "B2", "C1", "C2"}
 
-        # Pre-scan to find chosen word and count free slots
+        # Pre-scan to find chosen word and count free slots.
+        # Only the top TREND_CANDIDATE_LIMIT entries are considered; the rest are
+        # shown in the display but never selected (triggers AI fallback instead).
+        _candidate_limit = config.TREND_CANDIDATE_LIMIT
         clean_entries = []
         for entry in candidates:
             word = (entry.get("word") or "").lstrip("#@").strip()
@@ -450,17 +506,22 @@ def _pick_word_from_trends(avoid_words: list) -> Optional[tuple[str, str]]:
                 cefr = "?"
             word_tokens = set(word.lower().split())
             used = word.lower() in avoid_set or bool(word_tokens & avoid_set)
+            in_window = len(clean_entries) < _candidate_limit
             clean_entries.append((word, cefr, used))
-            if not used:
+            if in_window and not used:
                 free_count += 1
                 if chosen_word is None:
                     chosen_word = word
                     chosen_cefr = cefr
 
-        print(f"\n  {_CYAN}{_BOLD}🏆  Trend word shortlist  ({free_count} free):{_R}", flush=True)
+        print(f"\n  {_CYAN}{_BOLD}🏆  Trend word shortlist  ({free_count} free, top {_candidate_limit} considered):{_R}", flush=True)
         for i, (word, cefr, used) in enumerate(clean_entries, 1):
             cefr_fmt = f"{_CYAN}{cefr:<3}{_R}"
-            if used:
+            in_window = i <= _candidate_limit
+            if not in_window:
+                status   = f"{_GRAY}– beyond limit{_R}"
+                word_fmt = f"{_GRAY}{word:<20}{_R}"
+            elif used:
                 status   = f"{_RED}✖ already used{_R}"
                 word_fmt = f"{_GRAY}{word:<20}{_R}"
             elif word == chosen_word:
@@ -478,8 +539,13 @@ def _pick_word_from_trends(avoid_words: list) -> Optional[tuple[str, str]]:
             ok(f"Trend word: '{chosen_word}' [{chosen_cefr}]")
             return chosen_word, chosen_cefr
 
-        logger.warning("All %d trend candidates already used — falling back to AI word selection.", len(candidates))
-        ui_warn(f"All suitable trend words already used ({len(candidates)} checked) — falling back to AI word selection.")
+        logger.warning(
+            "All top-%d trend candidates already used — falling back to AI word selection.",
+            _candidate_limit,
+        )
+        ui_warn(
+            f"All top-{_candidate_limit} trend words already used — falling back to AI word selection."
+        )
         return None
 
     except (json.JSONDecodeError, Exception) as exc:
@@ -489,6 +555,53 @@ def _pick_word_from_trends(avoid_words: list) -> Optional[tuple[str, str]]:
 
 
 _VALID_CEFR = {"A1", "A2", "B1", "B2", "C1", "C2"}
+
+
+def _is_word_too_similar(word: str, avoid_words: list) -> tuple[bool, str]:
+    """
+    Use Grok fast non-reasoning to check whether *word* is morphologically or
+    semantically too close to any word in *avoid_words* (e.g. deutsch/deutsche,
+    Freund/Freundschaft).  Returns (is_similar, matched_word).
+    """
+    if not avoid_words:
+        return False, ""
+
+    recent = avoid_words[-50:]
+    word_list_str = ", ".join(recent)
+
+    prompt = (
+        f"Bereits verwendete deutsche Wörter: [{word_list_str}]\n\n"
+        f"Neues vorgeschlagenes Wort: \"{word}\"\n\n"
+        "Ist dieses Wort zu ähnlich zu einem der bereits verwendeten Wörter? "
+        "Zu ähnlich bedeutet: gleicher Wortstamm, Deklination, Konjugation, "
+        "Kompositum oder eng verwandte Ableitung "
+        "(z.B. deutsch/deutsche, Haus/Häuser, laufen/Lauf, Freund/Freundschaft).\n\n"
+        "Antworte NUR mit einem JSON-Objekt:\n"
+        '{"similar": true, "matched": "<das ähnliche Wort>"}\n'
+        "oder\n"
+        '{"similar": false, "matched": ""}'
+    )
+
+    try:
+        raw = retry_call(
+            _get_similarity_ai(),
+            prompt,
+            "Du prüfst, ob ein deutsches Wort zu ähnlich zu einer Liste bereits verwendeter Wörter ist. "
+            "Antworte ausschließlich mit gültigem JSON.",
+            max_tokens=60,
+            temperature=0.0,
+            label="similarity_check",
+        ).strip()
+        if raw.startswith("```"):
+            lines = raw.split("\n")
+            raw = "\n".join(lines[1:-1] if lines[-1].strip() == "```" else lines[1:])
+        data = json.loads(raw)
+        is_similar = bool(data.get("similar", False))
+        matched = data.get("matched", "")
+        return is_similar, matched
+    except Exception as exc:
+        logger.warning("Similarity check failed (%s) — allowing word.", exc)
+        return False, ""
 
 
 # ── main node ──────────────────────────────────────────────────────────────────
@@ -503,8 +616,10 @@ def generate_content(state: dict) -> dict:
     # ── 1. Pick a German word + determine its CEFR level ──────────────────────
     german_word: Optional[str] = None
     word_cefr: str = ""
+    avoid_words: list = []
+    word_from_trends: bool = False
 
-    if USE_TRENDS:
+    if config.USE_TRENDS:
         info("USE_TRENDS=true — fetching German trends …")
         from nodes.score import _load_history
         history_words = [r.get("german_word", "") for r in _load_history() if r.get("german_word")]
@@ -516,19 +631,23 @@ def generate_content(state: dict) -> dict:
         trend_result = _pick_word_from_trends(avoid_words)
         if trend_result:
             german_word, word_cefr = trend_result
+            word_from_trends = True
 
     if not german_word:
-        if not USE_TRENDS:
+        if not config.USE_TRENDS:
             from nodes.score import _load_history
             history_words = [r.get("german_word", "") for r in _load_history() if r.get("german_word")]
         # Always enrich avoid_words with the full history before building the word prompt.
         # When USE_TRENDS=True but trend selection failed, history_words was already built above.
-        strategy = {**strategy, "avoid_words": list(dict.fromkeys(history_words + strategy.get("avoid_words", [])))}
+        avoid_words = list(dict.fromkeys(history_words + strategy.get("avoid_words", [])))
+        strategy = {**strategy, "avoid_words": avoid_words}
         word_prompt = _build_word_prompt(strategy)
         raw_word = retry_call(
-            get_ai_response,
+            _get_word_pick_ai(),
             word_prompt,
-            "Du bist ein Deutschlehrer und erstellst Vokabelinhalte für Social Media. Du antwortest ausschließlich mit gültigem JSON.",
+            "Du bist ein Deutschlehrer und erstellst Vokabelinhalte für Social Media. "
+            "Du wählst ausschließlich häufige, gebräuchliche Wörter mit positiver oder neutraler Bedeutung — keine seltenen, negativen oder bedrückenden Wörter. "
+            "Du antwortest ausschließlich mit gültigem JSON.",
             max_tokens=40,
             temperature=0.9,
             label="pick_word",
@@ -554,20 +673,75 @@ def generate_content(state: dict) -> dict:
         if german_word.startswith(art):
             german_word = german_word[len(art):]
             break
+
+    # ── 1b. Semantic similarity gate (catches deutsch/deutsche etc.) ──────────
+    if not avoid_words:
+        avoid_words = strategy.get("avoid_words", [])
+
+    _MAX_SIMILARITY_RETRIES = 3
+    for _sim_attempt in range(_MAX_SIMILARITY_RETRIES):
+        is_similar, matched = _is_word_too_similar(german_word, avoid_words)
+        if not is_similar:
+            break
+        ui_warn(
+            f"'{german_word}' is too similar to previously used '{matched}' "
+            f"— picking a new word (attempt {_sim_attempt + 1}/{_MAX_SIMILARITY_RETRIES})"
+        )
+        logger.info(
+            "Similarity gate rejected '%s' (too close to '%s') — re-picking.",
+            german_word, matched,
+        )
+        avoid_words.append(german_word)
+        strategy = {**strategy, "avoid_words": list(dict.fromkeys(
+            avoid_words + strategy.get("avoid_words", [])
+        ))}
+        word_prompt = _build_word_prompt(strategy)
+        raw_word = retry_call(
+            _get_word_pick_ai(),
+            word_prompt,
+            "Du bist ein Deutschlehrer und erstellst Vokabelinhalte für Social Media. "
+            "Du wählst ausschließlich häufige, gebräuchliche Wörter mit positiver oder neutraler Bedeutung — keine seltenen, negativen oder bedrückenden Wörter. "
+            "Du antwortest ausschließlich mit gültigem JSON.",
+            max_tokens=40,
+            temperature=0.9,
+            label="pick_word_retry",
+        ).strip()
+        try:
+            lines = raw_word.splitlines()
+            if lines and lines[0].strip().startswith("```"):
+                lines = lines[1:]
+            if lines and lines[-1].strip() == "```":
+                lines = lines[:-1]
+            word_data = json.loads("\n".join(lines))
+            german_word = (word_data.get("word") or "").strip()
+            word_cefr = (word_data.get("cefr") or "").strip().upper()
+            if word_cefr not in _VALID_CEFR:
+                word_cefr = ""
+        except (json.JSONDecodeError, AttributeError):
+            german_word = raw_word
+            word_cefr = ""
+        for art in ("der ", "die ", "das ", "Der ", "Die ", "Das "):
+            if german_word.startswith(art):
+                german_word = german_word[len(art):]
+                break
+
     cefr_display = f" [{word_cefr}]" if word_cefr else ""
     ok(f"Word selected: {german_word}{cefr_display}")
     logger.info("Picked word: %s  CEFR: %s", german_word, word_cefr or "unknown")
 
     # ── 2. Gather context for the single AI call ───────────────────────────────
     from nodes.score import _load_history, get_top_tweets
-    scaffold: str = strategy.get("scaffold") or _load_strategy_from_file()["scaffold"]
-    top_tweets = get_top_tweets(_load_history())
-    logger.info("Using %d top tweet(s) as in-context examples.", len(top_tweets))
+    from scaffolds import next_scaffold
+    scaffold_name, scaffold = next_scaffold()
+    info(f"Scaffold: {scaffold_name}")
+    logger.info("Selected scaffold: %s", scaffold_name)
+    top_tweets: list = []  # disabled — past examples caused topic echo-chamber (food/pizza bias)
+    logger.info("Past tweet examples disabled — no in-context examples passed to tweet AI.")
 
     tweet_ai = _get_tweet_ai()
 
     # ── 3. Generate 3 candidates → pick best ──────────────────────────────────
-    candidates = _call_tweet_ai(german_word, scaffold, strategy, top_tweets, tweet_ai, cefr_level=word_cefr)
+    candidates = _call_tweet_ai(german_word, scaffold, strategy, top_tweets, tweet_ai, cefr_level=word_cefr, word_from_trends=word_from_trends)
     logger.info("Generated %d tweet candidate(s).", len(candidates))
     result = _select_best_tweet(candidates, german_word, word_cefr)
 
@@ -585,7 +759,7 @@ def generate_content(state: dict) -> dict:
     max_retries = 2
     for attempt in range(max_retries + 1):
         tweet_len = len(result["full_tweet"])
-        if tweet_len <= 280:
+        if tweet_len <= config.MAX_TWEET_LENGTH:
             break
         if attempt < max_retries:
             logger.warning(
@@ -596,7 +770,8 @@ def generate_content(state: dict) -> dict:
             retry_candidates = _call_tweet_ai(
                 german_word, scaffold, strategy, top_tweets, tweet_ai,
                 cefr_level=word_cefr,
-                extra_instruction="Keep total length under 260 characters",
+                extra_instruction=f"Keep total length under {config.MAX_TWEET_LENGTH - 20} characters",
+                word_from_trends=word_from_trends,
             )
             result = _select_best_tweet(retry_candidates, german_word, word_cefr)
             result["full_tweet"] = result.get("tweet", "")
@@ -611,6 +786,11 @@ def generate_content(state: dict) -> dict:
     full_tweet = result["full_tweet"]
     tweet_box(full_tweet)
     logger.info("Full tweet assembled (%d chars):\n%s", len(full_tweet), full_tweet)
+
+    # Start loading ImageReward in the background now — it will be ready by the
+    # time Midjourney image generation finishes and pick_best_image() is called.
+    from services.image_ranker import warmup as _warmup_image_ranker
+    _warmup_image_ranker()
 
     return {
         **state,

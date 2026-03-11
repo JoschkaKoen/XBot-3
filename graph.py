@@ -23,13 +23,8 @@ from langgraph.graph import StateGraph, END
 from langgraph.checkpoint.sqlite import SqliteSaver
 
 from state import BotState
-from config import (
-    POST_INTERVAL_SECONDS,
-    CHECKPOINT_DB,
-    logger as root_logger,
-    ENABLE_SELF_IMPROVEMENT,
-    IMPROVEMENT_INTERVAL_CYCLES,
-)
+import config
+from config import CHECKPOINT_DB, logger as root_logger
 from nodes import (
     fetch_all_metrics,
     analyze_and_improve,
@@ -61,12 +56,12 @@ def wait_node(state: dict) -> dict:
 
     improvement_duration = 0
 
-    if ENABLE_SELF_IMPROVEMENT:
+    if config.ENABLE_SELF_IMPROVEMENT:
         cycle = state.get("cycle", 0)
-        if cycle > 0 and cycle % IMPROVEMENT_INTERVAL_CYCLES == 0:
+        if cycle > 0 and cycle % config.IMPROVEMENT_INTERVAL_CYCLES == 0:
             logger.info(
                 "Cycle %d: triggering self-improvement (every %d cycles) …",
-                cycle, IMPROVEMENT_INTERVAL_CYCLES,
+                cycle, config.IMPROVEMENT_INTERVAL_CYCLES,
             )
             try:
                 improvement_env = os.environ.copy()
@@ -85,7 +80,7 @@ def wait_node(state: dict) -> dict:
             except Exception as exc:
                 logger.warning("Self-improvement failed: %s", exc)
 
-    remaining = max(POST_INTERVAL_SECONDS - improvement_duration, 60)
+    remaining = max(config.POST_INTERVAL_SECONDS - improvement_duration, 60)
     logger.info("Waiting %ds before next cycle …", remaining)
     wait_countdown(remaining)
     logger.info("Wait complete.")

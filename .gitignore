@@ -1,5 +1,7 @@
 # Secrets — never commit API keys
 .env
+# Public configuration (no keys) — tracked by git
+!settings.env
 
 # Python cache & venv
 __pycache__/
@@ -28,9 +30,10 @@ data/new_bot_branch.txt
 *.mp3
 *.png
 
-# Exceptions: keep folder placeholders and the background music track
+# Exceptions: keep folder placeholders and all Background Music assets
 !**/.gitkeep
-!"Background Music/music.mp3"
+!"Background Music/*.mp3"
+!"Background Music/*.wav"
 
 # OS junk
 .DS_Store

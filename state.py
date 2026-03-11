@@ -33,6 +33,7 @@ class BotState(TypedDict, total=False):
 
     # ── Strategy ──────────────────────────────────────────────────────────────
     strategy: dict                    # LLM-updated strategy fed into generate_content
+    metrics_refreshed: bool           # True if metrics were fetched this cycle; False if throttled
     cycle: int                        # how many full cycles completed
 
     # ── Error handling ────────────────────────────────────────────────────────
