@@ -740,5 +740,61 @@
     "metrics": {},
     "engagement_score": 0.0,
     "cycle": 0
+  },
+  {
+    "timestamp": "2026-03-12T10:48:41.401931+00:00",
+    "tweet_id": "2032046110945264010",
+    "tweet_url": "https://x.com/i/web/status/2032046110945264010",
+    "full_tweet": "#LearnGerman #LanguageLearning\n\n🇩🇪  der Ohrwurm (B1)\n🇺🇸  earworm (a song stuck in your head)  👂🎵👂🎵\n\n„Der Ohrwurm in meinem Kopf ist so hartnäckig, er hat sogar Miete gezahlt!“\n= The earworm in my head is so persistent, it even paid rent!  🐛💰🐛💰",
+    "source_word": "Ohrwurm",
+    "article": "der",
+    "cefr_level": "B1",
+    "example_sentence_source": "Der Ohrwurm in meinem Kopf ist so hartnäckig, er hat sogar Miete gezahlt!",
+    "example_sentence_target": "The earworm in my head is so persistent, it even paid rent!",
+    "metrics": {},
+    "engagement_score": 0.0,
+    "cycle": 0
+  },
+  {
+    "timestamp": "2026-03-12T11:52:08.892452+00:00",
+    "tweet_id": "2032062081592352937",
+    "tweet_url": "https://x.com/i/web/status/2032062081592352937",
+    "full_tweet": "🇩🇪  die Vorfreude\n🇺🇸  joyful anticipation  🎉🎉\n\n🇩🇪  Ich habe so viel Vorfreude auf Weihnachten, dass ich im Juli schon den Baum schmücke.\n🇺🇸  I have so much joyful anticipation for Christmas that I already decorate the tree in July.  🎄🎄\n\n#LearnGerman #GermanVocabulary",
+    "source_word": "Vorfreude",
+    "article": "die",
+    "cefr_level": "B1",
+    "example_sentence_source": "Ich habe so viel Vorfreude auf Weihnachten, dass ich im Juli schon den Baum schmücke.",
+    "example_sentence_target": "I have so much joyful anticipation for Christmas that I already decorate the tree in July.",
+    "metrics": {},
+    "engagement_score": 0.0,
+    "cycle": 0
+  },
+  {
+    "timestamp": "2026-03-12T12:02:39.900874+00:00",
+    "tweet_id": "2032064728286351368",
+    "tweet_url": "https://x.com/i/web/status/2032064728286351368",
+    "full_tweet": "🇩🇪 der Feierabend (B1)\n🇺🇸 the end of the workday 🍺🍺\n\n🇩🇪 Ich dachte, Feierabend bedeutet Partyabend, also habe ich Freunde eingeladen!\n🇺🇸 I thought Feierabend meant party evening, so I invited friends! 🎉🎉\n\n#LearnGerman #GermanVocabulary",
+    "source_word": "Feierabend",
+    "article": "der",
+    "cefr_level": "B1",
+    "example_sentence_source": "Ich dachte, Feierabend bedeutet Partyabend, also habe ich Freunde eingeladen!",
+    "example_sentence_target": "I thought Feierabend meant party evening, so I invited friends!",
+    "metrics": {},
+    "engagement_score": 0.0,
+    "cycle": 0
+  },
+  {
+    "timestamp": "2026-03-12T12:29:12.668694+00:00",
+    "tweet_id": "2032071408759812262",
+    "tweet_url": "https://x.com/i/web/status/2032071408759812262",
+    "full_tweet": "Die Vorfreude  🎉🎉\n→  the joyful anticipation\n\n🇩🇪  Die Vorfreude auf den Gewinn ist groß – ich habe das Lotterielos schon gerahmt!\n🇺🇸  The anticipation of the win is great – I've already framed the lottery ticket!  🎫🎫\n\n#LearnGerman #GermanVocabulary",
+    "source_word": "Vorfreude",
+    "article": "Die",
+    "cefr_level": "B1",
+    "example_sentence_source": "Die Vorfreude auf den Gewinn ist groß – ich habe das Lotterielos schon gerahmt!",
+    "example_sentence_target": "The anticipation of the win is great – I've already framed the lottery ticket!",
+    "metrics": {},
+    "engagement_score": 0.0,
+    "cycle": 0
   }
 ]
