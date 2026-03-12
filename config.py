@@ -8,6 +8,69 @@ from dotenv import load_dotenv
 load_dotenv("settings.env")
 load_dotenv(override=True)   # loads .env (keys only, gitignored)
 
+# ── Language pair ─────────────────────────────────────────────────────────────
+# Only SOURCE_LANGUAGE and TARGET_LANGUAGE are set by the user in settings.env.
+# All derived fields (codes, flags, colors, trends country) are auto-resolved
+# once via AI and cached in data/language_config.json — call resolve_language_config()
+# at startup to populate them.
+SOURCE_LANGUAGE: str      = os.getenv("SOURCE_LANGUAGE", "German")
+TARGET_LANGUAGE: str      = os.getenv("TARGET_LANGUAGE", "English")
+
+# Derived fields — populated by resolve_language_config() at startup.
+SOURCE_LANGUAGE_CODE: str = "de"
+TARGET_LANGUAGE_CODE: str = "en"
+SOURCE_FLAG: str          = "🇩🇪"
+TARGET_FLAG: str          = "🇺🇸"
+TRENDS_COUNTRY: str       = "germany"
+SOURCE_FLAG_COLORS: str   = "000000,DD0000,FFCE00"
+TARGET_FLAG_COLORS: str   = "B22234,FFFFFF,3C3B6E"
+
+
+def resolve_language_config() -> None:
+    """
+    Auto-derive language-pair config (codes, flags, colors, trends country) from
+    SOURCE_LANGUAGE / TARGET_LANGUAGE and update the global config variables.
+
+    Results are cached in data/language_config.json and only re-generated when
+    the language pair changes.  Call this once at bot startup.
+    """
+    global SOURCE_LANGUAGE_CODE, TARGET_LANGUAGE_CODE
+    global SOURCE_FLAG, TARGET_FLAG
+    global TRENDS_COUNTRY
+    global SOURCE_FLAG_COLORS, TARGET_FLAG_COLORS
+
+    try:
+        from services.language_config import resolve as _resolve
+        derived = _resolve(SOURCE_LANGUAGE, TARGET_LANGUAGE)
+    except Exception as exc:
+        logger.warning(
+            "Language config resolution failed (%s) — using built-in defaults "
+            "(%s / %s).  Update settings.env or fix the error and restart.",
+            exc, SOURCE_LANGUAGE_CODE, TARGET_LANGUAGE_CODE,
+        )
+        return
+
+    SOURCE_LANGUAGE_CODE = derived.get("source_language_code", SOURCE_LANGUAGE_CODE)
+    TARGET_LANGUAGE_CODE = derived.get("target_language_code", TARGET_LANGUAGE_CODE)
+    SOURCE_FLAG          = derived.get("source_flag",          SOURCE_FLAG)
+    TARGET_FLAG          = derived.get("target_flag",          TARGET_FLAG)
+    TRENDS_COUNTRY       = derived.get("trends_country",       TRENDS_COUNTRY)
+    SOURCE_FLAG_COLORS   = derived.get("source_flag_colors",   SOURCE_FLAG_COLORS)
+    TARGET_FLAG_COLORS   = derived.get("target_flag_colors",   TARGET_FLAG_COLORS)
+
+
+def _parse_flag_colors(env_val: str, default: list) -> list:
+    """Parse a comma-separated hex color string into a list of (R, G, B) tuples."""
+    try:
+        parts = [p.strip() for p in env_val.split(",") if p.strip()]
+        result = [tuple(int(c[i:i+2], 16) for i in (0, 2, 4)) for c in parts]
+        if len(result) >= 3:
+            return result
+    except Exception:
+        pass
+    return default
+
+
 # ── AI provider ──────────────────────────────────────────────────────────────
 AI_PROVIDER: str = os.getenv("AI_PROVIDER", "grok").lower().strip()
 
@@ -112,7 +175,7 @@ GROK_IMAGE_COUNT: int = int(os.getenv("GROK_IMAGE_COUNT", "1"))
 # an extended limit.
 MAX_TWEET_LENGTH: int = int(os.getenv("MAX_TWEET_LENGTH", "280"))
 
-# Maximum number of words allowed in the German example sentence.
+# Maximum number of words allowed in the source-language example sentence.
 MAX_EXAMPLE_WORDS: int = int(os.getenv("MAX_EXAMPLE_WORDS", "13"))
 
 # ── Bot behaviour ─────────────────────────────────────────────────────────────
@@ -121,8 +184,8 @@ HISTORY_FILE: str = os.getenv("HISTORY_FILE", "data/post_history.json")
 LOG_FILE: str = os.getenv("LOG_FILE", "data/bot.log")
 VIDEO_STYLE: str = os.getenv("VIDEO_STYLE", "ktv").lower().strip()
 ANALYZE_LAST_N: int = int(os.getenv("ANALYZE_LAST_N", "10"))
-# When True, word selection is based on real-time German trending topics.
-# When False (default), the AI picks the word freely. Currently: picking the word freely.
+# When True, word selection is based on real-time trending topics (TRENDS_COUNTRY).
+# When False (default), the AI picks the word freely.
 USE_TRENDS: bool = os.getenv("USE_TRENDS", "false").lower().strip() == "true"
 
 # How many of the AI's top-ranked trend word candidates to try before falling back to
@@ -157,8 +220,8 @@ ENABLE_GROK_VIDEO: bool = os.getenv("ENABLE_GROK_VIDEO", "false").lower().strip(
 # Only used when ENABLE_GROK_VIDEO=true.
 GROK_VIDEO_FREQUENCY: int = int(os.getenv("GROK_VIDEO_FREQUENCY", "1"))
 
-# When True, a US-to-German flag overlay is added to the top-right corner of
-# each generated image, reinforcing the German-for-English-speakers branding.
+# When True, a source→target flag badge is added to the top-right corner of
+# each generated image, reinforcing the language-learning branding.
 FLAG_OVERLAY: bool = os.getenv("FLAG_OVERLAY", "true").lower().strip() == "true"
 
 # Model used for strategy analysis ("reasoning" = grok-4-1-fast, "non-reasoning" = grok-4-1-fast-non-reasoning).
@@ -284,7 +347,7 @@ class _ConsoleFormatter(logging.Formatter):
 
 
 def setup_logging() -> logging.Logger:
-    logger = logging.getLogger("german_bot")
+    logger = logging.getLogger("lang_bot")
     if logger.handlers:
         return logger
 

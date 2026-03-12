@@ -430,5 +430,23 @@
     "language": "de",
     "gender": "male",
     "added_at": "2026-03-12T07:52:31.779779+00:00"
+  },
+  {
+    "name": "Petra - Confident and Pleasant",
+    "voice_id": "lzvBSKYbNWDD0a6BaJSK",
+    "public_owner_id": "e25d872a224290651b56e28d540c9c15697d576f60bb17db8ec331138448f79f",
+    "description": "female, middle_aged, standard, informative_educational, Petra PeFraVe Pro  - Petra is well educated and graduated. Her elaborative spelling is perfectly nat",
+    "language": "de",
+    "gender": "female",
+    "added_at": "2026-03-12T08:23:55.932270+00:00"
+  },
+  {
+    "name": "Stephan - Warm and Friendly",
+    "voice_id": "IWm8DnJ4NGjFI7QAM5lM",
+    "public_owner_id": "85225215a8ebee4e714782218821d3140d614153d4dd99adfef28571f8d11c95",
+    "description": "male, middle_aged, standard, informative_educational, Stephan - Warm and friendly German voice - Standard German male speaker, ideal for infotainment. Ser",
+    "language": "de",
+    "gender": "male",
+    "added_at": "2026-03-12T08:23:58.624973+00:00"
   }
 ]

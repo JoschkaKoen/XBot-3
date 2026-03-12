@@ -1,5 +1,5 @@
 """
-Fetch current trending topics in Germany from getdaytrends.com.
+Fetch current trending topics from getdaytrends.com for the configured country.
 
 No API key required — plain web scrape. Always returns a list (empty on any
 failure) so callers never have to handle exceptions.
@@ -10,12 +10,14 @@ import requests
 from bs4 import BeautifulSoup
 from typing import List, Dict
 
-logger = logging.getLogger("german_bot.x_trends")
+import config
+
+logger = logging.getLogger("lang_bot.x_trends")
 
 
-def get_germany_trends(max_trends: int = 20) -> List[Dict]:
+def get_trends(max_trends: int = 20) -> List[Dict]:
     """
-    Scrape current German trending topics.
+    Scrape current trending topics for the country set in config.TRENDS_COUNTRY.
 
     Returns a list of dicts:
         [{"name": "#Oktoberfest", "tweet_volume": "12.5K tweets"}, ...]
@@ -23,7 +25,9 @@ def get_germany_trends(max_trends: int = 20) -> List[Dict]:
     Returns an empty list on any network or parsing error so the caller can
     fall back gracefully.
     """
-    url = "https://getdaytrends.com/germany/"
+    country = config.TRENDS_COUNTRY.lower().strip()
+    url = f"https://getdaytrends.com/{country}/"
+    trend_path = f"/{country}/trend/"
     headers = {
         "User-Agent": (
             "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
@@ -44,7 +48,7 @@ def get_germany_trends(max_trends: int = 20) -> List[Dict]:
         trends: List[Dict] = []
 
         for a_tag in soup.find_all(
-            "a", href=lambda x: x and "/germany/trend/" in x
+            "a", href=lambda x: x and trend_path in x
         ):
             name = a_tag.get_text().strip()
             if not name or any(t["name"] == name for t in trends):
@@ -64,7 +68,7 @@ def get_germany_trends(max_trends: int = 20) -> List[Dict]:
                 break
 
         if not trends:
-            logger.warning("getdaytrends.com returned no trends (page structure may have changed).")
+            logger.warning("getdaytrends.com returned no trends for '%s' (page structure may have changed).", country)
 
         return trends
 

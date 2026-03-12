@@ -269,7 +269,7 @@ def create_video(state: dict) -> dict:
 
     clean_audio: str  = state["clean_audio_path"]
     image_path: str   = state["image_path"]
-    german_text: str  = state["example_sentence_de"]
+    german_text: str  = state["example_sentence_source"]
     word_timings: list = state.get("word_timings", [])
     style: str        = config.VIDEO_STYLE
 
@@ -305,7 +305,7 @@ def create_video(state: dict) -> dict:
                 from utils.ui import info as ui_info
                 ui_info("🎬  Grok Imagine video enabled — animating image …")
 
-                example_en: str = state.get("example_sentence_en", "")
+                example_en: str = state.get("example_sentence_target", "")
                 mj_prompt: str  = state.get("midjourney_prompt", "")
 
                 ui_info("  Step 1/3  Generating cinematic motion prompt …")

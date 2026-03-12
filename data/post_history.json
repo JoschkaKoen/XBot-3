@@ -712,5 +712,33 @@
     },
     "engagement_score": 0.16,
     "cycle": 0
+  },
+  {
+    "timestamp": "2026-03-12T07:52:54.352203+00:00",
+    "tweet_id": "2032001872354254920",
+    "tweet_url": "https://x.com/i/web/status/2032001872354254920",
+    "full_tweet": "🇩🇪  die Gemütlichkeit\n🇬🇧  coziness  🛋️🛋️\n\n🇩🇪  Ich liebe die Gemütlichkeit zu Hause, besonders wenn der Pizzabote klingelt!\n🇬🇧  I love the coziness at home, especially when the pizza delivery guy rings!  🍕🍕\n\n#LearnGerman #GermanVocabulary",
+    "german_word": "Gemütlichkeit",
+    "article": "die",
+    "cefr_level": "B1",
+    "example_sentence_de": "Ich liebe die Gemütlichkeit zu Hause, besonders wenn der Pizzabote klingelt!",
+    "example_sentence_en": "I love the coziness at home, especially when the pizza delivery guy rings!",
+    "metrics": {},
+    "engagement_score": 0.0,
+    "cycle": 0
+  },
+  {
+    "timestamp": "2026-03-12T08:24:19.986929+00:00",
+    "tweet_id": "2032009782971036048",
+    "tweet_url": "https://x.com/i/web/status/2032009782971036048",
+    "full_tweet": "🇩🇪  Word of the Day  ☕☕\ndie Gemütlichkeit\n→  that untranslatable feeling of coziness and warmth\n🇩🇪  Die Gemütlichkeit meines Zimmers: Bett, Kissen und mein Wecker, der gerade Urlaub macht!\n🇺🇸  The coziness of my room: bed, pillows, and my alarm clock that's currently on vacation!  🛏️🛏️\n#WordOfTheDay #LearnGerman",
+    "source_word": "Gemütlichkeit",
+    "article": "die",
+    "cefr_level": "B1",
+    "example_sentence_source": "Die Gemütlichkeit meines Zimmers: Bett, Kissen und mein Wecker, der gerade Urlaub macht!",
+    "example_sentence_target": "The coziness of my room: bed, pillows, and my alarm clock that's currently on vacation!",
+    "metrics": {},
+    "engagement_score": 0.0,
+    "cycle": 0
   }
 ]

@@ -12,7 +12,7 @@ from typing import Optional
 
 import config
 from services.ai_client import get_ai_response
-from services.x_trends import get_germany_trends
+from services.x_trends import get_trends
 from utils.retry import retry_call
 from utils.ui import stage_banner, ok, tweet_box, info, warn as ui_warn
 
@@ -95,23 +95,36 @@ def _build_word_prompt(strategy: dict) -> str:
     cefr_hint = strategy.get("preferred_cefr", "A1, A2, B1, B2, C1, C2")
     avoid = strategy.get("avoid_words", [])
     avoid_str = ", ".join(avoid[-20:]) if avoid else "none"
+    src = config.SOURCE_LANGUAGE
+    tgt = config.TARGET_LANGUAGE
 
-    topic_line = f"- Thema / Fokus für diesen Tweet: {next_topic}\n" if next_topic else ""
-    style_line  = f"- Stilhinweis: {style}\n" if style else ""
+    topic_line = f"- Topic / angle for this tweet: {next_topic}\n" if next_topic else ""
+    style_line  = f"- Style hint: {style}\n" if style else ""
 
     return (
-        "Du bist ein Deutschlehrer und erstellst Inhalte für einen X-Account, "
-        "der englischsprachigen Nutzern deutsche Vokabeln beibringt.\n\n"
-        "Wähle GENAU EIN deutsches Wort (Nomen, Verb, Adjektiv oder gebräuchliche Phrase), das:\n"
-        f"- Häufig vorkommt und im echten Alltag weit verbreitet ist (kein Fachwort, kein seltenes Wort)\n"
-        f"- Eine positive oder neutrale Bedeutung hat — vermeide Wörter mit negativer, trauriger oder bedrückender Konnotation\n"
-        f"- Im Alltag praktisch und nützlich ist\n"
-        f"- Zu einem dieser GER-Niveaus passt: {cefr_hint}\n"
+        f"You are a {src} teacher creating content for an X account that teaches "
+        f"{src} vocabulary to {tgt} speakers.\n\n"
+        f"Pick EXACTLY ONE {src} word (noun, verb, adjective, or common phrase) that:\n"
+        f"- Is frequently used and widespread in everyday life (no technical jargon, no rare words)\n"
+        f"- Has a positive or neutral meaning — avoid words with negative, sad, or depressing connotations\n"
+        f"- Is practical and useful in daily life\n"
+        f"- Fits one of these CEFR levels: {cefr_hint}\n"
         f"{topic_line}"
-        f"- Nicht kürzlich verwendet wurde (vermeiden: {avoid_str})\n"
+        f"- Has NOT been used recently (avoid: {avoid_str})\n"
         f"{style_line}\n"
-        "Antworte NUR mit einem gültigen JSON-Objekt – keine Erklärung, kein Artikel außer im JSON:\n"
-        '{"word": "<das deutsche Wort ohne Artikel>", "cefr": "<A1|A2|B1|B2|C1|C2>"}'
+        f"Reply with ONLY a valid JSON object — no explanation, no article outside the JSON:\n"
+        f'{{"word": "<the {src} word WITHOUT article>", "cefr": "<A1|A2|B1|B2|C1|C2>"}}'
+    )
+
+
+def _expand_scaffold(scaffold: str) -> str:
+    """Substitute language-pair config values into scaffold placeholders at runtime."""
+    return (
+        scaffold
+        .replace("[SOURCE_FLAG]",     config.SOURCE_FLAG)
+        .replace("[TARGET_FLAG]",     config.TARGET_FLAG)
+        .replace("[SOURCE_LANGUAGE]", config.SOURCE_LANGUAGE)
+        .replace("[TARGET_LANGUAGE]", config.TARGET_LANGUAGE)
     )
 
 
@@ -164,36 +177,26 @@ def _build_tweet_prompt(
         "A1/A2 → simple; B1/B2 → moderate; C1/C2 → complex/idiomatic\n"
     )
 
+    src = config.SOURCE_LANGUAGE
+    tgt = config.TARGET_LANGUAGE
+    expanded_scaffold = _expand_scaffold(scaffold)
+
     prompt = (
-        "You are a German language teacher and comedian running a very popular X (Twitter) account that teaches "
-        "German to English speakers.\n\n"
+        f"You are a {src} language teacher and comedian running a very popular X (Twitter) account that teaches "
+        f"{src} to {tgt} speakers.\n\n"
         f"## Your task\n"
-        f'Create a complete tweet about this German word: "{trending_word}"\n\n'
+        f'Create a complete tweet about this {src} word: "{trending_word}"\n\n'
         f"## Tweet format (follow this scaffold exactly)\n"
-        f"{scaffold}\n\n"
+        f"{expanded_scaffold}\n\n"
         f"{funny_tone_section}"
         "## Rules\n"
-        "- The German word must include the correct article (der/die/das) if it's a noun\n"
+        f"- The {src} word must include the correct grammatical article if it's a noun\n"
         "- If the word has no grammatical article (adjective, phrase, verb, etc.), omit the [ARTICLE] slot entirely\n"
         f"{cefr_rule}"
-        #"- The example sentence must be short, warm, and authentic — something a German would actually say\n"
-        #"- Vary the sentence ending: most sentences should end with a period (.) — only use an exclamation mark (!) when it is genuinely funny or surprising, and occasionally use a question (?)\n"
         "- The example sentence MUST contain the exact word\n"
-        f"- The German example sentence must be at most {config.MAX_EXAMPLE_WORDS} words long\n"
-        "- The English translations must be natural, not robotic\n"
+        f"- The {src} example sentence must be at most {config.MAX_EXAMPLE_WORDS} words long\n"
+        f"- The {tgt} translations must be natural, not robotic\n"
         "- The emojis should help the reader visually understand the meaning. Don't just use laughing emojis\n"
-       
-        # "- Each [EMOJI1] or [EMOJI2] placeholder stands for exactly ONE emoji character. "
-        # "The scaffold writes them twice (e.g. [EMOJI1][EMOJI1]) to show you should repeat the same emoji. "
-        # "Replace the entire [EMOJI1][EMOJI1] with exactly 2 identical emojis (e.g. 🚗🚗). "
-        # "Do NOT add any emojis beyond what the scaffold specifies.\n"
-        # "- Preserve the exact spacing from the scaffold: if the scaffold shows two spaces between an emoji and the text "
-        # "(e.g. '🇩🇪  [GERMAN_WORD]'), use exactly two spaces in the output. Do not collapse spaces or add more.\n"
-       
-        #"- Each line gets a pair of 2 identical emojis that visually represent the meaning\n"
-        # "- The two emoji PAIRS must be DIFFERENT from each other "
-        # "(e.g. 🚗🚗 for word line, 🎉🎉 for sentence line — NOT the same pair twice)\n"
-        # "- Do NOT wrap the output in quotes or markdown\n\n"
         "## Strategy guidance\n"
         f"- Preferred CEFR levels: {preferred_cefr}\n"
         + (f"- Topic / angle for this tweet: {next_topic}\n" if next_topic else "")
@@ -203,11 +206,11 @@ def _build_tweet_prompt(
         "Return ONLY a single valid JSON object with these fields:\n\n"
         "{\n"
         '  "tweet": "<the complete tweet text, exactly matching the scaffold>",\n'
-        '  "german_word": "<the bare German word without article, e.g. Führerschein>",\n'
-        '  "article": "<der / die / das / no known noun>",\n'
+        f'  "source_word": "<the bare {src} word without article>",\n'
+        '  "article": "<grammatical article / no known noun>",\n'
         '  "cefr_level": "<A1 / A2 / B1 / B2 / C1 / C2>",\n'
-        '  "example_sentence_de": "<just the German example sentence>",\n'
-        '  "example_sentence_en": "<just the English translation of the sentence>"\n'
+        f'  "example_sentence_source": "<just the {src} example sentence>",\n'
+        f'  "example_sentence_target": "<just the {tgt} translation of the sentence>"\n'
         "}\n\n"
         "Just the JSON object."
     )
@@ -233,16 +236,18 @@ def _call_tweet_ai(
     from concurrent.futures import ThreadPoolExecutor, as_completed
 
     prompt = _build_tweet_prompt(trending_word, scaffold, strategy, top_tweets, cefr_level, extra_instruction, word_from_trends=word_from_trends)
+    src = config.SOURCE_LANGUAGE
+    tgt = config.TARGET_LANGUAGE
     if config.FUNNY_MODE:
         system_prompt = (
-            "You are a German language teacher and comedy writer creating funny tweets for X (Twitter). "
+            f"You are a {src} language teacher and comedy writer creating funny tweets for X (Twitter). "
             "Every example sentence must be genuinely very funny — it must make the reader laugh."
             "It should be positive and uplifting, not negative and cynical."
             "You always respond with valid JSON only."
         )
     else:
         system_prompt = (
-            "You are a German language teacher and comedian creating funny and uplifting tweets for "
+            f"You are a {src} language teacher and comedian creating funny and uplifting tweets for "
             "X (Twitter). You always respond with valid JSON only."
         )
 
@@ -295,7 +300,7 @@ def _call_tweet_ai(
     return [candidates_map[i] for i in sorted(candidates_map)]
 
 
-def _select_best_tweet(candidates: list, german_word: str, cefr_level: str) -> dict:
+def _select_best_tweet(candidates: list, source_word: str, cefr_level: str) -> dict:
     """
     Print all candidates to the terminal, use the configured TWEET_PICKER_MODEL to pick
     the best one, and highlight the winner. Falls back to the first candidate if selection fails.
@@ -324,10 +329,12 @@ def _select_best_tweet(candidates: list, german_word: str, cefr_level: str) -> d
         "Example: 2 — sharpest punchline, warm and instantly relatable"
     )
 
+    src = config.SOURCE_LANGUAGE
+    tgt = config.TARGET_LANGUAGE
     if config.FUNNY_MODE:
         selection_prompt = (
-            f"You are evaluating {len(candidates)} German vocabulary tweet candidates for the word "
-            f"'{german_word}' (CEFR: {cefr_level or 'unknown'}).\n\n"
+            f"You are evaluating {len(candidates)} {src} vocabulary tweet candidates for the word "
+            f"'{source_word}' (CEFR: {cefr_level or 'unknown'}).\n\n"
             f"{numbered}\n\n"
             "Pick the BEST tweet using these criteria:\n"
             "1. FUNNINESS (primary): Which sentence has the sharpest punchline, the best ironic twist, "
@@ -339,27 +346,27 @@ def _select_best_tweet(candidates: list, german_word: str, cefr_level: str) -> d
             "Your answer:"
         )
         system_prompt_selector = (
-            "You are a comedy editor selecting the funniest German vocabulary tweet. "
+            f"You are a comedy editor selecting the funniest {src} vocabulary tweet. "
             "Your two criteria are: (1) funniness — always pick the sharpest joke, "
             "(2) positivity as tiebreaker — warm beats cynical. "
             "Reply with ONLY a number (1, 2 or 3) followed by a short reason — nothing else before the number."
         )
     else:
         selection_prompt = (
-            f"You are evaluating {len(candidates)} German vocabulary tweet candidates for the word "
-            f"'{german_word}' (CEFR: {cefr_level or 'unknown'}).\n\n"
+            f"You are evaluating {len(candidates)} {src} vocabulary tweet candidates for the word "
+            f"'{source_word}' (CEFR: {cefr_level or 'unknown'}).\n\n"
             f"{numbered}\n\n"
             "Score each candidate on these criteria and pick the BEST overall:\n"
             "- Warmth & authenticity: Is the example sentence natural and relatable?\n"
-            "- Engagement potential: Would a native English speaker stop scrolling and interact with this tweet?\n"
+            f"- Engagement potential: Would a native {tgt} speaker stop scrolling and interact with this tweet?\n"
             "- Shareability: Is it quotable, relatable, or surprising enough to share?\n"
-            "- Learning effect: Does the example sentence make the German word memorable and easy to understand?\n"
-            "- Sentence quality: Is the German sentence natural, correctly matched to the CEFR level, and short enough to read at a glance?\n\n"
+            f"- Learning effect: Does the example sentence make the {src} word memorable and easy to understand?\n"
+            f"- Sentence quality: Is the {src} sentence natural, correctly matched to the CEFR level, and short enough to read at a glance?\n\n"
             f"{_fmt_instruction}\n\n"
             "Your answer:"
         )
         system_prompt_selector = (
-            "You are a social media expert and German teacher evaluating tweet quality. "
+            f"You are a social media expert and {src} teacher evaluating tweet quality. "
             "Reply with ONLY a number (1, 2 or 3) followed by a short reason — nothing else before the number."
         )
 
@@ -405,49 +412,52 @@ def _pick_word_from_trends(avoid_words: list) -> Optional[tuple[str, str]]:
     Returns (word, cefr_level) tuple, or None if no suitable trend found
     or if trend fetching fails (caller should fall back to AI-free selection).
     """
-    trends = get_germany_trends(max_trends=20)
+    trends = get_trends(max_trends=20)
 
     if not trends:
         ui_warn("No trends available — falling back to AI word selection.")
         return None
 
     trend_names = [t["name"] for t in trends]
-    logger.info("Fetched %d German trends:", len(trends))
+    src = config.SOURCE_LANGUAGE
+    tgt = config.TARGET_LANGUAGE
+    country = config.TRENDS_COUNTRY.capitalize()
+    logger.info("Fetched %d trends (%s):", len(trends), country)
     lines = "\n".join(f"  {i+1:2d}. {t['name']}" for i, t in enumerate(trends))
-    print(f"\n  📈  Current German Trends ({len(trends)}):\n{lines}\n", flush=True)
+    print(f"\n  📈  Current {country} Trends ({len(trends)}):\n{lines}\n", flush=True)
     logger.debug("All trends: %s", trend_names)
 
     trend_list_str = "\n".join(f"{i+1}. {name}" for i, name in enumerate(trend_names))
     avoid_set = {w.lower() for w in avoid_words}
     pick_req = (
-        "Du bist ein Deutschlehrer und wählst Wörter für einen Vokabelbeitrag auf X (Twitter).\n\n"
-        f"Hier sind die aktuellen Trendthemen in Deutschland:\n{trend_list_str}\n\n"
-        "Deine Aufgabe: Extrahiere aus diesen Trends bis zu 15 deutsche Wörter oder kurze Phrasen, "
-        "die für einen englischsprachigen Deutschlernenden (A1–C2) wertvoll sind.\n\n"
-        "WICHTIG — Sortierkriterium: Sortiere ausschließlich nach dem Nutzen für Deutschlernende, "
-        "NICHT nach der Relevanz für das Trendthema. Das Wort 'Heizung' ist wertvoller als 'Pipeline', "
-        "auch wenn 'Pipeline' näher am Trendthema liegt.\n\n"
-        "Rangfolge von oben nach unten:\n"
-        "  1. Alltagswörter, die jeder Deutschlernende kennen muss (Substantive, Verben, Adjektive des täglichen Lebens)\n"
-        "  2. Kulturell typisch deutsche Wörter mit hohem Wiedererkennungswert\n"
-        "  3. Thematisch passende Wörter mit mittlerem Lernwert\n"
-        "  4. Fachbegriffe oder weniger gebräuchliche Wörter — nur wenn kein besseres Wort vorhanden\n\n"
-        "Ausschlusskriterien (diese Wörter NICHT aufnehmen):\n"
-        "- Englische Lehnwörter oder Internationalismen ohne deutschen Lernwert (Pipeline, Internet, App, Livestream …)\n"
-        "- Eigennamen, Markennamen, Städte, Personennamen\n"
-        "- Seltene oder veraltete Wörter, die im echten Alltag kaum vorkommen\n"
-        "- Politische Fachbegriffe, die nur im Nachrichtenkontext auftauchen\n"
-        "- Entferne führende # oder @ von jedem Wort\n\n"
-        "Antworte NUR mit einem gültigen JSON-Array, nichts anderes:\n"
-        '[{"word": "<deutsches Wort>", "cefr": "<A1|A2|B1|B2|C1|C2>"}, ...]\n'
-        "Falls kein Trend ein geeignetes Wort liefert, antworte mit einem leeren Array: []"
+        f"You are a {src} teacher selecting vocabulary words for a post on X (Twitter).\n\n"
+        f"Here are the current trending topics in {country}:\n{trend_list_str}\n\n"
+        f"Your task: extract up to 15 {src} words or short phrases from these trends "
+        f"that are valuable for a {tgt}-speaking {src} learner (A1–C2).\n\n"
+        "IMPORTANT — ranking criterion: rank exclusively by learning value for the learner, "
+        "NOT by relevance to the trend topic. A common everyday word is always more valuable "
+        "than a technical or news-specific term.\n\n"
+        "Ranking priority (top to bottom):\n"
+        f"  1. Everyday words every {src} learner must know (nouns, verbs, adjectives of daily life)\n"
+        f"  2. Culturally iconic {src} words with high recognition value\n"
+        "  3. Thematically relevant words with moderate learning value\n"
+        "  4. Technical or uncommon words — only if no better word is available\n\n"
+        "Exclusion criteria (do NOT include these):\n"
+        f"- Loanwords or internationalisms with no {src} learning value (e.g. Pipeline, Internet, App, Livestream)\n"
+        "- Proper nouns, brand names, cities, personal names\n"
+        "- Rare or archaic words that hardly appear in real everyday life\n"
+        "- Political jargon that only appears in news contexts\n"
+        "- Strip any leading # or @ from each word\n\n"
+        "Reply with ONLY a valid JSON array, nothing else:\n"
+        '[{"word": "<source language word>", "cefr": "<A1|A2|B1|B2|C1|C2>"}, ...]\n'
+        "If no trend yields a suitable word, reply with an empty array: []"
     )
 
     try:
         raw = retry_call(
             _get_trend_filter_ai(),
             pick_req,
-            "Du bist ein erfahrener Deutschlehrer. Dein einziges Ziel ist es, Wörter auszuwählen, die für englischsprachige Deutschlernende im echten Alltag möglichst nützlich sind. Trendrelevanz ist zweitrangig — Lernwert hat absolute Priorität. Du antwortest ausschließlich mit gültigem JSON.",
+            f"You are an experienced {src} teacher. Your only goal is to select words that are maximally useful for {tgt}-speaking {src} learners in real everyday life. Trend relevance is secondary — learning value has absolute priority. Reply exclusively with valid JSON.",
             max_tokens=1200,
             temperature=0.3,
             label="trend_pick",
@@ -555,17 +565,18 @@ def _is_word_too_similar(word: str, avoid_words: list) -> tuple[bool, str]:
 
     recent = avoid_words[-50:]
     word_list_str = ", ".join(recent)
+    src = config.SOURCE_LANGUAGE
 
     prompt = (
-        f"Bereits verwendete deutsche Wörter: [{word_list_str}]\n\n"
-        f"Neues vorgeschlagenes Wort: \"{word}\"\n\n"
-        "Ist dieses Wort zu ähnlich zu einem der bereits verwendeten Wörter? "
-        "Zu ähnlich bedeutet: gleicher Wortstamm, Deklination, Konjugation, "
-        "Kompositum oder eng verwandte Ableitung "
-        "(z.B. deutsch/deutsche, Haus/Häuser, laufen/Lauf, Freund/Freundschaft).\n\n"
-        "Antworte NUR mit einem JSON-Objekt:\n"
-        '{"similar": true, "matched": "<das ähnliche Wort>"}\n'
-        "oder\n"
+        f"Already used {src} words: [{word_list_str}]\n\n"
+        f"New proposed word: \"{word}\"\n\n"
+        f"Is this word too similar to any of the already used words? "
+        "Too similar means: same root, inflection, conjugation, compound, "
+        "or closely related derivation "
+        "(e.g. deutsch/deutsche, Haus/Häuser, laufen/Lauf, Freund/Freundschaft).\n\n"
+        "Reply with ONLY a JSON object:\n"
+        '{"similar": true, "matched": "<the similar word>"}\n'
+        "or\n"
         '{"similar": false, "matched": ""}'
     )
 
@@ -573,8 +584,8 @@ def _is_word_too_similar(word: str, avoid_words: list) -> tuple[bool, str]:
         raw = retry_call(
             _get_similarity_ai(),
             prompt,
-            "Du prüfst, ob ein deutsches Wort zu ähnlich zu einer Liste bereits verwendeter Wörter ist. "
-            "Antworte ausschließlich mit gültigem JSON.",
+            f"You check whether a {src} word is too similar to a list of already used words. "
+            "Reply exclusively with valid JSON.",
             max_tokens=60,
             temperature=0.0,
             label="similarity_check",
@@ -600,16 +611,16 @@ def generate_content(state: dict) -> dict:
     strategy: dict = state.get("strategy") or _load_strategy_from_file()
     cycle: int = state.get("cycle", 0)
 
-    # ── 1. Pick a German word + determine its CEFR level ──────────────────────
+    # ── 1. Pick a source-language word + determine its CEFR level ─────────────
     german_word: Optional[str] = None
     word_cefr: str = ""
     avoid_words: list = []
     word_from_trends: bool = False
 
     if config.USE_TRENDS:
-        info("USE_TRENDS=true — fetching German trends …")
+        info(f"USE_TRENDS=true — fetching trends ({config.TRENDS_COUNTRY}) …")
         from nodes.score import _load_history
-        history_words = [r.get("german_word", "") for r in _load_history() if r.get("german_word")]
+        history_words = [r.get("source_word", "") for r in _load_history() if r.get("source_word")]
         strategy_words = strategy.get("avoid_words", [])
         avoid_words = list(dict.fromkeys(history_words + strategy_words))
         avoid_preview = ", ".join(avoid_words[-5:]) if avoid_words else "none"
@@ -623,18 +634,19 @@ def generate_content(state: dict) -> dict:
     if not german_word:
         if not config.USE_TRENDS:
             from nodes.score import _load_history
-            history_words = [r.get("german_word", "") for r in _load_history() if r.get("german_word")]
+            history_words = [r.get("source_word", "") for r in _load_history() if r.get("source_word")]
         # Always enrich avoid_words with the full history before building the word prompt.
         # When USE_TRENDS=True but trend selection failed, history_words was already built above.
         avoid_words = list(dict.fromkeys(history_words + strategy.get("avoid_words", [])))
         strategy = {**strategy, "avoid_words": avoid_words}
         word_prompt = _build_word_prompt(strategy)
+        src = config.SOURCE_LANGUAGE
         raw_word = retry_call(
             _get_word_pick_ai(),
             word_prompt,
-            "Du bist ein Deutschlehrer und erstellst Vokabelinhalte für Social Media. "
-            "Du wählst ausschließlich häufige, gebräuchliche Wörter mit positiver oder neutraler Bedeutung — keine seltenen, negativen oder bedrückenden Wörter. "
-            "Du antwortest ausschließlich mit gültigem JSON.",
+            f"You are a {src} teacher creating vocabulary content for social media. "
+            "You select exclusively common, widely-used words with positive or neutral meaning — no rare, negative, or depressing words. "
+            "You reply exclusively with valid JSON.",
             max_tokens=40,
             temperature=0.9,
             label="pick_word",
@@ -681,9 +693,9 @@ def generate_content(state: dict) -> dict:
         raw_word = retry_call(
             _get_word_pick_ai(),
             word_prompt,
-            "Du bist ein Deutschlehrer und erstellst Vokabelinhalte für Social Media. "
-            "Du wählst ausschließlich häufige, gebräuchliche Wörter mit positiver oder neutraler Bedeutung — keine seltenen, negativen oder bedrückenden Wörter. "
-            "Du antwortest ausschließlich mit gültigem JSON.",
+            f"You are a {src} teacher creating vocabulary content for social media. "
+            "You select exclusively common, widely-used words with positive or neutral meaning — no rare, negative, or depressing words. "
+            "You reply exclusively with valid JSON.",
             max_tokens=40,
             temperature=0.9,
             label="pick_word_retry",
@@ -702,10 +714,6 @@ def generate_content(state: dict) -> dict:
         except (json.JSONDecodeError, AttributeError):
             german_word = raw_word
             word_cefr = ""
-        for art in ("der ", "die ", "das ", "Der ", "Die ", "Das "):
-            if german_word.startswith(art):
-                german_word = german_word[len(art):]
-                break
 
     cefr_display = f" [{word_cefr}]" if word_cefr else ""
     ok(f"Word selected: {german_word}{cefr_display}")
@@ -776,12 +784,12 @@ def generate_content(state: dict) -> dict:
 
     return {
         **state,
-        "german_word":         result.get("german_word", german_word),
-        "article":             result.get("article", "no known noun"),
-        "cefr_level":          result.get("cefr_level", ""),
-        "example_sentence_de": result.get("example_sentence_de", ""),
-        "example_sentence_en": result.get("example_sentence_en", ""),
-        "full_tweet":          full_tweet,
-        "cycle":               cycle,
-        "error":               None,
+        "source_word":             result.get("source_word", german_word),
+        "article":                 result.get("article", "no known noun"),
+        "cefr_level":              result.get("cefr_level", ""),
+        "example_sentence_source": result.get("example_sentence_source", ""),
+        "example_sentence_target": result.get("example_sentence_target", ""),
+        "full_tweet":              full_tweet,
+        "cycle":                   cycle,
+        "error":                   None,
     }

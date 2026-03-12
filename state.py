@@ -4,11 +4,11 @@ from typing_extensions import TypedDict
 
 class BotState(TypedDict, total=False):
     # ── Content ───────────────────────────────────────────────────────────────
-    german_word: str                  # raw word selected by LLM, e.g. "Führerschein"
-    article: str                      # "der" / "die" / "das" / "no known noun"
+    source_word: str                  # raw word selected by LLM, e.g. "Führerschein"
+    article: str                      # grammatical article, e.g. "der" / "la" / "no known noun"
     cefr_level: str                   # "A1" … "C2"
-    example_sentence_de: str          # German example sentence
-    example_sentence_en: str          # English translation of example sentence
+    example_sentence_source: str      # example sentence in the source language
+    example_sentence_target: str      # translation of the example sentence in the target language
     full_tweet: str                   # assembled final tweet text
 
     # ── Image ─────────────────────────────────────────────────────────────────

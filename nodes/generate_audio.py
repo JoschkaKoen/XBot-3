@@ -2,8 +2,8 @@
 Node: generate_audio
 
 Generates TTS audio via ElevenLabs.
-Uses generate_german_audio_with_timings() for ktv mode,
-or generate_german_audio() for simple mode.
+Uses generate_source_audio_with_timings() for ktv mode,
+or generate_source_audio() for simple mode.
 
 Voice pool
 ----------
@@ -29,7 +29,6 @@ from elevenlabs.types import VoiceSettings
 logger = logging.getLogger("german_bot.generate_audio")
 
 _DEFAULT_SPEED  = 0.70
-_VOICE_LANGUAGE = "de"   # ElevenLabs language code for the TTS voice pool
 
 os.makedirs(VOICES_DIR, exist_ok=True)
 
@@ -68,7 +67,7 @@ def _pick_voice_by_ai(full_tweet: str, pool: list) -> tuple:
         for i, v in enumerate(pool)
     )
     prompt = (
-        "You are selecting the best German text-to-speech voice for a tweet in a "
+        f"You are selecting the best {config.SOURCE_LANGUAGE} text-to-speech voice for a tweet in a "
         "language-learning context.\n\n"
         f"Tweet:\n{full_tweet}\n\n"
         f"Available voices:\n{voice_list}\n\n"
@@ -111,7 +110,7 @@ def _pick_voice_by_ai(full_tweet: str, pool: list) -> tuple:
 
 
 @with_retry(max_attempts=4, base_delay=3.0, label="elevenlabs_simple")
-def generate_german_audio(
+def generate_source_audio(
     text: str,
     output_file: str = None,
     voice_id: str = None,
@@ -125,7 +124,7 @@ def generate_german_audio(
 
     if output_file is None:
         ts = datetime.now().strftime("%Y%m%d_%H%M%S")
-        output_file = os.path.join(VOICES_DIR, f"german_{ts}.mp3")
+        output_file = os.path.join(VOICES_DIR, f"{config.SOURCE_LANGUAGE_CODE}_{ts}.mp3")
 
     logger.info("ElevenLabs TTS | voice_id=%s speed=%.2f | %.60s", voice_id, speed, text)
     audio = client.text_to_speech.convert(
@@ -141,7 +140,7 @@ def generate_german_audio(
 
 
 @with_retry(max_attempts=4, base_delay=3.0, label="elevenlabs_timings")
-def generate_german_audio_with_timings(
+def generate_source_audio_with_timings(
     text: str,
     output_file: str = None,
     voice_id: str = None,
@@ -156,7 +155,7 @@ def generate_german_audio_with_timings(
 
     if output_file is None:
         ts = datetime.now().strftime("%Y%m%d_%H%M%S")
-        output_file = os.path.join(VOICES_DIR, f"german_ktv_{ts}.mp3")
+        output_file = os.path.join(VOICES_DIR, f"{config.SOURCE_LANGUAGE_CODE}_ktv_{ts}.mp3")
 
     logger.info("ElevenLabs TTS (timings) | voice_id=%s speed=%.2f | %.60s", voice_id, speed, text)
     result = client.text_to_speech.convert_with_timestamps(
@@ -237,13 +236,13 @@ def generate_audio(state: dict) -> dict:
     stage_banner(5)
     logger.info("Node: generate_audio")
 
-    text: str       = state["example_sentence_de"]
+    text: str       = state["example_sentence_source"]
     full_tweet: str = state.get("full_tweet", "")
     style: str      = config.VIDEO_STYLE
 
     # Grow the voice pool passively (no-op once it reaches TARGET_POOL_SIZE)
     from services.voice_pool import grow_pool, TARGET_POOL_SIZE
-    pool = grow_pool(language=_VOICE_LANGUAGE, target_size=TARGET_POOL_SIZE)
+    pool = grow_pool(language=config.SOURCE_LANGUAGE_CODE, target_size=TARGET_POOL_SIZE)
     ui_info(f"Voice pool: {len(pool)} voices available.")
 
     if not pool:
@@ -262,11 +261,11 @@ def generate_audio(state: dict) -> dict:
 
     try:
         if style == "ktv":
-            audio_path, word_timings = generate_german_audio_with_timings(text, voice_id=voice_id)
+            audio_path, word_timings = generate_source_audio_with_timings(text, voice_id=voice_id)
             ok(f"Audio + {len(word_timings)} word timings -> {os.path.basename(audio_path)}")
             return {**state, "clean_audio_path": audio_path, "word_timings": word_timings}
         else:
-            audio_path = generate_german_audio(text, voice_id=voice_id)
+            audio_path = generate_source_audio(text, voice_id=voice_id)
             ok(f"Audio -> {os.path.basename(audio_path)}")
             return {**state, "clean_audio_path": audio_path, "word_timings": []}
 
