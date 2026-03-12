@@ -2,13 +2,13 @@
   {
     "name": "Classic",
     "template": [
-      "#Learn[SOURCE_LANGUAGE] #[SOURCE_LANGUAGE]Vocabulary",
-      "",
       "[SOURCE_FLAG]  [ARTICLE] [SOURCE_WORD]",
       "[TARGET_FLAG]  [TARGET_TRANSLATION]  [EMOJI1][EMOJI1]",
       "",
       "[SOURCE_FLAG]  [SHORT_FUNNY_SOURCE_SENTENCE]",
-      "[TARGET_FLAG]  [TARGET_TRANSLATION_OF_SENTENCE]  [EMOJI2][EMOJI2]"
+      "[TARGET_FLAG]  [TARGET_TRANSLATION_OF_SENTENCE]  [EMOJI2][EMOJI2]",
+      "",
+      "#Learn[SOURCE_LANGUAGE] #[SOURCE_LANGUAGE]Vocabulary"
     ]
   },
   {
@@ -38,12 +38,12 @@
   {
     "name": "Equals",
     "template": [
-      "#Learn[SOURCE_LANGUAGE] #[SOURCE_LANGUAGE]Words",
-      "",
       "[ARTICLE] [SOURCE_WORD] = [TARGET_TRANSLATION]  [EMOJI1][EMOJI1]",
       "",
       "[SOURCE_FLAG]  [SHORT_FUNNY_SOURCE_SENTENCE]",
-      "[TARGET_FLAG]  [TARGET_TRANSLATION_OF_SENTENCE]  [EMOJI2][EMOJI2]"
+      "[TARGET_FLAG]  [TARGET_TRANSLATION_OF_SENTENCE]  [EMOJI2][EMOJI2]",
+      "",
+      "#Learn[SOURCE_LANGUAGE] #[SOURCE_LANGUAGE]Words"
     ]
   },
   {
@@ -63,13 +63,13 @@
   {
     "name": "Quotes",
     "template": [
-      "#Learn[SOURCE_LANGUAGE] #LanguageLearning",
-      "",
       "[SOURCE_FLAG]  [ARTICLE] [SOURCE_WORD]",
       "[TARGET_FLAG]  [TARGET_TRANSLATION]  [EMOJI1][EMOJI1]",
       "",
       "\u201e[SHORT_FUNNY_SOURCE_SENTENCE]\u201c",
-      "= [TARGET_TRANSLATION_OF_SENTENCE]  [EMOJI2][EMOJI2]"
+      "= [TARGET_TRANSLATION_OF_SENTENCE]  [EMOJI2][EMOJI2]",
+      "",
+      "#Learn[SOURCE_LANGUAGE] #LanguageLearning"
     ]
   }
 ]

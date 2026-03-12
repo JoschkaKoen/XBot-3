@@ -11,6 +11,8 @@ IMAGE_PROVIDER setting controls which backend is used:
   "grok"                 — requires XAI_API_KEY
 """
 
+import io
+import math
 import os
 import time
 import logging
@@ -202,86 +204,107 @@ def _make_client():
 
 # ── flag overlay (PIL, applied after image download) ──────────────────────────
 
-def _draw_tricolor(badge_w: int, badge_h: int, colors: list):
-    """Draw a flag as three equal horizontal bands using the given RGB color list."""
-    from PIL import Image, ImageDraw
-    img = Image.new("RGB", (badge_w, badge_h))
-    d = ImageDraw.Draw(img)
-    bh = badge_h // 3
-    d.rectangle([0, 0,       badge_w, bh],       fill=tuple(colors[0]))
-    d.rectangle([0, bh,      badge_w, bh * 2],   fill=tuple(colors[1]))
-    d.rectangle([0, bh * 2,  badge_w, badge_h],  fill=tuple(colors[2]))
-    return img
+_FLAGCDN_URL      = "https://flagcdn.com/w{w}/{code}.png"
+_FLAGCDN_WIDTHS   = [20, 24, 28, 32, 40, 48, 56, 64, 80, 96, 112, 128, 160, 320]
 
 
-def _create_flag_badge(badge_w: int, badge_h: int):
-    """Return a PIL Image of a target→source blended flag badge."""
+def _flag_emoji_to_country_code(emoji: str) -> str:
+    """Extract the ISO 3166-1 alpha-2 country code from a flag emoji (e.g. 🇩🇪 → 'de')."""
+    chars = [
+        chr(ord(c) - 0x1F1E6 + ord("A"))
+        for c in emoji
+        if 0x1F1E6 <= ord(c) <= 0x1F1FF
+    ]
+    return "".join(chars).lower()
+
+
+_flag_cache: dict = {}   # (code, fetch_w) → PIL Image, avoids re-downloading each cycle
+
+
+@with_retry(max_attempts=3, base_delay=0.1, backoff=1.0, label="fetch_flag")
+def _fetch_flag(code: str, desired_width: int) -> "Image":
+    """Download a flag PNG from flagcdn.com at the nearest supported width (cached)."""
     from PIL import Image
+    fetch_w = next((w for w in _FLAGCDN_WIDTHS if w >= desired_width), 320)
+    key = (code.lower(), fetch_w)
+    if key not in _flag_cache:
+        url = _FLAGCDN_URL.format(w=fetch_w, code=code.lower())
+        resp = requests.get(url, timeout=10)
+        resp.raise_for_status()
+        _flag_cache[key] = Image.open(io.BytesIO(resp.content)).convert("RGBA")
+    return _flag_cache[key].copy()   # copy so callers can mutate without poisoning cache
 
-    target_colors = config._parse_flag_colors(
-        config.TARGET_FLAG_COLORS,
-        default=[(178, 34, 52), (255, 255, 255), (60, 59, 110)],
-    )
-    source_colors = config._parse_flag_colors(
-        config.SOURCE_FLAG_COLORS,
-        default=[(0, 0, 0), (221, 0, 0), (255, 206, 0)],
-    )
 
-    target_img = _draw_tricolor(badge_w, badge_h, target_colors)
-    source_img = _draw_tricolor(badge_w, badge_h, source_colors)
+def _fit_flag(flag: "Image", w: int, h: int) -> "Image":
+    """Scale-to-fill: zoom until both dimensions are covered, then centre-crop."""
+    from PIL import Image
+    ratio = max(w / flag.width, h / flag.height)
+    new_w = int(flag.width  * ratio)
+    new_h = int(flag.height * ratio)
+    flag = flag.resize((new_w, new_h), Image.LANCZOS)
+    x0 = (new_w - w) // 2
+    y0 = (new_h - h) // 2
+    return flag.crop((x0, y0, x0 + w, y0 + h))
 
-    # Gradient mask: 255 (left) = target visible, 0 (right) = source visible
+
+def _create_flag_badge(badge_w: int, badge_h: int) -> "Image":
+    """
+    Gradient-blended badge using real flag images from flagcdn.com.
+    Target flag (learner's language) on the left, source flag (taught language) on the right.
+    Cosine ease-in/out gradient for a smooth, seamless blend.
+    """
+    from PIL import Image
+    src_code = _flag_emoji_to_country_code(config.SOURCE_FLAG)
+    tgt_code = _flag_emoji_to_country_code(config.TARGET_FLAG)
+
+    src_img = _fit_flag(_fetch_flag(src_code, badge_w * 2), badge_w, badge_h).convert("RGB")
+    tgt_img = _fit_flag(_fetch_flag(tgt_code, badge_w * 2), badge_w, badge_h).convert("RGB")
+
+    # Cosine gradient: left=255 (target fully visible) → right=0 (source fully visible)
     gradient = bytes(
-        [255 - int(255 * x / max(badge_w - 1, 1)) for x in range(badge_w)] * badge_h
+        [int(128 + 127 * math.cos(math.pi * x / max(badge_w - 1, 1)))
+         for x in range(badge_w)] * badge_h
     )
     mask = Image.frombytes("L", (badge_w, badge_h), gradient)
+    return Image.composite(tgt_img, src_img, mask)
 
-    return Image.composite(target_img, source_img, mask)
 
-
-def _apply_rounded_corners(img, radius: int):
-    """Return img with rounded corners (requires RGBA)."""
+def _apply_rounded_corners(img: "Image", radius: int) -> "Image":
+    """Return img with rounded corners via a rounded_rectangle alpha mask."""
     from PIL import Image, ImageDraw
     img = img.convert("RGBA")
-    circle = Image.new("L", (radius * 2, radius * 2), 0)
-    ImageDraw.Draw(circle).ellipse((0, 0, radius * 2, radius * 2), fill=255)
     w, h = img.size
-    alpha = Image.new("L", (w, h), 255)
-    for (x, y) in [(0, 0), (w - radius * 2, 0), (0, h - radius * 2), (w - radius * 2, h - radius * 2)]:
-        alpha.paste(circle.crop((
-            0 if x == 0 else radius,
-            0 if y == 0 else radius,
-            radius if x == 0 else radius * 2,
-            radius if y == 0 else radius * 2,
-        )), (x + (0 if x == 0 else radius), y + (0 if y == 0 else radius)))
-    img.putalpha(alpha)
+    mask = Image.new("L", (w, h), 0)
+    ImageDraw.Draw(mask).rounded_rectangle([0, 0, w - 1, h - 1], radius=radius, fill=255)
+    img.putalpha(mask)
     return img
 
 
 def _overlay_flags(image_path: str) -> str:
-    """Composite a target→source flag badge onto the top-right corner of the image in-place."""
-    from PIL import Image
+    """Composite a target→source flag badge onto the top-right corner of the image."""
+    from PIL import Image, ImageDraw
     img = Image.open(image_path).convert("RGBA")
     iw, ih = img.size
 
-    badge_w = max(int(iw * 0.09), 90)        # ~9 % of image width
+    badge_w = max(int(iw * 0.10), 100)
     badge_h = int(badge_w * 0.60)
     padding = max(int(iw * 0.015), 12)
-    radius  = max(badge_h // 5, 4)
+    radius  = max(int(badge_h * 0.20), 4)
 
     badge = _create_flag_badge(badge_w, badge_h)
-    badge = _apply_rounded_corners(badge, radius)
 
-    # Thin white border (2 px) for legibility
-    from PIL import ImageDraw
-    border_draw = ImageDraw.Draw(badge)
-    border_draw.rounded_rectangle(
-        [0, 0, badge_w - 1, badge_h - 1], radius=radius, outline=(255, 255, 255), width=2
+    # Draw border BEFORE rounding so it is clipped cleanly with the corners
+    ImageDraw.Draw(badge).rounded_rectangle(
+        [0, 0, badge_w - 1, badge_h - 1], radius=radius,
+        outline=(255, 255, 255), width=2,
     )
 
-    # 85 % opacity
+    # Rounded corners — clips both badge content and border in one pass
+    badge = _apply_rounded_corners(badge, radius)
+
+    # 90 % opacity
     r, g, b, a = badge.split()
-    a = a.point(lambda v: int(v * 0.85))
+    a = a.point(lambda v: int(v * 0.90))
     badge = Image.merge("RGBA", (r, g, b, a))
 
     img.paste(badge, (iw - badge_w - padding, padding), badge)
@@ -315,7 +338,9 @@ def generate_image(state: dict) -> dict:
         "- Output ONLY the image description — no explanations, no preamble, no markdown\n"
         + _param_flag_rule +
         "- Do NOT use double hyphens (--) anywhere in the text\n"
-        "- Do NOT use quotation marks in the output"
+        "- Do NOT use quotation marks in the output\n"
+        "- Any human or character faces must show a natural, positive expression "
+        "(genuine smile, relaxed, engaged) — never shocked, disgusted, fearful, or negative\n"
     )
 
     # ── Disney / Pixar style prompts ──────────────────────────────────────────
@@ -491,7 +516,8 @@ def generate_image(state: dict) -> dict:
             STYLE_SUFFIX = (
                 ", shot on Canon EOS R5, 35mm lens, natural lighting, "
                 "RAW photo, ultra realistic, 8k UHD, "
-                "positive joyful atmosphere, warm and welcoming, bright uplifting mood"
+                "positive joyful atmosphere, warm and welcoming, bright uplifting mood, "
+                "subjects with natural warm smiles, positive facial expressions"
             )
         image_prompt = image_prompt.rstrip(".") + STYLE_SUFFIX
 
@@ -530,7 +556,10 @@ def generate_image(state: dict) -> dict:
     logger.info("Best image selected: %s (from %d options)", chosen, len(image_paths))
 
     if config.FLAG_OVERLAY:
-        _overlay_flags(chosen)
+        try:
+            _overlay_flags(chosen)
+        except Exception as exc:
+            logger.warning("Flag overlay skipped — could not fetch flag images: %s", exc)
 
     return {
         **state,

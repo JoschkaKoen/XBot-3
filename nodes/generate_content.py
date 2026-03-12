@@ -195,6 +195,7 @@ def _build_tweet_prompt(
         f"{cefr_rule}"
         "- The example sentence MUST contain the exact word\n"
         f"- The {src} example sentence must be at most {config.MAX_EXAMPLE_WORDS} words long\n"
+        f"- Make sure the {src} example sentence is not longer than {config.MAX_EXAMPLE_WORDS} words\n"
         f"- The {tgt} translations must be natural, not robotic\n"
         "- The emojis should help the reader visually understand the meaning. Don't just use laughing emojis\n"
         "## Strategy guidance\n"

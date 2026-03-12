@@ -89,8 +89,6 @@ def score_and_store(state: dict) -> dict:
 
     metrics: dict = state.get("metrics", {})
     score: float = _compute_score(metrics)
-    ok(f"Engagement score: {score:.2f}")
-    logger.info("Engagement score: %.2f | metrics: %s", score, metrics)
 
     record = {
         "timestamp": datetime.now(timezone.utc).isoformat(),
