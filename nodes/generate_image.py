@@ -324,6 +324,7 @@ def generate_image(state: dict) -> dict:
     full_tweet: str  = state.get("full_tweet", "")
     cycle: int       = state.get("cycle", 0)
     image_style: str = resolve_image_style(cycle)
+    funny: bool      = config.resolve_tweet_style(cycle) == "funny"
     logger.info("Image style for cycle %d: %s", cycle, image_style)
     _image_client = _make_client()
 
@@ -357,7 +358,7 @@ def generate_image(state: dict) -> dict:
             "Everything feels polished, characterful, and cinematic. "
             "The image should look like a still from a Pixar or Disney animated feature."
         )
-        if config.FUNNY_MODE and example_de:
+        if funny and example_de:
             tweet_context = f"Full tweet:\n{full_tweet}\n\n" if full_tweet else ""
             img_req = (
                 f"A {config.SOURCE_LANGUAGE} learning tweet contains a joke. "
@@ -426,7 +427,7 @@ def generate_image(state: dict) -> dict:
             "The image should look like a professional editorial photo that people want to share for its looks alone. "
         )
 
-        if config.FUNNY_MODE and example_de:
+        if funny and example_de:
             tweet_context = f"Full tweet:\n{full_tweet}\n\n" if full_tweet else ""
             img_req = (
                 f"A {config.SOURCE_LANGUAGE} learning tweet contains a joke. Your job is to create an image generation prompt that is "

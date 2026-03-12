@@ -107,6 +107,27 @@ def resolve_image_style(cycle: int) -> str:
     return IMAGE_STYLE_CYCLE[cycle % len(IMAGE_STYLE_CYCLE)]
 
 
+# ── Tweet style ───────────────────────────────────────────────────────────────
+# Single value  → every tweet uses that style.
+# Comma-separated → cycles deterministically across tweets.
+# Valid values: "funny", "normal"
+#   "funny"              → always funny tone
+#   "normal"             → always neutral/warm tone
+#   "funny,normal,normal"→ tweet 0: funny, 1: normal, 2: normal, 3: funny, …
+_TWEET_STYLE_RAW: str = os.getenv("TWEET_STYLE", "funny")
+TWEET_STYLE_CYCLE: list[str] = [s.lower().strip() for s in _TWEET_STYLE_RAW.split(",") if s.strip()]
+if not TWEET_STYLE_CYCLE:
+    TWEET_STYLE_CYCLE = ["funny"]
+
+# Convenience alias for single-style setups (first element of the cycle).
+TWEET_STYLE: str = TWEET_STYLE_CYCLE[0]
+
+
+def resolve_tweet_style(cycle: int) -> str:
+    """Return the effective tweet style for the given tweet cycle index."""
+    return TWEET_STYLE_CYCLE[cycle % len(TWEET_STYLE_CYCLE)]
+
+
 def reload_settings() -> None:
     """
     Re-read settings.env (and .env) so any changes made between cycles take
@@ -121,9 +142,10 @@ def reload_settings() -> None:
     global AI_PROVIDER
     global USE_TRENDS, TREND_CANDIDATE_LIMIT
     global IMAGE_STYLE_CYCLE, IMAGE_STYLE
+    global TWEET_STYLE_CYCLE, TWEET_STYLE
     global IMAGE_PROVIDER, GROK_IMAGE_COUNT
     global MAX_TWEET_LENGTH, MAX_EXAMPLE_WORDS, POST_INTERVAL_SECONDS, VIDEO_STYLE, ANALYZE_LAST_N
-    global FUNNY_MODE, FLAG_OVERLAY
+    global FLAG_OVERLAY
     global ENABLE_GROK_VIDEO, GROK_VIDEO_FREQUENCY
     global ENABLE_SELF_IMPROVEMENT, IMPROVEMENT_INTERVAL_CYCLES, IMPROVEMENT_SCORE_THRESHOLD
     global STRATEGY_UPDATE_INTERVAL_HOURS
@@ -136,6 +158,9 @@ def reload_settings() -> None:
     _raw                           = os.getenv("IMAGE_STYLE", "photographic")
     IMAGE_STYLE_CYCLE              = [s.lower().strip() for s in _raw.split(",") if s.strip()] or ["photographic"]
     IMAGE_STYLE                    = IMAGE_STYLE_CYCLE[0]
+    _raw_tweet                     = os.getenv("TWEET_STYLE", "funny")
+    TWEET_STYLE_CYCLE              = [s.lower().strip() for s in _raw_tweet.split(",") if s.strip()] or ["funny"]
+    TWEET_STYLE                    = TWEET_STYLE_CYCLE[0]
     IMAGE_PROVIDER                 = os.getenv("IMAGE_PROVIDER", "midjourney").lower().strip()
     GROK_IMAGE_COUNT               = int(os.getenv("GROK_IMAGE_COUNT", "1"))
     MAX_TWEET_LENGTH               = int(os.getenv("MAX_TWEET_LENGTH", "280"))
@@ -143,7 +168,6 @@ def reload_settings() -> None:
     POST_INTERVAL_SECONDS          = int(os.getenv("POST_INTERVAL_SECONDS", "18000"))
     VIDEO_STYLE                    = os.getenv("VIDEO_STYLE", "ktv").lower().strip()
     ANALYZE_LAST_N                 = int(os.getenv("ANALYZE_LAST_N", "10"))
-    FUNNY_MODE                     = os.getenv("FUNNY_MODE", "false").lower().strip() == "true"
     FLAG_OVERLAY                   = os.getenv("FLAG_OVERLAY", "true").lower().strip() == "true"
     ENABLE_GROK_VIDEO              = os.getenv("ENABLE_GROK_VIDEO", "false").lower().strip() == "true"
     GROK_VIDEO_FREQUENCY           = int(os.getenv("GROK_VIDEO_FREQUENCY", "1"))
@@ -205,9 +229,6 @@ IMPROVEMENT_INTERVAL_CYCLES: int = int(os.getenv("IMPROVEMENT_INTERVAL_CYCLES", 
 # this threshold. Set high (e.g. 9999) to always run. Use --force to override.
 IMPROVEMENT_SCORE_THRESHOLD: float = float(os.getenv("IMPROVEMENT_SCORE_THRESHOLD", "9999"))
 
-# When True, the example sentence takes a funny, ironic angle to increase engagement.
-# Set to "false" to use warm, neutral sentences instead.
-FUNNY_MODE: bool = os.getenv("FUNNY_MODE", "false").lower().strip() == "true"
 
 # When True, Grok Imagine animates the selected image into a short video used as the
 # animated base for the KTV overlay.  Requires XAI_API_KEY.

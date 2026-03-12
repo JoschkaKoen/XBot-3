@@ -101,6 +101,12 @@ def _build_word_prompt(strategy: dict) -> str:
     topic_line = f"- Topic / angle for this tweet: {next_topic}\n" if next_topic else ""
     style_line  = f"- Style hint: {style}\n" if style else ""
 
+    avoid_block = (
+        f"\nCRITICAL — MUST NOT return any of these already-used words: {avoid_str}\n"
+        if avoid_str != "none"
+        else ""
+    )
+
     return (
         f"You are a {src} teacher creating content for an X account that teaches "
         f"{src} vocabulary to {tgt} speakers.\n\n"
@@ -110,8 +116,8 @@ def _build_word_prompt(strategy: dict) -> str:
         f"- Is practical and useful in daily life\n"
         f"- Fits one of these CEFR levels: {cefr_hint}\n"
         f"{topic_line}"
-        f"- Has NOT been used recently (avoid: {avoid_str})\n"
-        f"{style_line}\n"
+        f"{style_line}"
+        f"{avoid_block}\n"
         f"Reply with ONLY a valid JSON object — no explanation, no article outside the JSON:\n"
         f'{{"word": "<the {src} word WITHOUT article>", "cefr": "<A1|A2|B1|B2|C1|C2>"}}'
     )
@@ -136,6 +142,7 @@ def _build_tweet_prompt(
     cefr_level: str = "",
     extra_instruction: str = "",
     word_from_trends: bool = False,
+    funny: bool = True,
 ) -> str:
     preferred_cefr = strategy.get("preferred_cefr", "A1, A2, B1, B2, C1, C2")
     # next_topic and style only make sense when the word was chosen freely (not from trends).
@@ -153,7 +160,7 @@ def _build_tweet_prompt(
         examples_section = "\n(No past tweets available yet)\n"
 
     funny_tone_section = ""
-    if config.FUNNY_MODE:
+    if funny:
         funny_tone_section = (
             "## Tone\n"
             "The example sentence MUST be genuinely very funny — it should make the reader laugh and smirk. "
@@ -231,15 +238,16 @@ def _call_tweet_ai(
     cefr_level: str = "",
     extra_instruction: str = "",
     word_from_trends: bool = False,
+    funny: bool = True,
 ) -> list:
     """Fire 3 parallel API calls, each generating one tweet candidate. Returns list of dicts."""
     import threading
     from concurrent.futures import ThreadPoolExecutor, as_completed
 
-    prompt = _build_tweet_prompt(trending_word, scaffold, strategy, top_tweets, cefr_level, extra_instruction, word_from_trends=word_from_trends)
+    prompt = _build_tweet_prompt(trending_word, scaffold, strategy, top_tweets, cefr_level, extra_instruction, word_from_trends=word_from_trends, funny=funny)
     src = config.SOURCE_LANGUAGE
     tgt = config.TARGET_LANGUAGE
-    if config.FUNNY_MODE:
+    if funny:
         system_prompt = (
             f"You are a {src} language teacher and comedy writer creating funny tweets for X (Twitter). "
             "Every example sentence must be genuinely very funny — it must make the reader laugh."
@@ -301,7 +309,7 @@ def _call_tweet_ai(
     return [candidates_map[i] for i in sorted(candidates_map)]
 
 
-def _select_best_tweet(candidates: list, source_word: str, cefr_level: str) -> dict:
+def _select_best_tweet(candidates: list, source_word: str, cefr_level: str, funny: bool = True) -> dict:
     """
     Print all candidates to the terminal, use the configured TWEET_PICKER_MODEL to pick
     the best one, and highlight the winner. Falls back to the first candidate if selection fails.
@@ -332,7 +340,7 @@ def _select_best_tweet(candidates: list, source_word: str, cefr_level: str) -> d
 
     src = config.SOURCE_LANGUAGE
     tgt = config.TARGET_LANGUAGE
-    if config.FUNNY_MODE:
+    if funny:
         selection_prompt = (
             f"You are evaluating {len(candidates)} {src} vocabulary tweet candidates for the word "
             f"'{source_word}' (CEFR: {cefr_level or 'unknown'}).\n\n"
@@ -611,6 +619,7 @@ def generate_content(state: dict) -> dict:
 
     strategy: dict = state.get("strategy") or _load_strategy_from_file()
     cycle: int = state.get("cycle", 0)
+    tweet_style: str = config.resolve_tweet_style(cycle)
 
     # ── 1. Pick a source-language word + determine its CEFR level ─────────────
     german_word: Optional[str] = None
@@ -642,11 +651,13 @@ def generate_content(state: dict) -> dict:
         strategy = {**strategy, "avoid_words": avoid_words}
         word_prompt = _build_word_prompt(strategy)
         src = config.SOURCE_LANGUAGE
+        avoid_sys_str = ", ".join(f'"{w}"' for w in avoid_words[-20:]) if avoid_words else "none"
         raw_word = retry_call(
             _get_word_pick_ai(),
             word_prompt,
             f"You are a {src} teacher creating vocabulary content for social media. "
             "You select exclusively common, widely-used words with positive or neutral meaning — no rare, negative, or depressing words. "
+            f"You MUST NOT return any of these already-used words: {avoid_sys_str}. "
             "You reply exclusively with valid JSON.",
             max_tokens=40,
             temperature=0.9,
@@ -674,6 +685,7 @@ def generate_content(state: dict) -> dict:
         avoid_words = strategy.get("avoid_words", [])
 
     _MAX_SIMILARITY_RETRIES = 3
+    rejected_words: list = []
     for _sim_attempt in range(_MAX_SIMILARITY_RETRIES):
         is_similar, matched = _is_word_too_similar(german_word, avoid_words)
         if not is_similar:
@@ -686,16 +698,24 @@ def generate_content(state: dict) -> dict:
             "Similarity gate rejected '%s' (too close to '%s') — re-picking.",
             german_word, matched,
         )
+        rejected_words.append(german_word)
         avoid_words.append(german_word)
         strategy = {**strategy, "avoid_words": list(dict.fromkeys(
             avoid_words + strategy.get("avoid_words", [])
         ))}
+        rejected_str = ", ".join(f'"{w}"' for w in rejected_words)
         word_prompt = _build_word_prompt(strategy)
+        word_prompt += (
+            f"\n\nCRITICAL: You MUST NOT return any of these words — "
+            f"they were all just rejected because they are already used: {rejected_str}. "
+            f"You MUST pick a completely different word."
+        )
         raw_word = retry_call(
             _get_word_pick_ai(),
             word_prompt,
             f"You are a {src} teacher creating vocabulary content for social media. "
             "You select exclusively common, widely-used words with positive or neutral meaning — no rare, negative, or depressing words. "
+            f"You MUST NOT return any of these already-used words: {rejected_str}. "
             "You reply exclusively with valid JSON.",
             max_tokens=40,
             temperature=0.9,
@@ -732,9 +752,10 @@ def generate_content(state: dict) -> dict:
     tweet_ai = _get_tweet_ai()
 
     # ── 3. Generate 3 candidates → pick best ──────────────────────────────────
-    candidates = _call_tweet_ai(german_word, scaffold, strategy, top_tweets, tweet_ai, cefr_level=word_cefr, word_from_trends=word_from_trends)
+    funny = tweet_style == "funny"
+    candidates = _call_tweet_ai(german_word, scaffold, strategy, top_tweets, tweet_ai, cefr_level=word_cefr, word_from_trends=word_from_trends, funny=funny)
     logger.info("Generated %d tweet candidate(s).", len(candidates))
-    result = _select_best_tweet(candidates, german_word, word_cefr)
+    result = _select_best_tweet(candidates, german_word, word_cefr, funny=funny)
 
     # ── 4. Use AI-generated article directly ───────────────────────────────────
     result["full_tweet"] = result.get("tweet", "")
@@ -763,8 +784,9 @@ def generate_content(state: dict) -> dict:
                 cefr_level=word_cefr,
                 extra_instruction=f"Keep total length under {config.MAX_TWEET_LENGTH - 20} characters",
                 word_from_trends=word_from_trends,
+                funny=funny,
             )
-            result = _select_best_tweet(retry_candidates, german_word, word_cefr)
+            result = _select_best_tweet(retry_candidates, german_word, word_cefr, funny=funny)
             result["full_tweet"] = result.get("tweet", "")
         else:
             logger.warning(

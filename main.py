@@ -2,7 +2,6 @@
 Entry point for the German Learning X Bot.
 
 Run with:
-    ubuntu: source "/home/y/Programming/XBot 2/venv/bin/activate"
     macos:  source venv/bin/activate
 
     python main.py
@@ -87,24 +86,26 @@ def _model_lines() -> list:
     if _config.USE_TRENDS:
         lines.append(("  (trend filtering):", trend_model))
 
-    cycle_list = _config.IMAGE_STYLE_CYCLE
-    if len(cycle_list) == 1:
-        image_style_label = cycle_list[0]
-    elif len(cycle_list) <= 4:
-        image_style_label = "  ↺  ".join(cycle_list) + "  (cycle)"
-    else:
-        # Summarise as "style_a (Nx) ↺ style_b (Mx) — N-step cycle"
-        from collections import Counter
+    from collections import Counter
+
+    def _cycle_label(cycle_list: list) -> str:
+        if len(cycle_list) == 1:
+            return cycle_list[0]
+        if len(cycle_list) <= 4:
+            return "  ↺  ".join(cycle_list) + "  (cycle)"
         counts = Counter(cycle_list)
         parts = [f"{s} ({n}×)" for s, n in counts.most_common()]
-        image_style_label = "  ↺  ".join(parts) + f"  ({len(cycle_list)}-step cycle)"
+        return "  ↺  ".join(parts) + f"  ({len(cycle_list)}-step cycle)"
+
+    image_style_label = _cycle_label(_config.IMAGE_STYLE_CYCLE)
+    tweet_style_label = _cycle_label(_config.TWEET_STYLE_CYCLE)
 
     lines.append(("─" * 22, "─" * 30))   # visual separator
     lines.append(("Use trends:",          "ON" if _config.USE_TRENDS else "off"))
     if _config.USE_TRENDS:
         lines.append(("  Candidate limit:", f"{_config.TREND_CANDIDATE_LIMIT}  (top-{_config.TREND_CANDIDATE_LIMIT}, then AI fallback)"))
     lines.append(("Image style:",         image_style_label))
-    lines.append(("Funny mode:",          "ON 😄" if _config.FUNNY_MODE else "off"))
+    lines.append(("Tweet style:",         tweet_style_label))
     if _config.ENABLE_GROK_VIDEO:
         freq_label = "every tweet" if _config.GROK_VIDEO_FREQUENCY <= 1 else f"every {_config.GROK_VIDEO_FREQUENCY} tweets"
         lines.append(("Grok video (I2V):", f"ON 🎬  ({freq_label} via Grok Imagine)"))

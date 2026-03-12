@@ -326,7 +326,7 @@ def analyze_and_improve(state: dict) -> dict:
     history_slice = history[-config.ANALYZE_LAST_N:]
     current_scaffold = old_strategy.get("scaffold", _DEFAULT_SCAFFOLD)
     frozen, cefr_counts_pre = _cefr_frozen(history)
-    prompt = _build_analysis_prompt(history_slice, current_scaffold, funny_mode=config.FUNNY_MODE, cefr_frozen=frozen)
+    prompt = _build_analysis_prompt(history_slice, current_scaffold, funny_mode="funny" in config.TWEET_STYLE_CYCLE, cefr_frozen=frozen)
 
     strategy_ai = _get_strategy_ai()
     model_label = "grok-reasoning" if (config.AI_PROVIDER == "grok" and config.STRATEGY_MODEL == "reasoning") else "default"
