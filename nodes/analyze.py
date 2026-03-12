@@ -102,7 +102,6 @@ _GREEN = "\033[92m"
 _RED   = "\033[91m"
 _GRAY  = "\033[90m"
 _CYAN  = "\033[96m"
-_DIM   = "\033[2m"
 
 
 def _print_scaffold_diff(old_scaffold: str, new_scaffold: str) -> None:

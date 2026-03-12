@@ -8,8 +8,7 @@ tweet-length enforcement.
 
 import json
 import logging
-import string
-from typing import Any, Optional
+from typing import Optional
 
 import config
 from services.ai_client import get_ai_response
@@ -32,7 +31,7 @@ def _get_tweet_ai() -> callable:
 
 def _get_tweet_picker_ai() -> callable:
     """Return the AI function to use for picking the best tweet candidate (TWEET_PICKER_MODEL)."""
-    return _model_to_ai_fn(TWEET_PICKER_MODEL)
+    return _model_to_ai_fn(config.TWEET_PICKER_MODEL)
 
 
 def _model_to_ai_fn(model: str) -> callable:
@@ -73,18 +72,6 @@ logger = logging.getLogger("german_bot.generate_content")
 
 
 # ── helpers ───────────────────────────────────────────────────────────────────
-
-def _strip_quotes(text: str) -> str:
-    text = text.strip()
-    if len(text) >= 2 and text[0] in ('"', '\u201c', '\u201e') and text[-1] in ('"', '\u201d', '\u201c'):
-        text = text[1:-1]
-    return text.strip()
-
-
-def _strip_punctuation(text: str) -> str:
-    translator = str.maketrans("", "", string.punctuation)
-    return text.translate(translator).strip()
-
 
 def _truncate_emoji_pairs(tweet: str) -> str:
     """Replace doubled trailing emoji pairs (🚗🚗 → 🚗) to shorten the tweet."""
@@ -669,11 +656,6 @@ def generate_content(state: dict) -> dict:
             german_word = raw_word
             word_cefr = ""
 
-    for art in ("der ", "die ", "das ", "Der ", "Die ", "Das "):
-        if german_word.startswith(art):
-            german_word = german_word[len(art):]
-            break
-
     # ── 1b. Semantic similarity gate (catches deutsch/deutsche etc.) ──────────
     if not avoid_words:
         avoid_words = strategy.get("avoid_words", [])
@@ -730,7 +712,7 @@ def generate_content(state: dict) -> dict:
     logger.info("Picked word: %s  CEFR: %s", german_word, word_cefr or "unknown")
 
     # ── 2. Gather context for the single AI call ───────────────────────────────
-    from nodes.score import _load_history, get_top_tweets
+    from nodes.score import _load_history
     from scaffolds import next_scaffold
     scaffold_name, scaffold = next_scaffold()
     info(f"Scaffold: {scaffold_name}")

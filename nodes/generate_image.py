@@ -293,27 +293,11 @@ def generate_image(state: dict) -> dict:
 
     example_en: str  = state["example_sentence_en"]
     example_de: str  = state.get("example_sentence_de", "")
-    article: str     = state.get("article", "")
-    german_word: str = state.get("german_word", "")
     full_tweet: str  = state.get("full_tweet", "")
     cycle: int       = state.get("cycle", 0)
     image_style: str = resolve_image_style(cycle)
     logger.info("Image style for cycle %d: %s", cycle, image_style)
     _image_client = _make_client()
-
-    # Build a gender hint so the image shows the right sex when the word is
-    # a gendered noun (der → male, die → female, das / non-noun → no hint).
-    gender_hint = ""
-    if article == "der":
-        gender_hint = (
-            f' IMPORTANT: The German word "{german_word}" is masculine (der). '
-            "If the image shows a person, they must be clearly male (a man or a boy)."
-        )
-    elif article == "die":
-        gender_hint = (
-            f' IMPORTANT: The German word "{german_word}" is feminine (die). '
-            "If the image shows a person, they must be clearly female (a woman or a girl)."
-        )
 
     # 1. Generate image prompt via LLM
     _param_flag_rule = (
@@ -343,18 +327,6 @@ def generate_image(state: dict) -> dict:
             "Everything feels polished, characterful, and cinematic. "
             "The image should look like a still from a Pixar or Disney animated feature."
         )
-        _DISNEY_GENDER = ""
-        if article == "der":
-            _DISNEY_GENDER = (
-                f' The main character represents the German word "{german_word}" (masculine — der). '
-                "If the scene shows a person or character, make them clearly male."
-            )
-        elif article == "die":
-            _DISNEY_GENDER = (
-                f' The main character represents the German word "{german_word}" (feminine — die). '
-                "If the scene shows a person or character, make them clearly female."
-            )
-
         if config.FUNNY_MODE and example_de:
             tweet_context = f"Full tweet:\n{full_tweet}\n\n" if full_tweet else ""
             img_req = (
@@ -372,7 +344,6 @@ def generate_image(state: dict) -> dict:
                 "Step 4 — Keep it clean: ONE main character, ONE clear joke, uncluttered focused background.\n"
                 "Step 5 — Keep it family-friendly: warm, uplifting, never dark or unsettling.\n\n"
                 f"{_DISNEY_AESTHETIC}"
-                f"{_DISNEY_GENDER}"
                 f"{_RULES}"
             )
             system_prompt = (
@@ -393,7 +364,6 @@ def generate_image(state: dict) -> dict:
                 "The scene should look like a cinematic still from a Pixar or Disney animated feature — "
                 "polished, purposeful, and full of personality without being saccharine.\n\n"
                 f"{_DISNEY_AESTHETIC}"
-                f"{_DISNEY_GENDER}"
                 "No text in the image."
                 f"{_RULES}"
             )
@@ -452,7 +422,6 @@ def generate_image(state: dict) -> dict:
                 f"{_CLEAN_AESTHETIC}"
                 f"{_AESTHETIC}"
                 "Photorealistic photography, NOT illustration or cartoon."
-                f"{gender_hint}"
                 f"{_RULES}"
             )
             system_prompt = (
@@ -479,7 +448,6 @@ def generate_image(state: dict) -> dict:
                 f"{_CLEAN_AESTHETIC}"
                 f"{_AESTHETIC}"
                 "No text in the image."
-                f"{gender_hint}"
                 f"{_RULES}"
             )
             system_prompt = (

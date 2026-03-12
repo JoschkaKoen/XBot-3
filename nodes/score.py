@@ -33,11 +33,6 @@ def tweet_age_hours(record: dict) -> float:
         return 24.0
 
 
-def tweet_age_days(record: dict) -> float:
-    """Return tweet age in days (derived from hours)."""
-    return round(tweet_age_hours(record) / 24, 2)
-
-
 def normalized_score(record: dict) -> float:
     """Engagement score divided by age in hours — a fair per-hour rate for comparison."""
     age_hours = tweet_age_hours(record)

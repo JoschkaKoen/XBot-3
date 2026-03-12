@@ -21,9 +21,6 @@ TWITTER_ACCESS_TOKEN_SECRET: str = os.getenv("TWITTER_ACCESS_TOKEN_SECRET", "")
 # ── ElevenLabs ───────────────────────────────────────────────────────────────
 ELEVENLABS_API_KEY: str = os.getenv("ELEVENLABS_API_KEY", "")
 
-# ── DeepL ────────────────────────────────────────────────────────────────────
-DEEPL_AUTH_KEY: str = os.getenv("DEEPL_AUTH_KEY", "")
-
 # ── Midjourney via TTAPI ─────────────────────────────────────────────────────
 TT_API_KEY: str = os.getenv("TT_API_KEY", "")
 
