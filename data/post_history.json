@@ -603,9 +603,9 @@
       "like_count": 0,
       "quote_count": 0,
       "bookmark_count": 0,
-      "impression_count": 40
+      "impression_count": 49
     },
-    "engagement_score": 0.4,
+    "engagement_score": 0.49,
     "cycle": 0
   },
   {
@@ -624,9 +624,9 @@
       "like_count": 0,
       "quote_count": 0,
       "bookmark_count": 0,
-      "impression_count": 43
+      "impression_count": 51
     },
-    "engagement_score": 0.43,
+    "engagement_score": 0.51,
     "cycle": 0
   },
   {
@@ -645,23 +645,9 @@
       "like_count": 0,
       "quote_count": 0,
       "bookmark_count": 0,
-      "impression_count": 29
+      "impression_count": 48
     },
-    "engagement_score": 0.29,
-    "cycle": 0
-  },
-  {
-    "timestamp": "2026-03-10T10:23:11.543943+00:00",
-    "tweet_id": "2031314918813884436",
-    "tweet_url": "https://x.com/i/web/status/2031314918813884436",
-    "full_tweet": "🧠  New German word!  #DeutschLernen B1\n\n🇩🇪  der Dialog  💬💬\n🇺🇸  dialogue\n\n🇩🇪  Der Dialog mit meinem Navi endet immer mit 'Sie haben Ihr Ziel erreicht... oder auch nicht.'\n🇺🇸  The dialogue with my GPS always ends with 'You have reached your destination... or maybe not.'  🚗🚗\n\n↩️  Reply with your own sentence!",
-    "german_word": "Dialog",
-    "article": "der",
-    "cefr_level": "B1",
-    "example_sentence_de": "Der Dialog mit meinem Navi endet immer mit 'Sie haben Ihr Ziel erreicht... oder auch nicht.'",
-    "example_sentence_en": "The dialogue with my GPS always ends with 'You have reached your destination... or maybe not.'",
-    "metrics": {},
-    "engagement_score": 0.0,
+    "engagement_score": 0.48,
     "cycle": 0
   },
   {
@@ -674,8 +660,15 @@
     "cefr_level": "B1",
     "example_sentence_de": "Der Arbeiter baut einen Roboter, der ihm Urlaub gibt!",
     "example_sentence_en": "The worker builds a robot that gives him vacation!",
-    "metrics": {},
-    "engagement_score": 0.0,
+    "metrics": {
+      "retweet_count": 0,
+      "reply_count": 0,
+      "like_count": 0,
+      "quote_count": 0,
+      "bookmark_count": 0,
+      "impression_count": 28
+    },
+    "engagement_score": 0.28,
     "cycle": 0
   },
   {
@@ -688,23 +681,16 @@
     "cefr_level": "B2",
     "example_sentence_de": "Die Schadenfreude überkam mich, als sie ausrutschte, aber ich fing sie auf und gewann ihr Herz!",
     "example_sentence_en": "Schadenfreude overcame me when she slipped, but I caught her and won her heart!",
-    "metrics": {},
-    "engagement_score": 0.0,
+    "metrics": {
+      "retweet_count": 0,
+      "reply_count": 0,
+      "like_count": 0,
+      "quote_count": 0,
+      "bookmark_count": 0,
+      "impression_count": 21
+    },
+    "engagement_score": 0.21,
     "cycle": 1
-  },
-  {
-    "timestamp": "2026-03-10T22:06:06.501568+00:00",
-    "tweet_id": "2031491813404819955",
-    "tweet_url": "https://x.com/i/web/status/2031491813404819955",
-    "full_tweet": "Did you know? 🤔\n\n🇩🇪  das Rückspiel  ⚽⚽\n🇺🇸  return match\n\n🗣️  Im Rückspiel haben die Clowns gewonnen, weil sie die Bälle jongliert haben.\n💬  In the return match, the clowns won because they juggled the balls.  🤹🤹\n\n#DeutschLernen B1",
-    "german_word": "Rückspiel",
-    "article": "das",
-    "cefr_level": "B1",
-    "example_sentence_de": "Im Rückspiel haben die Clowns gewonnen, weil sie die Bälle jongliert haben.",
-    "example_sentence_en": "In the return match, the clowns won because they juggled the balls.",
-    "metrics": {},
-    "engagement_score": 0.0,
-    "cycle": 2
   },
   {
     "timestamp": "2026-03-10T23:52:03.963159+00:00",
@@ -716,6 +702,41 @@
     "cefr_level": "B1",
     "example_sentence_de": "Der Superheld bekam einen Orden fürs Kaffeetrinken!",
     "example_sentence_en": "The superhero received a medal for drinking coffee!",
+    "metrics": {
+      "retweet_count": 0,
+      "reply_count": 0,
+      "like_count": 0,
+      "quote_count": 0,
+      "bookmark_count": 0,
+      "impression_count": 16
+    },
+    "engagement_score": 0.16,
+    "cycle": 0
+  },
+  {
+    "timestamp": "2026-03-12T07:52:54.352203+00:00",
+    "tweet_id": "2032001872354254920",
+    "tweet_url": "https://x.com/i/web/status/2032001872354254920",
+    "full_tweet": "🇩🇪  die Gemütlichkeit\n🇬🇧  coziness  🛋️🛋️\n\n🇩🇪  Ich liebe die Gemütlichkeit zu Hause, besonders wenn der Pizzabote klingelt!\n🇬🇧  I love the coziness at home, especially when the pizza delivery guy rings!  🍕🍕\n\n#LearnGerman #GermanVocabulary",
+    "german_word": "Gemütlichkeit",
+    "article": "die",
+    "cefr_level": "B1",
+    "example_sentence_de": "Ich liebe die Gemütlichkeit zu Hause, besonders wenn der Pizzabote klingelt!",
+    "example_sentence_en": "I love the coziness at home, especially when the pizza delivery guy rings!",
+    "metrics": {},
+    "engagement_score": 0.0,
+    "cycle": 0
+  },
+  {
+    "timestamp": "2026-03-12T08:24:19.986929+00:00",
+    "tweet_id": "2032009782971036048",
+    "tweet_url": "https://x.com/i/web/status/2032009782971036048",
+    "full_tweet": "🇩🇪  Word of the Day  ☕☕\ndie Gemütlichkeit\n→  that untranslatable feeling of coziness and warmth\n🇩🇪  Die Gemütlichkeit meines Zimmers: Bett, Kissen und mein Wecker, der gerade Urlaub macht!\n🇺🇸  The coziness of my room: bed, pillows, and my alarm clock that's currently on vacation!  🛏️🛏️\n#WordOfTheDay #LearnGerman",
+    "source_word": "Gemütlichkeit",
+    "article": "die",
+    "cefr_level": "B1",
+    "example_sentence_source": "Die Gemütlichkeit meines Zimmers: Bett, Kissen und mein Wecker, der gerade Urlaub macht!",
+    "example_sentence_target": "The coziness of my room: bed, pillows, and my alarm clock that's currently on vacation!",
     "metrics": {},
     "engagement_score": 0.0,
     "cycle": 0

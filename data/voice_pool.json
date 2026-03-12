@@ -1,0 +1,452 @@
+[
+  {
+    "name": "Susi - Effortless and Confident",
+    "voice_id": "v3V1d2rk6528UrLKRuy8",
+    "public_owner_id": "e7fea8016e07cbf918ca753255d7085b26536539ab23d1c18100164e2a920dfc",
+    "description": "female, middle_aged, standard, conversational, Susi - Imagine the voice of the telemarketing assistant as soothing and melodic, with a clear, crisp",
+    "language": "de",
+    "gender": "female",
+    "added_at": "2026-03-12T07:40:06.006848+00:00"
+  },
+  {
+    "name": "Lea - Clear and Feminine",
+    "voice_id": "7eVMgwCnXydb3CikjV7a",
+    "public_owner_id": "9104f466a293c99963e66f347b8faf904dc65dec464c358ebfd0a893a325ef96",
+    "description": "female, middle_aged, standard, narrative_story, Lea - A clear and attractive mature female German voice. Perfect for German language, but great for ",
+    "language": "de",
+    "gender": "female",
+    "added_at": "2026-03-12T07:40:10.001930+00:00"
+  },
+  {
+    "name": "Otto - Casual and Normal",
+    "voice_id": "FTNCalFNG5bRnkkaP5Ug",
+    "public_owner_id": "80d9191368f6824d0aacf4080a0894aecb0c4bdd82928eb623e585caf54a84b7",
+    "description": "male, middle_aged, standard, narrative_story, Otto - A calm male German studio-quality voice. Perfect for German language and English with a Germa",
+    "language": "de",
+    "gender": "male",
+    "added_at": "2026-03-12T07:40:12.891414+00:00"
+  },
+  {
+    "name": "Carola - Sharp and Clear",
+    "voice_id": "K75lPKuh15SyVhQC1LrE",
+    "public_owner_id": "43bae71b00e097a0f084eb67a7325e699c031138edffc9ac20bae46940f7d69e",
+    "description": "female, middle_aged, informative_educational, Carola Ferstl Nachrichten - A middle aged German pleasant female voice with dynamics and warmth. Wor",
+    "language": "de",
+    "gender": "female",
+    "added_at": "2026-03-12T07:40:13.823348+00:00"
+  },
+  {
+    "name": "Ava - Youthful, Authentic and Friendly",
+    "voice_id": "AnvlJBAqSLDzEevYr9Ap",
+    "public_owner_id": "9104f466a293c99963e66f347b8faf904dc65dec464c358ebfd0a893a325ef96",
+    "description": "female, young, standard, narrative_story, Ava - youthful and expressive German female voice - A youthful and well-spoken female German voice. ",
+    "language": "de",
+    "gender": "female",
+    "added_at": "2026-03-12T07:40:16.837099+00:00"
+  },
+  {
+    "name": "Niander Wallace ",
+    "voice_id": "bAFkvitDGeDMmqo9gJzO",
+    "public_owner_id": "573c4a510c97c15a3e263531d37a6d65f99d6c94b3c37eef77bebb07229c9245",
+    "description": "male, middle_aged, german, a mature, male voice with a lot of depth and a desire to play with the language",
+    "language": "de",
+    "gender": "male",
+    "added_at": "2026-03-12T07:48:28.787270+00:00"
+  },
+  {
+    "name": "Johannes - Clear and Neutral",
+    "voice_id": "r8MyP4qUsq5WFFSkPdfV",
+    "public_owner_id": "5008842f240e3cd40df2df89d318ae52edf99fa89d181fab1d6db8d4b123b0bc",
+    "description": "male, middle_aged, standard, narrative_story, Johannes - Documentary film - Middle-aged German male voice, Clear pronunciation, neutral intonation",
+    "language": "de",
+    "gender": "male",
+    "added_at": "2026-03-12T07:48:42.478467+00:00"
+  },
+  {
+    "name": "Ben - Effortless and Casual",
+    "voice_id": "aTTiK3YzK3dXETpuDE2h",
+    "public_owner_id": "bc00a8580b93152a9f05dfd2a01d208731202b2105a3e9ba65e30362c8b0cb92",
+    "description": "male, young, standard, conversational, Ben - A young male German voice that can effortlessly switch from an animated, upbeat tone while des",
+    "language": "de",
+    "gender": "male",
+    "added_at": "2026-03-12T07:48:52.514020+00:00"
+  },
+  {
+    "name": "Vincent - Warm, Clear and Authoritative",
+    "voice_id": "ABvMrd8urrMUl3V6UZ3Y",
+    "public_owner_id": "bc00a8580b93152a9f05dfd2a01d208731202b2105a3e9ba65e30362c8b0cb92",
+    "description": "male, middle_aged, standard, informative_educational, Vincent - Factual - Warm, masculine voice with a clear and authoritative tone, perfect for factual n",
+    "language": "de",
+    "gender": "male",
+    "added_at": "2026-03-12T07:48:55.396305+00:00"
+  },
+  {
+    "name": "Tristan Medersburg - Trustworthy",
+    "voice_id": "sx7WD8TJIOrk5RQOptDH",
+    "public_owner_id": "b13ed13c95e4e9c79d41bca69d9150994b6ce72046cd8e6fda55f326d8f9bcf2",
+    "description": "male, middle_aged, standard, narrative_story, Tristan Medersburg - Trustworthy Deepness - Middle aged German male with a calm tone. Works well for",
+    "language": "de",
+    "gender": "male",
+    "added_at": "2026-03-12T07:49:03.664323+00:00"
+  },
+  {
+    "name": "Alexander - Deep TV Narrator",
+    "voice_id": "kkJxCnlRCckmfFvzDW5Q",
+    "public_owner_id": "7f5f6797dc19f764d2d5f33b4974cc522609b9f773c25730bfc7c8a7ba54b61a",
+    "description": "male, middle_aged, standard, narrative_story, Alexander - Male voice for audiobook, magazines, descriptions - Male, pleasant, adult and a deep, fa",
+    "language": "de",
+    "gender": "male",
+    "added_at": "2026-03-12T07:49:06.562078+00:00"
+  },
+  {
+    "name": "Annika - Calm, Confident and Pleasant",
+    "voice_id": "ViKqgJNeCiWZlYgHiAOO",
+    "public_owner_id": "b96524949e17e07618380cc05e3f603531ffc3f5abeb9699301a31e0c57f2a80",
+    "description": "female, middle_aged, standard, narrative_story, Annika - A calm, confident, and pleasant female German voice. Perfect for speaking German and Englis",
+    "language": "de",
+    "gender": "female",
+    "added_at": "2026-03-12T07:49:09.399418+00:00"
+  },
+  {
+    "name": "Leonie - Clear and Engaging",
+    "voice_id": "uvysWDLbKpA4XvpD3GI6",
+    "public_owner_id": "9ee7e4b57810b837fdbb1beb0ccffe19d2bb3aa650dbf87ac84ad424a8b1b8fb",
+    "description": "female, middle_aged, standard, narrative_story, Leonie - A captivating female German studio-quality voice. Perfect for productions in native German ",
+    "language": "de",
+    "gender": "female",
+    "added_at": "2026-03-12T07:49:12.353677+00:00"
+  },
+  {
+    "name": "Luisa - Confident and Patient",
+    "voice_id": "z0gdR3nhVl1Ig2kiEigL",
+    "public_owner_id": "8e979fa629f59d2a87897517efca666c0b5fd037648f114735c6f8c48dde3067",
+    "description": "female, young, narrative_story, Luisa - A Young lady with a calm voice. Perfect for news or audiobook.",
+    "language": "de",
+    "gender": "female",
+    "added_at": "2026-03-12T07:49:13.264723+00:00"
+  },
+  {
+    "name": "Leon Stern - Rich and Deep",
+    "voice_id": "re2r5d74PqDzicySNW0I",
+    "public_owner_id": "bc00a8580b93152a9f05dfd2a01d208731202b2105a3e9ba65e30362c8b0cb92",
+    "description": "male, middle_aged, standard, narrative_story, Leon Stern - Fiction & Fantasy  - A rich, deep voice for fantasy and epic adventure novels that capt",
+    "language": "de",
+    "gender": "male",
+    "added_at": "2026-03-12T07:49:16.255904+00:00"
+  },
+  {
+    "name": "Isabell - Youthful, Soft and Kind",
+    "voice_id": "Em6LomliZyRFu3w09pjD",
+    "public_owner_id": "7c808094b9de7c1729ad602b08812f8211befb908b11215b984d3437bec5213d",
+    "description": "female, young, standard, narrative_story, Isabell - Young and soft female voice with a slight Franconian accent . Great for Storytelling.",
+    "language": "de",
+    "gender": "female",
+    "added_at": "2026-03-12T07:49:20.859622+00:00"
+  },
+  {
+    "name": "Lena - Sweet, Kind and Friendly",
+    "voice_id": "XqTEUeXvEbbL4e30WfT0",
+    "public_owner_id": "7cbf707faf40038fc4c6befee532fdae59844bec56ad74eaefad0ea1aa2ec3dd",
+    "description": "female, young, standard, narrative_story, Lena - Cute German Voice - A youthful, sweet, and well-spoken female German voice. Perfect for Germa",
+    "language": "de",
+    "gender": "female",
+    "added_at": "2026-03-12T07:49:23.859861+00:00"
+  },
+  {
+    "name": "Christian - Warm and Captivating",
+    "voice_id": "NBqeXKdZHweef6y0B67V",
+    "public_owner_id": "0efef2efd808e030fd8c710901c1a89c5cd31e806d522f6f1bd7cf209fea80e9",
+    "description": "male, middle_aged, standard, narrative_story, Christian Plasa - Warm Voice - A warm and captivating narrator voice ideal for audiobooks, documenta",
+    "language": "de",
+    "gender": "male",
+    "added_at": "2026-03-12T07:49:29.880473+00:00"
+  },
+  {
+    "name": "Clemens - Loud and Interesting",
+    "voice_id": "eJHgBguIWw9PtA4GHbSP",
+    "public_owner_id": "c6c4e85b55acf645373de12d4e3d330d3906fba8f56f0f304c467faa6f3729cf",
+    "description": "male, middle_aged, standard, advertisement, Clemens Hartmann 2 - for Ads & Trailers - A powerful and dynamic male voice. Perfect for ads and tra",
+    "language": "de",
+    "gender": "male",
+    "added_at": "2026-03-12T07:49:34.723318+00:00"
+  },
+  {
+    "name": "Juan - Understanding and Serious",
+    "voice_id": "lx8LAX2EUAKftVz0Dk5z",
+    "public_owner_id": "0bfcc45991e396b1f5d6141d30bcd173dcc837747dae00a56f6f3a9f459be11e",
+    "description": "male, young, Juan Schubert - A young German man, with a fresh, deep voice. Sometimes a bit scratchy, but very nic",
+    "language": "de",
+    "gender": "male",
+    "added_at": "2026-03-12T07:49:38.277451+00:00"
+  },
+  {
+    "name": "Dana - Thoughtful and Interesting",
+    "voice_id": "otF9rqKzRHFgfwf6serQ",
+    "public_owner_id": "07c4ebe9bd32c0f7afa7d1be0a77e21aaefaf2a8dd25965a24e68024367a4b0e",
+    "description": "female, middle_aged, standard, conversational, Dana - German conversation - Middle aged German female with deep, warm, nasal voice. Can be fresh an",
+    "language": "de",
+    "gender": "female",
+    "added_at": "2026-03-12T07:49:48.797537+00:00"
+  },
+  {
+    "name": "Mila - Confident and Opinionated",
+    "voice_id": "dCnu06FiOZma2KVNUoPZ",
+    "public_owner_id": "dfad8b2f4835158499a4fc8aa6b1570d022c5196a553d7fca7788446fb3fa4a6",
+    "description": "female, young, standard, narrative_story, Mila - Female, 20s - 30s, opinionated and confident, yet soft and empathetic, with a relaxed creak a",
+    "language": "de",
+    "gender": "female",
+    "added_at": "2026-03-12T07:49:57.123087+00:00"
+  },
+  {
+    "name": "Lana Weiss - Soft and Sweet",
+    "voice_id": "rAmra0SCIYOxYmRNDSm3",
+    "public_owner_id": "dfad8b2f4835158499a4fc8aa6b1570d022c5196a553d7fca7788446fb3fa4a6",
+    "description": "female, young, standard, narrative_story, Lana Weiss - Meditation - Female meditation voice, 20s - 30s, soft, warm and curious. Giving a calmi",
+    "language": "de",
+    "gender": "female",
+    "added_at": "2026-03-12T07:50:00.293764+00:00"
+  },
+  {
+    "name": "Anton - Formal and Strong",
+    "voice_id": "Ay1WwRHxUsu3hEeAp8JZ",
+    "public_owner_id": "bc00a8580b93152a9f05dfd2a01d208731202b2105a3e9ba65e30362c8b0cb92",
+    "description": "male, middle_aged, standard, narrative_story, Anton: Dark Magic - Thriller - True Crime - A voice with a deep, resonant baritone that carries a se",
+    "language": "de",
+    "gender": "male",
+    "added_at": "2026-03-12T07:50:04.818459+00:00"
+  },
+  {
+    "name": "Stefan - Affectionate and Caring",
+    "voice_id": "iMHt6G42evkXunaDU065",
+    "public_owner_id": "ed9cd6c58a31d54142b39296801b7fe3eae03841de2ed02ac8ac85dbed6bb983",
+    "description": "male, middle_aged, standard, narrative_story, Stefan Rank der Erzähler (Radio-Moderator) - Middle-aged German-speaking man. Suitable for reading c",
+    "language": "de",
+    "gender": "male",
+    "added_at": "2026-03-12T07:50:09.145365+00:00"
+  },
+  {
+    "name": "Alice - Young and Vibrant",
+    "voice_id": "3BJlzlfZWFVNGCc1ha9m",
+    "public_owner_id": "a9329a94a9ac5cbfc5e3a4a4e5aa249b05b96c55b3ba73d1a912963f3f0c9715",
+    "description": "female, young, standard, narrative_story, Alice - A young and vibrant female German speaker with clear articulation and an engaging voice qual",
+    "language": "de",
+    "gender": "female",
+    "added_at": "2026-03-12T07:50:12.163516+00:00"
+  },
+  {
+    "name": "Manuel - Profound, Deep and Strong",
+    "voice_id": "JH302OKVzGGJc47f08ex",
+    "public_owner_id": "e6ad9a2a436fd5cda74a1b3fd65be2c1f39e5895cbc71b7b496b7721db9f63ca",
+    "description": "male, middle_aged, standard, narrative_story, Your storyteller for Video & Reels. A profound middle-aged narrator's voice with depth, strength and",
+    "language": "de",
+    "gender": "male",
+    "added_at": "2026-03-12T07:50:18.003498+00:00"
+  },
+  {
+    "name": "Tom - Gloomy and Disappointed",
+    "voice_id": "xouqnknI7nCiPaJ9gwt8",
+    "public_owner_id": "755834256479c7236ca2c02214e07fa7ed0c2a303b3a18632268bb4f8f13ccff",
+    "description": "male, middle_aged, standard, narrative_story, Tom Magic - Middle aged warm German deep male voice. Perfect for Narrations.",
+    "language": "de",
+    "gender": "male",
+    "added_at": "2026-03-12T07:50:21.960276+00:00"
+  },
+  {
+    "name": "Christian Plasa - Soft and Mild",
+    "voice_id": "z1EhmmPwF0ENGYE8dBE6",
+    "public_owner_id": "c3b3f952ee4e94b2e54eb155b0548ce4ebe70b12b218941564ff4dd930e5dd0f",
+    "description": "male, middle_aged, standard, conversational, Christian Plasa - Conversational v2 Clean - A natural and friendly speaking style that conveys the f",
+    "language": "de",
+    "gender": "male",
+    "added_at": "2026-03-12T07:50:28.576788+00:00"
+  },
+  {
+    "name": "Gruber - Clear and Modest",
+    "voice_id": "J5U94vRbS9drxnawJcoc",
+    "public_owner_id": "6599b6e45ab17a2b4ef6403d3dae1a3e8a02ce806f39b42c36f475e91d584563",
+    "description": "male, young, standard, conversational, Herr Gruber - A clear and articulate Austrian male voice, with a friendly and professional tone. Per",
+    "language": "de",
+    "gender": "male",
+    "added_at": "2026-03-12T07:50:37.270762+00:00"
+  },
+  {
+    "name": "Julius - Informative and Educational",
+    "voice_id": "n6JEKnKG5a8I78SoBRry",
+    "public_owner_id": "510d356d00d93b90b4d0f04091a0e3b5b02599d074a217d6333b22915c4e0c46",
+    "description": "male, middle_aged, standard, informative_educational, Julius - Middle aged young male voice. Perfect for conversations.",
+    "language": "de",
+    "gender": "male",
+    "added_at": "2026-03-12T07:50:40.031189+00:00"
+  },
+  {
+    "name": "Marcus - Loud and Confident",
+    "voice_id": "6V1EWbNGUufEsfPFe5VA",
+    "public_owner_id": "b6d7b35cbbe4738e3aef0f5f8029a91f4f0d46dbbff5014003547c417b06167a",
+    "description": "male, middle_aged, informative_educational, Marcus KvE – German Voice Over - Middle-aged German Male, no accent, Voice Over, Explainer Film",
+    "language": "de",
+    "gender": "male",
+    "added_at": "2026-03-12T07:50:41.364022+00:00"
+  },
+  {
+    "name": "Paul - Smooth and Cool",
+    "voice_id": "RqYtbPVBBytc1OIowrh0",
+    "public_owner_id": "3cd1fc036e2c4ee74abef4047e8a67689123967891a082d67e584e4c30f4bc62",
+    "description": "male, middle_aged, standard, advertisement, Sympathische Stimme - Middle aged German male with a comfortable, charming, warm, friendly & pleasan",
+    "language": "de",
+    "gender": "male",
+    "added_at": "2026-03-12T07:50:45.721889+00:00"
+  },
+  {
+    "name": "Tommy - Informative and Detailed",
+    "voice_id": "pYiwcfHkSt1q0psfk7sW",
+    "public_owner_id": "f55e2f08f3d61e289a55c9d1862e0627b14666ade3198c0523ff1d9381a904c8",
+    "description": "male, middle_aged, standard, informative_educational, Tommy Studio Voice 2 - Middle aged German male voice. Relaxed & informal. Ideal for presentations.",
+    "language": "de",
+    "gender": "male",
+    "added_at": "2026-03-12T07:50:55.082969+00:00"
+  },
+  {
+    "name": "Nader - Visionary Project Leader",
+    "voice_id": "MtGNWLLiuFldNXGpbWDg",
+    "public_owner_id": "6d6e0306ce8a7f6d97b9c03543dbaa74384b74617f700601045ea0f776f1ffce",
+    "description": "male, middle_aged, standard, narrative_story, Nader - Middle aged German male with deep warm voice. Perfect for Narration & Storytelling.",
+    "language": "de",
+    "gender": "male",
+    "added_at": "2026-03-12T07:50:59.119315+00:00"
+  },
+  {
+    "name": "Leo - Wistful and Deep",
+    "voice_id": "QtXsTvuI72CiSlfxczvg",
+    "public_owner_id": "cfa536ed4812aeea786ba3bc698ede197a8f71f093795ff51e57b259e103daf9",
+    "description": "male, middle_aged, narrative_story, Leo liest - Eine entspannte, warme und tiefe männliche Stimme. Perfekt für das Vorlesen von Büchern.",
+    "language": "de",
+    "gender": "male",
+    "added_at": "2026-03-12T07:51:02.254581+00:00"
+  },
+  {
+    "name": "Clemens - Mature and Engaging",
+    "voice_id": "elrPOnQZaau5IoISMrJe",
+    "public_owner_id": "c6c4e85b55acf645373de12d4e3d330d3906fba8f56f0f304c467faa6f3729cf",
+    "description": "male, middle_aged, standard, narrative_story, Clemens Hartmann 3 - The Narrator - A mature and engaging male narrator voice, perfect for profound ",
+    "language": "de",
+    "gender": "male",
+    "added_at": "2026-03-12T07:51:10.038455+00:00"
+  },
+  {
+    "name": "Thomas Schendel - Authoritative and Calm",
+    "voice_id": "Fghah4fztZORbiKfIGAs",
+    "public_owner_id": "ae9ca4e5f4730fbc0b0ff86638b3ea0eab70f50e349810eeb934c618e4eb0c0e",
+    "description": "male, middle_aged, standard, narrative_story, Thomas Schendel - A deep male voice that ranges from authoritative to calming and is therefore ideal",
+    "language": "de",
+    "gender": "male",
+    "added_at": "2026-03-12T07:51:12.930591+00:00"
+  },
+  {
+    "name": "Christian - Dynamic and Encouraging",
+    "voice_id": "Rwqd9wksd18jej9ZWfbo",
+    "public_owner_id": "910204214a13e718e2617f793477bee5b56ab45788d58ba1080339687209f56d",
+    "description": "male, middle_aged, standard, entertainment_tv, Christian Plasa - Entertainment & TV - Dynamic and professional voice-over talent for Entertainment ",
+    "language": "de",
+    "gender": "male",
+    "added_at": "2026-03-12T07:51:16.388163+00:00"
+  },
+  {
+    "name": "Elias - Pleasant and Memorable",
+    "voice_id": "1h6gHcRvQugDNZgdAo9N",
+    "public_owner_id": "0dda96f7c0b1079740367937a4af96fc7b5deb1cf6f1700899ff65654596088c",
+    "description": "male, young, standard, conversational, Elias - Radio Host & Radio News Presenter Voice - Radio host and news presenter voice. Young male wi",
+    "language": "de",
+    "gender": "male",
+    "added_at": "2026-03-12T07:51:22.885067+00:00"
+  },
+  {
+    "name": "Helmut Stieglbauer - Deep and Dynamic",
+    "voice_id": "JiW03c2Gt43XNUQAumRP",
+    "public_owner_id": "46b55935b024621e2e6a3bb750f25fe73db4e96b222f09b6f0825d3d9109ea82",
+    "description": "male, middle_aged, standard, narrative_story, Helmut Stieglbauer - Distinctive, deep male voice. Works well for Narration.",
+    "language": "de",
+    "gender": "male",
+    "added_at": "2026-03-12T07:51:26.715538+00:00"
+  },
+  {
+    "name": "Freddie Flip - Sweet and Friendly",
+    "voice_id": "U0W3edavfdI8ibPeeteQ",
+    "public_owner_id": "4d49e1f6a4608f4702abcb9914a565b56353fa58abba4b23a34b647e549c3cd6",
+    "description": "neutral, young, standard, characters_animation, Freddie Flip - Excited Frog  - With its extremely sweet speech impediment, Freddie Flip is a funny l",
+    "language": "de",
+    "gender": "neutral",
+    "added_at": "2026-03-12T07:51:30.989725+00:00"
+  },
+  {
+    "name": "Robby - Dynamic and Professional",
+    "voice_id": "vl67BWhZHh0QyG35TvXt",
+    "public_owner_id": "a82c52b331ed7aba7a4c9ef378f32182b6eac68ef6600f9343e228eab3be2b09",
+    "description": "male, middle_aged, standard, entertainment_tv, Robby - Reporter - Reporter Robby offers a dynamic and lively voice that is perfect for news, report",
+    "language": "de",
+    "gender": "male",
+    "added_at": "2026-03-12T07:51:37.982364+00:00"
+  },
+  {
+    "name": "Maik - Instructive and Educational",
+    "voice_id": "8WgkgItVYGBs7XNW7D6w",
+    "public_owner_id": "33ca4acffdf173bd2fd2329165662a683fd4ff5a2bbbce72ef9b4b36d3f65927",
+    "description": "male, middle_aged, berlinerisch, narrative_story, Maik profi - A young, cheerful male voice, perfect for podcasts and YouTube videos in German.",
+    "language": "de",
+    "gender": "male",
+    "added_at": "2026-03-12T07:51:46.084119+00:00"
+  },
+  {
+    "name": "Lucy Fennek -  Friendly and Open",
+    "voice_id": "KXxZd16DiBqt82nbarJx",
+    "public_owner_id": "e21da34db31d58704b7b2776dcf7db1c31b464e5bffd71727d5f1c4abafafa87",
+    "description": "female, young, standard, conversational, Lucy Fennek - Witty Accomplice & Lively Conversation  - Professional Youthful German Conversational ",
+    "language": "de",
+    "gender": "female",
+    "added_at": "2026-03-12T07:51:53.019914+00:00"
+  },
+  {
+    "name": "William - Soothing and Calm",
+    "voice_id": "oae6GCCzwoEbfc5FHdEu",
+    "public_owner_id": "4d49e1f6a4608f4702abcb9914a565b56353fa58abba4b23a34b647e549c3cd6",
+    "description": "male, old, standard, narrative_story, William - soothing and calm - This is a gentle bedtime narrator voice, made for falling asleep.\nIt’s",
+    "language": "de",
+    "gender": "male",
+    "added_at": "2026-03-12T07:52:02.166181+00:00"
+  },
+  {
+    "name": "Mark - Interesting and Fun",
+    "voice_id": "fzqS9sNPYJhLlhsfDm0l",
+    "public_owner_id": "79a8b26e6499101e9b1e669350ac26befd41566f4f3c035fdb21d8941619008d",
+    "description": "male, middle_aged, standard, conversational, Voice Agent - Conversational AI Voice - The \"Voice Agent\" voice is a professional AI voice model ori",
+    "language": "de",
+    "gender": "male",
+    "added_at": "2026-03-12T07:52:12.092685+00:00"
+  },
+  {
+    "name": "Thomas - Loud and Neutral",
+    "voice_id": "ruSJRhA64v8HAqiqKXVw",
+    "public_owner_id": "58a583c59726991358fc4694bbccb7904e0fb42ec50a2d6a46bb0bb216ca428e",
+    "description": "male, middle_aged, standard, entertainment_tv, Cinematic - Mastered - Epic. Immersive. Precise. “Cinematic - Mastered” brings storytelling to life ",
+    "language": "de",
+    "gender": "male",
+    "added_at": "2026-03-12T07:52:31.779779+00:00"
+  },
+  {
+    "name": "Petra - Confident and Pleasant",
+    "voice_id": "lzvBSKYbNWDD0a6BaJSK",
+    "public_owner_id": "e25d872a224290651b56e28d540c9c15697d576f60bb17db8ec331138448f79f",
+    "description": "female, middle_aged, standard, informative_educational, Petra PeFraVe Pro  - Petra is well educated and graduated. Her elaborative spelling is perfectly nat",
+    "language": "de",
+    "gender": "female",
+    "added_at": "2026-03-12T08:23:55.932270+00:00"
+  },
+  {
+    "name": "Stephan - Warm and Friendly",
+    "voice_id": "IWm8DnJ4NGjFI7QAM5lM",
+    "public_owner_id": "85225215a8ebee4e714782218821d3140d614153d4dd99adfef28571f8d11c95",
+    "description": "male, middle_aged, standard, informative_educational, Stephan - Warm and friendly German voice - Standard German male speaker, ideal for infotainment. Ser",
+    "language": "de",
+    "gender": "male",
+    "added_at": "2026-03-12T08:23:58.624973+00:00"
+  }
+]

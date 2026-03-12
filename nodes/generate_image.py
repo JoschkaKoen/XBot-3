@@ -202,36 +202,41 @@ def _make_client():
 
 # ── flag overlay (PIL, applied after image download) ──────────────────────────
 
-def _create_flag_badge(badge_w: int, badge_h: int):
-    """Return a PIL Image of a US→DE blended flag badge."""
+def _draw_tricolor(badge_w: int, badge_h: int, colors: list):
+    """Draw a flag as three equal horizontal bands using the given RGB color list."""
     from PIL import Image, ImageDraw
-
-    # US flag: 13 alternating red/white horizontal stripes + blue canton
-    us = Image.new("RGB", (badge_w, badge_h))
-    d = ImageDraw.Draw(us)
-    sh = badge_h / 13
-    for i in range(13):
-        color = (178, 34, 52) if i % 2 == 0 else (255, 255, 255)
-        d.rectangle([0, int(i * sh), badge_w - 1, int((i + 1) * sh)], fill=color)
-    canton_w = int(badge_w * 0.40)
-    canton_h = int(sh * 7)
-    d.rectangle([0, 0, canton_w, canton_h], fill=(60, 59, 110))
-
-    # German flag: three equal horizontal bands — black / red / gold
-    de = Image.new("RGB", (badge_w, badge_h))
-    d2 = ImageDraw.Draw(de)
+    img = Image.new("RGB", (badge_w, badge_h))
+    d = ImageDraw.Draw(img)
     bh = badge_h // 3
-    d2.rectangle([0,      0,         badge_w, bh],        fill=(0,   0,   0))
-    d2.rectangle([0,      bh,        badge_w, bh * 2],    fill=(221, 0,   0))
-    d2.rectangle([0,      bh * 2,    badge_w, badge_h],   fill=(255, 206, 0))
+    d.rectangle([0, 0,       badge_w, bh],       fill=tuple(colors[0]))
+    d.rectangle([0, bh,      badge_w, bh * 2],   fill=tuple(colors[1]))
+    d.rectangle([0, bh * 2,  badge_w, badge_h],  fill=tuple(colors[2]))
+    return img
 
-    # Gradient mask: 255 (left) = US visible, 0 (right) = DE visible
+
+def _create_flag_badge(badge_w: int, badge_h: int):
+    """Return a PIL Image of a target→source blended flag badge."""
+    from PIL import Image
+
+    target_colors = config._parse_flag_colors(
+        config.TARGET_FLAG_COLORS,
+        default=[(178, 34, 52), (255, 255, 255), (60, 59, 110)],
+    )
+    source_colors = config._parse_flag_colors(
+        config.SOURCE_FLAG_COLORS,
+        default=[(0, 0, 0), (221, 0, 0), (255, 206, 0)],
+    )
+
+    target_img = _draw_tricolor(badge_w, badge_h, target_colors)
+    source_img = _draw_tricolor(badge_w, badge_h, source_colors)
+
+    # Gradient mask: 255 (left) = target visible, 0 (right) = source visible
     gradient = bytes(
         [255 - int(255 * x / max(badge_w - 1, 1)) for x in range(badge_w)] * badge_h
     )
     mask = Image.frombytes("L", (badge_w, badge_h), gradient)
 
-    return Image.composite(us, de, mask)
+    return Image.composite(target_img, source_img, mask)
 
 
 def _apply_rounded_corners(img, radius: int):
@@ -254,7 +259,7 @@ def _apply_rounded_corners(img, radius: int):
 
 
 def _overlay_flags(image_path: str) -> str:
-    """Composite a US→DE flag badge onto the top-right corner of the image in-place."""
+    """Composite a target→source flag badge onto the top-right corner of the image in-place."""
     from PIL import Image
     img = Image.open(image_path).convert("RGBA")
     iw, ih = img.size
@@ -291,29 +296,13 @@ def generate_image(state: dict) -> dict:
     stage_banner(4)
     logger.info("Node: generate_image")
 
-    example_en: str  = state["example_sentence_en"]
-    example_de: str  = state.get("example_sentence_de", "")
-    article: str     = state.get("article", "")
-    german_word: str = state.get("german_word", "")
+    example_en: str  = state["example_sentence_target"]
+    example_de: str  = state.get("example_sentence_source", "")
     full_tweet: str  = state.get("full_tweet", "")
     cycle: int       = state.get("cycle", 0)
     image_style: str = resolve_image_style(cycle)
     logger.info("Image style for cycle %d: %s", cycle, image_style)
     _image_client = _make_client()
-
-    # Build a gender hint so the image shows the right sex when the word is
-    # a gendered noun (der → male, die → female, das / non-noun → no hint).
-    gender_hint = ""
-    if article == "der":
-        gender_hint = (
-            f' IMPORTANT: The German word "{german_word}" is masculine (der). '
-            "If the image shows a person, they must be clearly male (a man or a boy)."
-        )
-    elif article == "die":
-        gender_hint = (
-            f' IMPORTANT: The German word "{german_word}" is feminine (die). '
-            "If the image shows a person, they must be clearly female (a woman or a girl)."
-        )
 
     # 1. Generate image prompt via LLM
     _param_flag_rule = (
@@ -343,27 +332,15 @@ def generate_image(state: dict) -> dict:
             "Everything feels polished, characterful, and cinematic. "
             "The image should look like a still from a Pixar or Disney animated feature."
         )
-        _DISNEY_GENDER = ""
-        if article == "der":
-            _DISNEY_GENDER = (
-                f' The main character represents the German word "{german_word}" (masculine — der). '
-                "If the scene shows a person or character, make them clearly male."
-            )
-        elif article == "die":
-            _DISNEY_GENDER = (
-                f' The main character represents the German word "{german_word}" (feminine — die). '
-                "If the scene shows a person or character, make them clearly female."
-            )
-
         if config.FUNNY_MODE and example_de:
             tweet_context = f"Full tweet:\n{full_tweet}\n\n" if full_tweet else ""
             img_req = (
-                "A German learning tweet contains a joke. "
+                f"A {config.SOURCE_LANGUAGE} learning tweet contains a joke. "
                 "Create an image generation prompt for a Disney/Pixar-style 3D animated scene "
                 "that shows the punchline of the joke clearly and with visual wit.\n\n"
                 f"{tweet_context}"
-                f"German sentence: \"{example_de}\"\n"
-                f"English sentence: \"{example_en}\"\n\n"
+                f"{config.SOURCE_LANGUAGE} sentence: \"{example_de}\"\n"
+                f"{config.TARGET_LANGUAGE} sentence: \"{example_en}\"\n\n"
                 "Step 1 — Identify the punchline: find the ironic twist, absurd contrast, or subverted expectation.\n"
                 "Step 2 — Stage it visually: use expressive body language and facial expressions to land the joke — "
                 "the comedy should be immediately readable from the image alone.\n"
@@ -372,7 +349,6 @@ def generate_image(state: dict) -> dict:
                 "Step 4 — Keep it clean: ONE main character, ONE clear joke, uncluttered focused background.\n"
                 "Step 5 — Keep it family-friendly: warm, uplifting, never dark or unsettling.\n\n"
                 f"{_DISNEY_AESTHETIC}"
-                f"{_DISNEY_GENDER}"
                 f"{_RULES}"
             )
             system_prompt = (
@@ -393,7 +369,6 @@ def generate_image(state: dict) -> dict:
                 "The scene should look like a cinematic still from a Pixar or Disney animated feature — "
                 "polished, purposeful, and full of personality without being saccharine.\n\n"
                 f"{_DISNEY_AESTHETIC}"
-                f"{_DISNEY_GENDER}"
                 "No text in the image."
                 f"{_RULES}"
             )
@@ -429,11 +404,11 @@ def generate_image(state: dict) -> dict:
         if config.FUNNY_MODE and example_de:
             tweet_context = f"Full tweet:\n{full_tweet}\n\n" if full_tweet else ""
             img_req = (
-                "A German learning tweet contains a joke. Your job is to create an image generation prompt that is "
+                f"A {config.SOURCE_LANGUAGE} learning tweet contains a joke. Your job is to create an image generation prompt that is "
                 "BOTH visually stunning AND makes the punchline of the joke instantly obvious.\n\n"
                 f"{tweet_context}"
-                f"German sentence: \"{example_de}\"\n"
-                f"English sentence: \"{example_en}\"\n\n"
+                f"{config.SOURCE_LANGUAGE} sentence: \"{example_de}\"\n"
+                f"{config.TARGET_LANGUAGE} sentence: \"{example_en}\"\n\n"
                 "Step 1 — Identify the punchline: find the ironic twist, the subverted expectation, or the absurd contrast.\n"
                 "Step 2 — Stage it visually: design a scene that shows the punchline in action with exaggerated expressions "
                 "or body language. The comedy must land from the image alone — the viewer should laugh before reading the tweet.\n"
@@ -452,7 +427,6 @@ def generate_image(state: dict) -> dict:
                 f"{_CLEAN_AESTHETIC}"
                 f"{_AESTHETIC}"
                 "Photorealistic photography, NOT illustration or cartoon."
-                f"{gender_hint}"
                 f"{_RULES}"
             )
             system_prompt = (
@@ -479,7 +453,6 @@ def generate_image(state: dict) -> dict:
                 f"{_CLEAN_AESTHETIC}"
                 f"{_AESTHETIC}"
                 "No text in the image."
-                f"{gender_hint}"
                 f"{_RULES}"
             )
             system_prompt = (

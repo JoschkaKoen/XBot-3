@@ -32,18 +32,20 @@ from utils.ui import stage_banner, ok, info as ui_info, warn as ui_warn
 logger = logging.getLogger("german_bot.analyze")
 
 
-_SYSTEM_PROMPT = (
-    "You are a data-driven social media strategist for a German language learning X (Twitter) account. "
-    "You analyse past post performance and output a JSON strategy to improve future posts."
-)
+def _system_prompt() -> str:
+    return (
+        f"You are a data-driven social media strategist for a {config.SOURCE_LANGUAGE} language learning "
+        "X (Twitter) account. "
+        "You analyse past post performance and output a JSON strategy to improve future posts."
+    )
 
 
 _DEFAULT_SCAFFOLD = (
-    "#DeutschLernen [LEVEL]\n\n"
-    "🇩🇪  [ARTICLE] [GERMAN_WORD]\n"
-    "🇺🇸  [ENGLISH_TRANSLATION]  [EMOJI][EMOJI]\n\n"
-    "🇩🇪  [SHORT_FUNNY_GERMAN_SENTENCE]\n"
-    "🇺🇸  [ENGLISH_TRANSLATION_OF_SENTENCE]  [EMOJI][EMOJI]"
+    "#Learn[SOURCE_LANGUAGE] [LEVEL]\n\n"
+    "[SOURCE_FLAG]  [ARTICLE] [SOURCE_WORD]\n"
+    "[TARGET_FLAG]  [TARGET_TRANSLATION]  [EMOJI][EMOJI]\n\n"
+    "[SOURCE_FLAG]  [SHORT_FUNNY_SOURCE_SENTENCE]\n"
+    "[TARGET_FLAG]  [TARGET_TRANSLATION_OF_SENTENCE]  [EMOJI][EMOJI]"
 )
 
 _ALL_CEFR_LEVELS = ["A1", "A2", "B1", "B2", "C1", "C2"]
@@ -102,7 +104,6 @@ _GREEN = "\033[92m"
 _RED   = "\033[91m"
 _GRAY  = "\033[90m"
 _CYAN  = "\033[96m"
-_DIM   = "\033[2m"
 
 
 def _print_scaffold_diff(old_scaffold: str, new_scaffold: str) -> None:
@@ -209,9 +210,9 @@ def _build_analysis_prompt(history_slice: list, current_scaffold: str, funny_mod
     posts_summary = json.dumps(
         [
             {
-                "word": r.get("german_word"),
+                "word": r.get("source_word"),
                 "cefr": r.get("cefr_level"),
-                "sentence_de": r.get("example_sentence_de"),
+                "sentence_source": r.get("example_sentence_source"),
                 "age_hours": tweet_age_hours(r),
                 "score_raw": r.get("engagement_score", 0),
                 "score_per_hour": normalized_score(r),
@@ -226,7 +227,7 @@ def _build_analysis_prompt(history_slice: list, current_scaffold: str, funny_mod
     )
 
     # Summarise which theme-words have appeared recently so the AI can avoid them
-    recent_words = [r.get("german_word", "") for r in history_slice if r.get("german_word")]
+    recent_words = [r.get("source_word", "") for r in history_slice if r.get("source_word")]
     recent_words_str = ", ".join(recent_words) if recent_words else "none"
 
     return (
@@ -245,11 +246,11 @@ def _build_analysis_prompt(history_slice: list, current_scaffold: str, funny_mod
             '  "preferred_cefr":  (string) comma-separated CEFR levels that performed best, '
             'chosen from A1, A2, B1, B2, C1, C2, e.g. "A2, B1, C1"\n'
         )
-        + '  "next_topic":      (string) ONE fresh topic or angle for the next tweet that has NOT been covered '
-        'in recent posts and that you anticipate will resonate with English-speaking German learners. '
+        +         f'  "next_topic":      (string) ONE fresh topic or angle for the next tweet that has NOT been covered '
+        f'in recent posts and that you anticipate will resonate with {config.TARGET_LANGUAGE}-speaking {config.SOURCE_LANGUAGE} learners. '
         'Pick something new and specific — do NOT repeat any theme already seen in the recent post list. '
-        'Examples: "German workplace culture", "untranslatable German concepts", "German food idioms", '
-        '"emotions Germans express that English lacks a word for". '
+        f'Examples: "{config.SOURCE_LANGUAGE} workplace culture", "untranslatable {config.SOURCE_LANGUAGE} concepts", "{config.SOURCE_LANGUAGE} food idioms", '
+        f'"emotions expressed in {config.SOURCE_LANGUAGE} that {config.TARGET_LANGUAGE} lacks a word for". '
         'Leave empty string "" if you cannot identify a genuinely fresh angle.\n'
         '  "style":           (string) a short instruction about sentence style, tone, grammatical patterns, '
         'or humour style for the next tweet — STYLE ONLY, NO topics or themes. '
@@ -262,7 +263,7 @@ def _build_analysis_prompt(history_slice: list, current_scaffold: str, funny_mod
         + 'Examples of good style instructions: "use a twist ending", "use self-aware irony", '
         '"write in second person (du)", "use short punchy sentences". '
         'Examples of BAD style instructions (DO NOT do this): "focus on food topics", "use daily life themes".\n'
-        '  "avoid_words":     (array)  list of German words recently used that should not be repeated\n\n'
+        f'  "avoid_words":     (array)  list of {config.SOURCE_LANGUAGE} words recently used that should not be repeated\n\n'
         "Return ONLY the raw JSON object. No markdown, no explanation."
     )
 
@@ -334,7 +335,7 @@ def analyze_and_improve(state: dict) -> dict:
     raw_strategy: str = retry_call(
         strategy_ai,
         prompt,
-        _SYSTEM_PROMPT,
+        _system_prompt(),
         max_tokens=1200,
         temperature=0.4,
         label="analyze_strategy",
@@ -368,7 +369,7 @@ def analyze_and_improve(state: dict) -> dict:
         logger.info("CEFR bias frozen. counts=%s", cefr_counts_pre)
 
     # Always accumulate avoid_words from the full history (last 30)
-    recent_words = [r.get("german_word", "") for r in history[-30:] if r.get("german_word")]
+    recent_words = [r.get("source_word", "") for r in history[-30:] if r.get("source_word")]
     merged["avoid_words"] = list(dict.fromkeys(recent_words))   # deduplicate, preserve order
 
     # Log diff vs previous strategy
@@ -381,7 +382,10 @@ def analyze_and_improve(state: dict) -> dict:
     ok(f"Strategy saved — CEFR: {merged['preferred_cefr']} | Style: {merged['style'] or 'none'}")
     ui_info(f"Next topic: {merged['next_topic'] or 'none'}")
     ui_info(f"Avoiding {len(merged['avoid_words'])} recent word(s)")
-    logger.info("Updated strategy: %s", {k: v for k, v in merged.items() if k != "avoid_words"})
+    logger.info("Updated strategy:")
+    logger.info("  topic : %s", merged.get("next_topic", "—"))
+    logger.info("  style : %s", merged.get("style", "—"))
+    logger.info("  CEFR  : %s", merged.get("preferred_cefr", "—"))
     logger.info("Avoid words (%d): %s", len(merged["avoid_words"]), merged["avoid_words"][-10:])
 
     return {**state, "strategy": merged}

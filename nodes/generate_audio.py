@@ -1,9 +1,15 @@
 """
 Node: generate_audio
 
-Generates German TTS audio via ElevenLabs.
-Uses generate_german_audio_with_timings() for ktv mode,
-or generate_german_audio() for simple mode.
+Generates TTS audio via ElevenLabs.
+Uses generate_source_audio_with_timings() for ktv mode,
+or generate_source_audio() for simple mode.
+
+Voice pool
+----------
+Voices are stored in data/voice_pool.json and grown automatically each run
+via services/voice_pool.py (ElevenLabs Shared Voices API).
+The AI picks the most suitable voice from the pool for each tweet.
 """
 
 import os
@@ -22,41 +28,14 @@ from elevenlabs.types import VoiceSettings
 
 logger = logging.getLogger("german_bot.generate_audio")
 
-# Curated pool of authentic German-native ElevenLabs voices.
-# Each entry: (name, voice_id, description)
-# The description is used by the AI voice picker to match the best voice to the tweet.
-_GERMAN_VOICES = [
-    # Female
-    ("Luisa",           "z0gdR3nhVl1Ig2kiEigL", "young, calm — news/audiobook"),
-    ("Carola Ferstl",   "K75lPKuh15SyVhQC1LrE", "warm, educational, middle-aged"),
-    ("Anna from Munich","wDvyXJwxWHsjOKSUVvpG", "authentic Bavarian female"),
-    ("Franziska Lenz",  "NX39CipaoYitJ3sMwH5I", "German female, professional"),
-    ("Laura",           "Qy4b2JlSGxY7I9M9Bqxb", "calm and smooth, documentary"),
-    ("Irene",           "NkMe1eztMQReztnhYfeX", "friendly and approachable"),
-    ("Selena",          "sWuGr24LIqDil2oFD3xs",  "melancholic and expressive"),
-    ("Laura (Pro)",     "2aL479c8D3QMIPExj0tw", "sharp and professional"),
-    ("Carrie",          "zKHQdbB8oaQ7roNTiDTK", "the gentle storyteller"),
-    # Male
-    ("Marc",            "SfXg52J54dixBlOl016v", "warm, expressive, storytelling"),
-    ("Leo liest",       "QtXsTvuI72CiSlfxczvg", "relaxed, warm, deep — reading"),
-    ("Marcel",          "neSsqAiYj0KThbslcqPj", "deep, pleasant, tutorials"),
-    ("Marcus KvE",      "6V1EWbNGUufEsfPFe5VA", "clean no-accent voice-over"),
-    ("William",         "oae6GCCzwoEbfc5FHdEu", "soothing and calm"),
-    ("Moritz Wegner",   "PhufIH7nYh2Up1uej6aY", "confident, friendly & informative"),
-    ("Helmut",          "5KvpaGteYkNayiswuX2h", "distinctive and authentic"),
-    ("Tristan",         "yU41gRVGrkgofLTfIbzK", "dark, deep, captivating"),
-    ("Jantosch",        "CVcPLXStXPeDxhrSflDZ", "charismatic and charming"),
-    ("Dan",             "utkd5fchbspYG3Ld0zt0", "radio host & moderator"),
-]
-
-_DEFAULT_SPEED = 0.70
+_DEFAULT_SPEED  = 0.70
 
 os.makedirs(VOICES_DIR, exist_ok=True)
 
 
 def _get_client() -> ElevenLabs:
     if not ELEVENLABS_API_KEY:
-        raise ValueError("❌ ELEVENLABS_API_KEY not found in .env!")
+        raise ValueError("ELEVENLABS_API_KEY not found in .env!")
     return ElevenLabs(api_key=ELEVENLABS_API_KEY)
 
 
@@ -70,33 +49,38 @@ def _get_voice_picker_ai():
     return _model_to_ai_fn(config.VOICE_PICKER_MODEL)
 
 
-def _pick_random_voice() -> tuple[str, str]:
-    """Return a random (name, voice_id) from the German voice pool."""
+def _pick_random_voice(pool: list) -> tuple:
+    """Return a random (name, voice_id) from the pool."""
     import random
-    v = random.choice(_GERMAN_VOICES)
-    return v[0], v[1]
+    v = random.choice(pool)
+    return v["name"], v["voice_id"]
 
 
-def _pick_voice_by_ai(full_tweet: str) -> tuple[str, str]:
-    """Use AI to pick the most suitable voice for the given tweet.
-
-    Returns (name, voice_id). Falls back to a random voice on any error.
+def _pick_voice_by_ai(full_tweet: str, pool: list) -> tuple:
+    """
+    Use AI to pick the most suitable voice for the given tweet.
+    Returns (name, voice_id). Falls back to a random pool entry on any error.
     """
     import re as _re
     voice_list = "\n".join(
-        f"{i + 1}. {name} — {desc}"
-        for i, (name, _vid, desc) in enumerate(_GERMAN_VOICES)
+        f"{i + 1}. {v['name']} -- {v['description']}"
+        for i, v in enumerate(pool)
     )
     prompt = (
-        "You are selecting the best German text-to-speech voice for a tweet.\n\n"
+        f"You are selecting the best {config.SOURCE_LANGUAGE} text-to-speech voice for a tweet in a "
+        "language-learning context.\n\n"
         f"Tweet:\n{full_tweet}\n\n"
         f"Available voices:\n{voice_list}\n\n"
-        "Pick the voice whose character and tone best matches the mood and content of the tweet. "
+        "Each voice entry shows: name -- gender, age, accent, use-case, and tone description.\n"
+        "Choose the voice whose gender, age, accent, use-case, and overall character best fit "
+        "the mood and content of the tweet (e.g. a playful tweet suits a young, warm voice; "
+        "a news-style tweet suits a clear professional narrator; a calm reflective tweet suits "
+        "a middle-aged, soothing voice).\n"
         "Reply with ONLY the number of the chosen voice (e.g. '7'). Nothing else."
     )
     system = (
         "You are a voice casting expert. "
-        "Reply with only the number of the best-matching voice — no explanation."
+        "Reply with only the number of the best-matching voice -- no explanation."
     )
     try:
         raw = retry_call(
@@ -110,29 +94,29 @@ def _pick_voice_by_ai(full_tweet: str) -> tuple[str, str]:
         m = _re.search(r'\b(\d+)\b', raw)
         if m:
             idx = int(m.group(1)) - 1
-            if 0 <= idx < len(_GERMAN_VOICES):
-                name, voice_id, desc = _GERMAN_VOICES[idx]
-                logger.info("AI picked voice %d: %s", idx + 1, name)
-                ui_info(f"AI selected voice: {name} — {desc}")
-                return name, voice_id
-        logger.warning("Voice picker returned unparseable response %r — using random.", raw)
-        ui_warn(f"Voice picker returned unexpected response ({raw!r}) — falling back to random voice.")
+            if 0 <= idx < len(pool):
+                v = pool[idx]
+                logger.info("AI picked voice %d: %s", idx + 1, v["name"])
+                ui_info(f"AI selected voice: {v['name']} -- {v['description']}")
+                return v["name"], v["voice_id"]
+        logger.warning("Voice picker returned unparseable response %r -- using random.", raw)
+        ui_warn(f"Voice picker returned unexpected response ({raw!r}) -- falling back to random voice.")
     except Exception as exc:
-        logger.warning("Voice picker failed (%s) — using random voice.", exc)
-        ui_warn(f"Voice picker failed ({exc}) — falling back to random voice.")
-    name, voice_id = _pick_random_voice()
+        logger.warning("Voice picker failed (%s) -- using random voice.", exc)
+        ui_warn(f"Voice picker failed ({exc}) -- falling back to random voice.")
+    name, voice_id = _pick_random_voice(pool)
     ui_info(f"Random voice selected: {name}")
     return name, voice_id
 
 
 @with_retry(max_attempts=4, base_delay=3.0, label="elevenlabs_simple")
-def generate_german_audio(
+def generate_source_audio(
     text: str,
     output_file: str = None,
     voice_id: str = None,
     speed: float = _DEFAULT_SPEED,
 ) -> str:
-    """Generate German TTS audio. Returns path to saved MP3."""
+    """Generate TTS audio. Returns path to saved MP3."""
     client = _get_client()
     if not (0.7 <= speed <= 1.2):
         logger.warning("Speed %.2f out of range, clamping to 0.70.", speed)
@@ -140,7 +124,7 @@ def generate_german_audio(
 
     if output_file is None:
         ts = datetime.now().strftime("%Y%m%d_%H%M%S")
-        output_file = os.path.join(VOICES_DIR, f"german_{ts}.mp3")
+        output_file = os.path.join(VOICES_DIR, f"{config.SOURCE_LANGUAGE_CODE}_{ts}.mp3")
 
     logger.info("ElevenLabs TTS | voice_id=%s speed=%.2f | %.60s", voice_id, speed, text)
     audio = client.text_to_speech.convert(
@@ -151,19 +135,19 @@ def generate_german_audio(
         voice_settings=_voice_settings(speed),
     )
     save(audio, output_file)
-    logger.info("Audio saved → %s", output_file)
+    logger.info("Audio saved -> %s", output_file)
     return output_file
 
 
 @with_retry(max_attempts=4, base_delay=3.0, label="elevenlabs_timings")
-def generate_german_audio_with_timings(
+def generate_source_audio_with_timings(
     text: str,
     output_file: str = None,
     voice_id: str = None,
     speed: float = 0.70,
 ) -> tuple:
     """
-    Generate German TTS audio with word-level timings.
+    Generate TTS audio with word-level timings.
     Returns (audio_path, word_timings).
     word_timings = [{'word': str, 'start': float, 'end': float}, ...]
     """
@@ -171,7 +155,7 @@ def generate_german_audio_with_timings(
 
     if output_file is None:
         ts = datetime.now().strftime("%Y%m%d_%H%M%S")
-        output_file = os.path.join(VOICES_DIR, f"german_ktv_{ts}.mp3")
+        output_file = os.path.join(VOICES_DIR, f"{config.SOURCE_LANGUAGE_CODE}_ktv_{ts}.mp3")
 
     logger.info("ElevenLabs TTS (timings) | voice_id=%s speed=%.2f | %.60s", voice_id, speed, text)
     result = client.text_to_speech.convert_with_timestamps(
@@ -188,19 +172,19 @@ def generate_german_audio_with_timings(
             f.write(audio_bytes)
     else:
         save(result.audio, output_file)
-    logger.info("Audio (with timings) saved → %s", output_file)
+    logger.info("Audio (with timings) saved -> %s", output_file)
 
     word_timings = _character_alignment_to_word_timings(text, result.alignment)
     return output_file, word_timings
 
 
 def _character_alignment_to_word_timings(original_text: str, alignment) -> list:
-    """Convert ElevenLabs character alignment → clean word timings."""
+    """Convert ElevenLabs character alignment -> clean word timings."""
     if not alignment:
         return _fallback_timings(original_text)
 
     # SDK >= 2.x: alignment is a CharacterAlignmentResponseModel object with direct attributes
-    # Older SDK: alignment is a plain dict — handle both
+    # Older SDK: alignment is a plain dict -- handle both
     if hasattr(alignment, "characters"):
         chars  = list(alignment.characters or [])
         starts = list(alignment.character_start_times_seconds or [])
@@ -246,32 +230,43 @@ def _fallback_timings(text: str) -> list:
     return [{"word": w, "start": i * dur, "end": (i + 1) * dur} for i, w in enumerate(words)]
 
 
-# ── node ──────────────────────────────────────────────────────────────────────
+# ---- node --------------------------------------------------------------------
 
 def generate_audio(state: dict) -> dict:
     stage_banner(5)
     logger.info("Node: generate_audio")
 
-    text: str = state["example_sentence_de"]
+    text: str       = state["example_sentence_source"]
     full_tweet: str = state.get("full_tweet", "")
-    style: str = config.VIDEO_STYLE
+    style: str      = config.VIDEO_STYLE
+
+    # Grow the voice pool passively (no-op once it reaches TARGET_POOL_SIZE)
+    from services.voice_pool import grow_pool, TARGET_POOL_SIZE
+    pool = grow_pool(language=config.SOURCE_LANGUAGE_CODE, target_size=TARGET_POOL_SIZE)
+    ui_info(f"Voice pool: {len(pool)} voices available.")
+
+    if not pool:
+        raise RuntimeError(
+            "Voice pool is empty and could not be populated. "
+            "Check ELEVENLABS_API_KEY and network connectivity."
+        )
 
     if full_tweet:
-        ui_info("🎙️  Selecting voice with AI …")
-        voice_name, voice_id = _pick_voice_by_ai(full_tweet)
+        ui_info("Selecting voice with AI ...")
+        voice_name, voice_id = _pick_voice_by_ai(full_tweet, pool)
     else:
-        voice_name, voice_id = _pick_random_voice()
+        voice_name, voice_id = _pick_random_voice(pool)
         ui_info(f"Voice: {voice_name}")
     logger.info("Selected voice: %s (%s)", voice_name, voice_id)
 
     try:
         if style == "ktv":
-            audio_path, word_timings = generate_german_audio_with_timings(text, voice_id=voice_id)
-            ok(f"Audio + {len(word_timings)} word timings → {os.path.basename(audio_path)}")
+            audio_path, word_timings = generate_source_audio_with_timings(text, voice_id=voice_id)
+            ok(f"Audio + {len(word_timings)} word timings -> {os.path.basename(audio_path)}")
             return {**state, "clean_audio_path": audio_path, "word_timings": word_timings}
         else:
-            audio_path = generate_german_audio(text, voice_id=voice_id)
-            ok(f"Audio → {os.path.basename(audio_path)}")
+            audio_path = generate_source_audio(text, voice_id=voice_id)
+            ok(f"Audio -> {os.path.basename(audio_path)}")
             return {**state, "clean_audio_path": audio_path, "word_timings": []}
 
     except Exception as exc:
@@ -282,7 +277,7 @@ def generate_audio(state: dict) -> dict:
         )
         if existing:
             fallback_path = os.path.join(VOICES_DIR, existing[0])
-            ui_warn(f"ElevenLabs unavailable — using fallback audio: {os.path.basename(fallback_path)}")
+            ui_warn(f"ElevenLabs unavailable -- using fallback audio: {os.path.basename(fallback_path)}")
             logger.warning("Using fallback audio: %s", fallback_path)
             return {**state, "clean_audio_path": fallback_path, "word_timings": []}
         raise

@@ -2,74 +2,74 @@
   {
     "name": "Classic",
     "template": [
-      "🇩🇪  [ARTICLE] [GERMAN_WORD]",
-      "🇬🇧  [ENGLISH_TRANSLATION]  [EMOJI1][EMOJI1]",
+      "#Learn[SOURCE_LANGUAGE] #[SOURCE_LANGUAGE]Vocabulary",
       "",
-      "🇩🇪  [SHORT_FUNNY_GERMAN_SENTENCE]",
-      "🇬🇧  [ENGLISH_TRANSLATION_OF_SENTENCE]  [EMOJI2][EMOJI2]",
+      "[SOURCE_FLAG]  [ARTICLE] [SOURCE_WORD]",
+      "[TARGET_FLAG]  [TARGET_TRANSLATION]  [EMOJI1][EMOJI1]",
       "",
-      "#LearnGerman #GermanVocabulary"
+      "[SOURCE_FLAG]  [SHORT_FUNNY_SOURCE_SENTENCE]",
+      "[TARGET_FLAG]  [TARGET_TRANSLATION_OF_SENTENCE]  [EMOJI2][EMOJI2]"
     ]
   },
   {
     "name": "Clean Bilingual",
     "template": [
-      "🇩🇪  [ARTICLE] [GERMAN_WORD]",
-      "🇬🇧  [ENGLISH_TRANSLATION]  [EMOJI1][EMOJI1]",
+      "[SOURCE_FLAG]  [ARTICLE] [SOURCE_WORD]",
+      "[TARGET_FLAG]  [TARGET_TRANSLATION]  [EMOJI1][EMOJI1]",
       "",
-      "🇩🇪  [SHORT_FUNNY_GERMAN_SENTENCE]",
-      "🇬🇧  [ENGLISH_TRANSLATION_OF_SENTENCE]  [EMOJI2][EMOJI2]",
+      "[SOURCE_FLAG]  [SHORT_FUNNY_SOURCE_SENTENCE]",
+      "[TARGET_FLAG]  [TARGET_TRANSLATION_OF_SENTENCE]  [EMOJI2][EMOJI2]",
       "",
-      "#LearnGerman #GermanVocabulary"
+      "#Learn[SOURCE_LANGUAGE] #[SOURCE_LANGUAGE]Vocabulary"
     ]
   },
   {
     "name": "Arrow",
     "template": [
-      "[ARTICLE] [GERMAN_WORD]  [EMOJI1][EMOJI1]",
-      "→  [ENGLISH_TRANSLATION]",
+      "[ARTICLE] [SOURCE_WORD]  [EMOJI1][EMOJI1]",
+      "→  [TARGET_TRANSLATION]",
       "",
-      "🇩🇪  [SHORT_FUNNY_GERMAN_SENTENCE]",
-      "🇬🇧  [ENGLISH_TRANSLATION_OF_SENTENCE]  [EMOJI2][EMOJI2]",
+      "[SOURCE_FLAG]  [SHORT_FUNNY_SOURCE_SENTENCE]",
+      "[TARGET_FLAG]  [TARGET_TRANSLATION_OF_SENTENCE]  [EMOJI2][EMOJI2]",
       "",
-      "#LearnGerman #GermanVocabulary"
+      "#Learn[SOURCE_LANGUAGE] #[SOURCE_LANGUAGE]Vocabulary"
     ]
   },
   {
     "name": "Equals",
     "template": [
-      "[ARTICLE] [GERMAN_WORD] = [ENGLISH_TRANSLATION]  [EMOJI1][EMOJI1]",
+      "#Learn[SOURCE_LANGUAGE] #[SOURCE_LANGUAGE]Words",
       "",
-      "🇩🇪  [SHORT_FUNNY_GERMAN_SENTENCE]",
-      "🇬🇧  [ENGLISH_TRANSLATION_OF_SENTENCE]  [EMOJI2][EMOJI2]",
+      "[ARTICLE] [SOURCE_WORD] = [TARGET_TRANSLATION]  [EMOJI1][EMOJI1]",
       "",
-      "#LearnGerman #GermanWords"
+      "[SOURCE_FLAG]  [SHORT_FUNNY_SOURCE_SENTENCE]",
+      "[TARGET_FLAG]  [TARGET_TRANSLATION_OF_SENTENCE]  [EMOJI2][EMOJI2]"
     ]
   },
   {
     "name": "Word of the Day",
     "template": [
-      "🇩🇪  Word of the Day  [EMOJI1][EMOJI1]",
+      "[SOURCE_FLAG]  Word of the Day  [EMOJI1][EMOJI1]",
       "",
-      "[ARTICLE] [GERMAN_WORD]",
-      "→  [ENGLISH_TRANSLATION]",
+      "[ARTICLE] [SOURCE_WORD]",
+      "→  [TARGET_TRANSLATION]",
       "",
-      "🇩🇪  [SHORT_FUNNY_GERMAN_SENTENCE]",
-      "🇬🇧  [ENGLISH_TRANSLATION_OF_SENTENCE]  [EMOJI2][EMOJI2]",
+      "[SOURCE_FLAG]  [SHORT_FUNNY_SOURCE_SENTENCE]",
+      "[TARGET_FLAG]  [TARGET_TRANSLATION_OF_SENTENCE]  [EMOJI2][EMOJI2]",
       "",
-      "#WordOfTheDay #LearnGerman"
+      "#WordOfTheDay #Learn[SOURCE_LANGUAGE]"
     ]
   },
   {
     "name": "Quotes",
     "template": [
-      "🇩🇪  [ARTICLE] [GERMAN_WORD]",
-      "🇬🇧  [ENGLISH_TRANSLATION]  [EMOJI1][EMOJI1]",
+      "#Learn[SOURCE_LANGUAGE] #LanguageLearning",
       "",
-      "\u201e[SHORT_FUNNY_GERMAN_SENTENCE]\u201c",
-      "= [ENGLISH_TRANSLATION_OF_SENTENCE]  [EMOJI2][EMOJI2]",
+      "[SOURCE_FLAG]  [ARTICLE] [SOURCE_WORD]",
+      "[TARGET_FLAG]  [TARGET_TRANSLATION]  [EMOJI1][EMOJI1]",
       "",
-      "#LearnGerman #LanguageLearning"
+      "\u201e[SHORT_FUNNY_SOURCE_SENTENCE]\u201c",
+      "= [TARGET_TRANSLATION_OF_SENTENCE]  [EMOJI2][EMOJI2]"
     ]
   }
 ]

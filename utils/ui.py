@@ -6,6 +6,7 @@ All functions use print() directly so they never appear in the log file.
 import sys
 import time
 import shutil
+import config
 
 # ── ANSI colours ──────────────────────────────────────────────────────────────
 _R      = "\033[0m"
@@ -24,34 +25,48 @@ def _w() -> int:
 
 
 # ── Stage metadata ─────────────────────────────────────────────────────────────
-_STAGES = {
-    1: ("📊", "Refreshing metrics for all past tweets"),
-    2: ("🧠", "Analysing & improving strategy"),
-    3: ("✍️ ", "Crafting German vocabulary content"),
-    4: ("🎨", "Generating Midjourney image"),
-    5: ("🎙️ ", "Generating German TTS audio"),
-    6: ("🎬", "Rendering video"),
-    7: ("📤", "Posting to X"),
-    8: ("🏅", "Recording new post"),
-    9: ("⏳", "Waiting before next cycle"),
-}
-_TOTAL = len(_STAGES)
+def _stages() -> dict:
+    src = config.SOURCE_LANGUAGE
+    return {
+        1: ("📊", "Refreshing metrics for all past tweets"),
+        2: ("🧠", "Analysing & improving strategy"),
+        3: ("✍️ ", f"Crafting {src} vocabulary content"),
+        4: ("🎨", "Generating Midjourney image"),
+        5: ("🎙️ ", f"Generating {src} TTS audio"),
+        6: ("🎬", "Rendering video"),
+        7: ("📤", "Posting to X"),
+        8: ("🏅", "Recording new post"),
+        9: ("⏳", "Waiting before next cycle"),
+    }
+
+_TOTAL = 9
 
 
 # ── Public helpers ─────────────────────────────────────────────────────────────
 
 def startup_banner(model_lines: list = None):
+    """
+    model_lines: list of (label, value) or (label, value, icon) tuples.
+    A label starting with "─" renders as a full-width divider line.
+    The icon defaults to "🤖" when not supplied.
+    """
     w = _w()
+    src = config.SOURCE_LANGUAGE.upper()
+    tgt = config.TARGET_LANGUAGE.upper()
+    flag = config.SOURCE_FLAG
     print()
     print(f"{_CYAN}{_BOLD}{'═' * w}{_R}")
-    print(f"{_CYAN}{_BOLD}  🇩🇪  GERMAN LEARNING X BOT{_R}")
+    print(f"{_CYAN}{_BOLD}  {flag}  {src} FOR {tgt} — LANGUAGE LEARNING X BOT{_R}")
     if model_lines:
         print(f"{_CYAN}{'─' * w}{_R}")
-        for label, model in model_lines:
+        for row in model_lines:
+            label = row[0]
             if label.startswith("─"):
                 print(f"{_CYAN}{'─' * w}{_R}")
-            else:
-                print(f"{_CYAN}  🤖  {_BOLD}{label:<22}{_R}{_CYAN}{model}{_R}")
+                continue
+            value = row[1]
+            icon  = row[2] if len(row) > 2 else "🤖"
+            print(f"{_CYAN}  {icon}  {_BOLD}{label:<22}{_R}{_CYAN}{value}{_R}")
     print(f"{_CYAN}{_BOLD}{'═' * w}{_R}")
     print()
 
@@ -66,7 +81,7 @@ def cycle_banner(cycle: int):
 
 
 def stage_banner(step: int):
-    icon, name = _STAGES.get(step, ("▶", f"Step {step}"))
+    icon, name = _stages().get(step, ("▶", f"Step {step}"))
     w = _w()
     label = f"  {icon}  [{step}/{_TOTAL}]  {name.upper()}"
     print()

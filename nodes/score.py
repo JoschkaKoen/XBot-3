@@ -33,11 +33,6 @@ def tweet_age_hours(record: dict) -> float:
         return 24.0
 
 
-def tweet_age_days(record: dict) -> float:
-    """Return tweet age in days (derived from hours)."""
-    return round(tweet_age_hours(record) / 24, 2)
-
-
 def normalized_score(record: dict) -> float:
     """Engagement score divided by age in hours — a fair per-hour rate for comparison."""
     age_hours = tweet_age_hours(record)
@@ -102,11 +97,11 @@ def score_and_store(state: dict) -> dict:
         "tweet_id": state.get("tweet_id", ""),
         "tweet_url": state.get("tweet_url", ""),
         "full_tweet": state.get("full_tweet", ""),
-        "german_word": state.get("german_word", ""),
+        "source_word": state.get("source_word", ""),
         "article": state.get("article", ""),
         "cefr_level": state.get("cefr_level", ""),
-        "example_sentence_de": state.get("example_sentence_de", ""),
-        "example_sentence_en": state.get("example_sentence_en", ""),
+        "example_sentence_source": state.get("example_sentence_source", ""),
+        "example_sentence_target": state.get("example_sentence_target", ""),
         "metrics": metrics,
         "engagement_score": score,
         "cycle": state.get("cycle", 0),

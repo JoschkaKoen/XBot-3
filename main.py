@@ -52,6 +52,34 @@ def _model_lines() -> list:
         tweet_model = strategy_model = trend_model = word_model = f"{_config.AI_PROVIDER} (default)"
 
     lines = [
+        # ── Language pair ──────────────────────────────────────────────────────
+        (
+            "Source lang:",
+            f"{_config.SOURCE_FLAG}  {_config.SOURCE_LANGUAGE} ({_config.SOURCE_LANGUAGE_CODE})",
+            "🌐",
+        ),
+        (
+            "Target lang:",
+            f"{_config.TARGET_FLAG}  {_config.TARGET_LANGUAGE} ({_config.TARGET_LANGUAGE_CODE})",
+            "🌐",
+        ),
+        (
+            "Trends country:",
+            _config.TRENDS_COUNTRY,
+            "📈",
+        ),
+        (
+            "Source flag colors:",
+            _config.SOURCE_FLAG_COLORS,
+            "🎨",
+        ),
+        (
+            "Target flag colors:",
+            _config.TARGET_FLAG_COLORS,
+            "🎨",
+        ),
+        ("─" * 22, "─" * 30),
+        # ── AI models ──────────────────────────────────────────────────────────
         ("Tweet generation:",  tweet_model),
         ("Strategy analysis:", strategy_model),
         ("Word selection:",    trend_model if _config.USE_TRENDS else word_model),
@@ -59,10 +87,17 @@ def _model_lines() -> list:
     if _config.USE_TRENDS:
         lines.append(("  (trend filtering):", trend_model))
 
-    if len(_config.IMAGE_STYLE_CYCLE) == 1:
-        image_style_label = _config.IMAGE_STYLE_CYCLE[0]
+    cycle_list = _config.IMAGE_STYLE_CYCLE
+    if len(cycle_list) == 1:
+        image_style_label = cycle_list[0]
+    elif len(cycle_list) <= 4:
+        image_style_label = "  ↺  ".join(cycle_list) + "  (cycle)"
     else:
-        image_style_label = "  ↺  ".join(_config.IMAGE_STYLE_CYCLE) + "  (cycle)"
+        # Summarise as "style_a (Nx) ↺ style_b (Mx) — N-step cycle"
+        from collections import Counter
+        counts = Counter(cycle_list)
+        parts = [f"{s} ({n}×)" for s, n in counts.most_common()]
+        image_style_label = "  ↺  ".join(parts) + f"  ({len(cycle_list)}-step cycle)"
 
     lines.append(("─" * 22, "─" * 30))   # visual separator
     lines.append(("Use trends:",          "ON" if _config.USE_TRENDS else "off"))
@@ -78,7 +113,7 @@ def _model_lines() -> list:
     return lines
 
 setup_logging()
-logger = logging.getLogger("german_bot.main")
+logger = logging.getLogger("lang_bot.main")
 
 _shutdown = False
 
@@ -102,7 +137,10 @@ def _initial_state() -> dict:
     """
     from nodes.analyze import load_strategy
     strategy = load_strategy()
-    logger.info("Loaded initial strategy: %s", {k: v for k, v in strategy.items() if k != "avoid_words"})
+    logger.info("Loaded strategy:")
+    logger.info("  topic : %s", strategy.get("next_topic", "—"))
+    logger.info("  style : %s", strategy.get("style", "—"))
+    logger.info("  CEFR  : %s", strategy.get("preferred_cefr", "—"))
     return {
         "cycle":    0,
         "strategy": strategy,
@@ -111,10 +149,12 @@ def _initial_state() -> dict:
 
 
 def main():
+    _config.resolve_language_config()
+
     from graph import get_graph
 
     startup_banner(_model_lines())
-    logger.info("German Learning X Bot starting …")
+    logger.info("%s for %s — Language Learning X Bot starting …", _config.SOURCE_LANGUAGE, _config.TARGET_LANGUAGE)
 
     graph = get_graph()
 
@@ -127,7 +167,6 @@ def main():
     while not _shutdown:
         reload_settings()
         cycle += 1
-        startup_banner(_model_lines())
         cycle_banner(cycle)
         logger.info("Starting cycle %d …", cycle)
 
@@ -173,6 +212,7 @@ def _single_cycle() -> None:
     from graph import get_graph
 
     setup_logging()
+    _config.resolve_language_config()
 
     graph = get_graph()
     thread_id = f"single_cycle_{uuid.uuid4().hex[:8]}"
@@ -188,10 +228,10 @@ def _single_cycle() -> None:
             "success":             True,
             "tweet_id":            result.get("tweet_id", ""),
             "tweet_url":           result.get("tweet_url", ""),
-            "tweet_text":          result.get("full_tweet", ""),
-            "german_word":         result.get("german_word", ""),
-            "cefr_level":          result.get("cefr_level", ""),
-            "example_sentence_de": result.get("example_sentence_de", ""),
+            "tweet_text":              result.get("full_tweet", ""),
+            "source_word":             result.get("source_word", ""),
+            "cefr_level":              result.get("cefr_level", ""),
+            "example_sentence_source": result.get("example_sentence_source", ""),
             "image_path":          result.get("image_path", ""),
             "midjourney_prompt":   result.get("midjourney_prompt", ""),
             "video_path":          result.get("video_path", ""),

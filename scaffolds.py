@@ -3,14 +3,16 @@ Tweet scaffold pool and rotation.
 
 Scaffold templates are defined in data/scaffolds.json.
 Each entry has a "name" and a "template" string with these placeholders:
-  [LEVEL]                          — CEFR level, e.g. A1, B2
-  [ARTICLE]                        — der / die / das  (omitted for non-nouns)
-  [GERMAN_WORD]                    — the bare German word
-  [ENGLISH_TRANSLATION]            — English translation of the word
-  [SHORT_FUNNY_GERMAN_SENTENCE]    — example sentence in German
-  [ENGLISH_TRANSLATION_OF_SENTENCE]— English translation of the sentence
-  [EMOJI1][EMOJI1]                 — first emoji pair (two identical emojis)
-  [EMOJI2][EMOJI2]                 — second emoji pair (two identical emojis, may differ from EMOJI1)
+  [LEVEL]                              — CEFR level, e.g. A1, B2
+  [ARTICLE]                            — grammatical article (omitted for non-nouns)
+  [SOURCE_WORD]                        — the bare source-language word
+  [TARGET_TRANSLATION]                 — translation of the word in the target language
+  [SHORT_FUNNY_SOURCE_SENTENCE]        — example sentence in the source language
+  [TARGET_TRANSLATION_OF_SENTENCE]     — target-language translation of the sentence
+  [EMOJI1][EMOJI1]                     — first emoji pair (two identical emojis)
+  [EMOJI2][EMOJI2]                     — second emoji pair (two identical emojis, may differ from EMOJI1)
+  [SOURCE_FLAG] / [TARGET_FLAG]        — flag emojis substituted at runtime from config
+  [SOURCE_LANGUAGE] / [TARGET_LANGUAGE]— language names substituted at runtime from config
 
 Rotation is round-robin and persisted to data/scaffold_state.json so the
 sequence survives restarts and is predictable.
@@ -20,7 +22,7 @@ import json
 import logging
 import os
 
-logger = logging.getLogger("german_bot.scaffolds")
+logger = logging.getLogger("lang_bot.scaffolds")
 
 _SCAFFOLDS_FILE = "data/scaffolds.json"
 _STATE_FILE     = "data/scaffold_state.json"
