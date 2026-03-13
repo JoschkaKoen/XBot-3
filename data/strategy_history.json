@@ -826,13 +826,16 @@
     "scaffold": "#DeutschLernen [LEVEL]\n\n🇩🇪  [ARTICLE] [GERMAN_WORD]\n🇬🇧  [ENGLISH_TRANSLATION]  [EMOJI][EMOJI]\n\n🇩🇪  [SHORT_FUNNY_GERMAN_SENTENCE]\n🇬🇧  [ENGLISH_TRANSLATION_OF_SENTENCE]  [EMOJI][EMOJI]"
   },
   {
-    "timestamp": "2026-03-13T07:46:16.782168+00:00",
+    "timestamp": "2026-03-13T06:36:45.155094+00:00",
     "preferred_cefr": "A1, A2, B1, B2, C1, C2",
-    "next_topic": "German workplace culture",
-    "style": "use absurd exaggeration",
+    "next_topic": "German coffee culture",
+    "style": "use a twist ending",
     "avoid_words": [
       "Ohrwurm",
-      "Vorfreude"
+      "Vorfreude",
+      "Stammtisch",
+      "Wanderlust",
+      "Feierabend"
     ],
     "scaffold": "#DeutschLernen [LEVEL]\n\n🇩🇪  [ARTICLE] [GERMAN_WORD]\n🇬🇧  [ENGLISH_TRANSLATION]  [EMOJI][EMOJI]\n\n🇩🇪  [SHORT_FUNNY_GERMAN_SENTENCE]\n🇬🇧  [ENGLISH_TRANSLATION_OF_SENTENCE]  [EMOJI][EMOJI]"
   }

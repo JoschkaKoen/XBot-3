@@ -729,9 +729,9 @@
       "like_count": 0,
       "quote_count": 0,
       "bookmark_count": 0,
-      "impression_count": 23
+      "impression_count": 22
     },
-    "engagement_score": 0.23,
+    "engagement_score": 0.22,
     "cycle": 0
   },
   {
@@ -750,9 +750,9 @@
       "like_count": 0,
       "quote_count": 0,
       "bookmark_count": 0,
-      "impression_count": 14
+      "impression_count": 13
     },
-    "engagement_score": 0.14,
+    "engagement_score": 0.13,
     "cycle": 0
   },
   {
@@ -771,9 +771,9 @@
       "like_count": 0,
       "quote_count": 0,
       "bookmark_count": 0,
-      "impression_count": 16
+      "impression_count": 15
     },
-    "engagement_score": 0.16,
+    "engagement_score": 0.15,
     "cycle": 0
   },
   {
@@ -792,23 +792,100 @@
       "like_count": 0,
       "quote_count": 0,
       "bookmark_count": 0,
+      "impression_count": 9
+    },
+    "engagement_score": 0.09,
+    "cycle": 0
+  },
+  {
+    "timestamp": "2026-03-12T15:09:50.363425+00:00",
+    "tweet_id": "2032111830752174193",
+    "tweet_url": "https://x.com/i/web/status/2032111830752174193",
+    "full_tweet": "🇩🇪  Word of the Day  🍻🍻\n\nder Stammtisch (B1)\n→  regulars' table (untranslatable German concept for regular pub gatherings of friends)\n\n🇩🇪  Ich gehe zum Stammtisch, um Politik zu besprechen. Ende: Tanzen auf dem Tisch!\n🇺🇸  I go to the regulars' table to discuss politics. Ending: Dancing on the table!  🕺🕺\n\n#WordOfTheDay #LearnGerman",
+    "source_word": "Stammtisch",
+    "article": "der",
+    "cefr_level": "B1",
+    "example_sentence_source": "Ich gehe zum Stammtisch, um Politik zu besprechen. Ende: Tanzen auf dem Tisch!",
+    "example_sentence_target": "I go to the regulars' table to discuss politics. Ending: Dancing on the table!",
+    "metrics": {
+      "retweet_count": 0,
+      "reply_count": 0,
+      "like_count": 0,
+      "quote_count": 0,
+      "bookmark_count": 0,
       "impression_count": 10
     },
     "engagement_score": 0.1,
     "cycle": 0
   },
   {
-    "timestamp": "2026-03-13T07:48:42.651496+00:00",
-    "tweet_id": "2032363205352419765",
-    "tweet_url": "https://x.com/i/web/status/2032363205352419765",
-    "full_tweet": "der Feierabend = quitting time  ⏰⏰\n\n🇩🇪  Nach Feierabend wird mein Schreibtisch zur Tanzfläche für Elefanten!\n🇺🇸  After quitting time, my desk turns into a dance floor for elephants!  🐘🐘\n\n#LearnGerman #GermanWords",
+    "timestamp": "2026-03-12T15:25:57.389008+00:00",
+    "tweet_id": "2032115887273361533",
+    "tweet_url": "https://x.com/i/web/status/2032115887273361533",
+    "full_tweet": "🇩🇪  die Wanderlust\n🇺🇸  a strong desire to travel  🧳🧳\n\n🇩🇪  Ich dachte, es wäre Wanderlust, aber es war nur Lust auf Wurst!\n🇺🇸  I thought it was wanderlust, but it was just a craving for sausage!  🌭🌭\n\n#LearnGerman #GermanVocabulary",
+    "source_word": "Wanderlust",
+    "article": "die",
+    "cefr_level": "B2",
+    "example_sentence_source": "Ich dachte, es wäre Wanderlust, aber es war nur Lust auf Wurst!",
+    "example_sentence_target": "I thought it was wanderlust, but it was just a craving for sausage!",
+    "metrics": {
+      "retweet_count": 0,
+      "reply_count": 0,
+      "like_count": 0,
+      "quote_count": 0,
+      "bookmark_count": 0,
+      "impression_count": 13
+    },
+    "engagement_score": 0.13,
+    "cycle": 0
+  },
+  {
+    "timestamp": "2026-03-12T20:29:32.898810+00:00",
+    "tweet_id": "2032192288416546881",
+    "tweet_url": "https://x.com/i/web/status/2032192288416546881",
+    "full_tweet": "🇩🇪  der Feierabend\n🇺🇸  that untranslatable joy of finishing work and starting the evening celebration  🍻🍻\n🇩🇪  Endlich Feierabend! Jetzt kann ich die Steuererklärung machen.\n🇺🇸  Finally Feierabend! Now I can do my tax return.  😩😩\n#LearnGerman #GermanVocabulary",
     "source_word": "Feierabend",
     "article": "der",
     "cefr_level": "B1",
-    "example_sentence_source": "Nach Feierabend wird mein Schreibtisch zur Tanzfläche für Elefanten!",
-    "example_sentence_target": "After quitting time, my desk turns into a dance floor for elephants!",
+    "example_sentence_source": "Endlich Feierabend! Jetzt kann ich die Steuererklärung machen.",
+    "example_sentence_target": "Finally Feierabend! Now I can do my tax return.",
+    "metrics": {
+      "retweet_count": 0,
+      "reply_count": 0,
+      "like_count": 0,
+      "quote_count": 0,
+      "bookmark_count": 0,
+      "impression_count": 5
+    },
+    "engagement_score": 0.05,
+    "cycle": 1
+  },
+  {
+    "timestamp": "2026-03-13T06:38:59.830339+00:00",
+    "tweet_id": "2032345661388271722",
+    "tweet_url": "https://x.com/i/web/status/2032345661388271722",
+    "full_tweet": "🇩🇪  Word of the Day  ☕☕\n\ndie Kaffeepause (B1)\n→  coffee break\n\n🇩🇪  Die deutsche Kaffeepause: Trinken, plaudern, und plötzlich ist es Feierabend!\n🇺🇸  The German coffee break: Drink, chat, and suddenly it's quitting time!  🎉🎉\n\n#WordOfTheDay #LearnGerman",
+    "source_word": "Kaffeepause",
+    "article": "die",
+    "cefr_level": "B1",
+    "example_sentence_source": "Die deutsche Kaffeepause: Trinken, plaudern, und plötzlich ist es Feierabend!",
+    "example_sentence_target": "The German coffee break: Drink, chat, and suddenly it's quitting time!",
     "metrics": {},
     "engagement_score": 0.0,
-    "cycle": 0
+    "cycle": 4
+  },
+  {
+    "timestamp": "2026-03-13T11:43:32.231978+00:00",
+    "tweet_id": "2032422301334184392",
+    "tweet_url": "https://x.com/i/web/status/2032422301334184392",
+    "full_tweet": "🇩🇪  der Milchkaffee\n🇺🇸  milky coffee  ☕☕\n\n„Ich will einen Milchkaffee, aber ohne Kaffee!“\n= I want a milky coffee, but without the coffee!  🥛🥛\n\n#LearnGerman #LanguageLearning",
+    "source_word": "Milchkaffee",
+    "article": "der",
+    "cefr_level": "A2",
+    "example_sentence_source": "Ich will einen Milchkaffee, aber ohne Kaffee!",
+    "example_sentence_target": "I want a milky coffee, but without the coffee!",
+    "metrics": {},
+    "engagement_score": 0.0,
+    "cycle": 5
   }
 ]
