@@ -16,12 +16,15 @@ import os
 import logging
 from datetime import datetime
 from pydub import AudioSegment
+import numpy as np
+from PIL import Image as _PILImage
 from moviepy import (
     AudioFileClip,
     ColorClip,
     CompositeVideoClip,
     ImageClip,
     TextClip,
+    VideoClip,
     VideoFileClip,
 )
 
@@ -153,6 +156,53 @@ def _build_ktv_overlay_clips(
     return overlays
 
 
+# ── Ken Burns effect (PIL AFFINE, sub-pixel smooth) ──────────────────────────
+
+# Zoom and pan constants — kept here so they're easy to tune.
+_KB_ZOOM_START = 1.0    # 1.0 = full frame visible at start
+_KB_ZOOM_END   = 1.08   # 1.08 = 8 % zoom-in at end
+_KB_PAN_X      = 0.3    # fraction of available slack to drift rightward
+_KB_PAN_Y      = 0.2    # fraction of available slack to drift downward
+
+
+def _make_ken_burns_clip(image_path: str, duration: float, fps: int = 24) -> VideoClip:
+    """
+    Return a moviepy VideoClip with Ken Burns slow zoom+pan applied to the image.
+
+    Uses PIL img.transform(AFFINE, BICUBIC) — true float-space sampling, no
+    integer rounding, no frame stutter.
+
+    Pan is expressed as a fraction of the available slack (iw * (1 - scale)).
+    At ZOOM_START=1.0 slack is 0, so tx=ty=0 regardless of PAN values — the
+    view is guaranteed to start exactly at the full image with no offset.
+    """
+    img = _PILImage.open(image_path).convert("RGB")
+    iw, ih = img.size
+
+    def make_frame(t: float) -> np.ndarray:
+        progress = max(0.0, min(1.0, t / max(duration, 1.0 / fps)))
+        zoom  = _KB_ZOOM_START + (_KB_ZOOM_END - _KB_ZOOM_START) * progress
+        scale = 1.0 / zoom
+
+        slack_x = iw * (1.0 - scale)
+        slack_y = ih * (1.0 - scale)
+
+        tx = slack_x * (0.5 + _KB_PAN_X * (progress - 0.5))
+        ty = slack_y * (0.5 + _KB_PAN_Y * (progress - 0.5))
+        tx = max(0.0, min(tx, slack_x))
+        ty = max(0.0, min(ty, slack_y))
+
+        frame = img.transform(
+            (iw, ih),
+            _PILImage.AFFINE,
+            (scale, 0, tx, 0, scale, ty),
+            resample=_PILImage.BICUBIC,
+        )
+        return np.array(frame)
+
+    return VideoClip(make_frame, duration=duration).with_fps(fps)
+
+
 # ── simple video (static image) ───────────────────────────────────────────────
 
 def create_simple_video(image_path: str, audio_path: str) -> str:
@@ -162,12 +212,11 @@ def create_simple_video(image_path: str, audio_path: str) -> str:
     logger.info("Creating simple video → %s", video_path)
 
     audio = AudioFileClip(audio_path)
-    video = (
-        ImageClip(image_path)
-        .with_duration(audio.duration)
-        .with_fps(24)
-        .with_audio(audio)
-    )
+    if config.ENABLE_KEN_BURNS:
+        base = _make_ken_burns_clip(image_path, audio.duration)
+    else:
+        base = ImageClip(image_path).with_duration(audio.duration).with_fps(24)
+    video = base.with_audio(audio)
     video.write_videofile(
         video_path,
         codec="libx264",
@@ -200,7 +249,10 @@ def create_ktv_video(
 
     audio    = AudioFileClip(audio_path)
     duration = audio.duration
-    base     = ImageClip(image_path).with_duration(duration).with_fps(24)
+    if config.ENABLE_KEN_BURNS:
+        base = _make_ken_burns_clip(image_path, duration)
+    else:
+        base = ImageClip(image_path).with_duration(duration).with_fps(24)
 
     overlays = _build_ktv_overlay_clips(base, duration, german_text, word_timings or [])
     final = CompositeVideoClip([base] + overlays).with_audio(audio)

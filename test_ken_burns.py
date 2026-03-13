@@ -1,39 +1,44 @@
 """
-Standalone Ken Burns effect test.
+Standalone Ken Burns effect test -- PIL AFFINE + moviepy.
 
-Applies a slow pan + zoom to a still image and renders a short MP4.
-Optionally overlays an audio track (pass as second arg).
+PIL img.transform(AFFINE, BICUBIC) operates in true float space, so there is
+no integer rounding between frames and no per-pixel stutter.
+
+The crop window is expressed as a fraction of the image NOT shown (the
+"slack").  At ZOOM_START=1.0 the slack is exactly 0, so pan has no effect
+and tx/ty are guaranteed to be 0 -- no negative offsets, no out-of-bounds
+sampling.
 
 Usage:
-    python test_ken_burns.py                             # uses most recent image, no audio
-    python test_ken_burns.py Images/foo.png              # specific image, no audio
-    python test_ken_burns.py Images/foo.png Voices/bar.mp3  # image + audio
+    python test_ken_burns.py                               # latest image, no audio
+    python test_ken_burns.py Images/foo.png                # specific image, no audio
+    python test_ken_burns.py Images/foo.png Voices/bar.mp3 # image + audio
 
 Output: Videos/ken_burns_test.mp4
 """
 
 import os
+import subprocess
 import sys
+
 import numpy as np
 from PIL import Image as PILImage
-from moviepy import (
-    AudioFileClip,
-    ImageClip,
-)
+from moviepy import AudioFileClip, VideoClip
 
 OUTPUT_PATH = "Videos/ken_burns_test.mp4"
 FPS         = 24
-DURATION    = 7.0    # seconds — override by audio length when audio is provided
+DURATION    = 8.0    # seconds -- overridden by audio length when audio is provided
 
-# ── Ken Burns parameters ──────────────────────────────────────────────────────
-# How much to zoom over the full duration (1.10 = 10 % zoom-in)
-ZOOM_START  = 1.0
-ZOOM_END    = 1.08
+# Ken Burns parameters
+ZOOM_START  = 1.0    # 1.0 = full frame visible
+ZOOM_END    = 1.20   # 1.08 = 8% zoom-in at end
 
-# Pan direction: fraction of image width/height to drift in x and y
-# (0.03, 0.02) = drift 3 % right and 2 % down over the duration
-PAN_X       = 0.03    # positive = drift right
-PAN_Y       = 0.02    # positive = drift down
+# Pan: fraction of available slack to drift across.
+# Slack = portion of image not shown = iw * (1 - 1/zoom).
+# At zoom=1.0 slack=0, so pan is always 0 at the start -- no out-of-bounds.
+# 0.5 = drift across half the available slack; 0.0 = pure center zoom.
+PAN_X = 0.0    # positive = drift rightward
+PAN_Y = 0.0    # positive = drift downward
 
 
 def _pick_latest(directory: str, ext: str) -> str | None:
@@ -45,45 +50,55 @@ def _pick_latest(directory: str, ext: str) -> str | None:
     return max(candidates, key=os.path.getmtime) if candidates else None
 
 
-def make_ken_burns_clip(image_path: str, duration: float, fps: int = FPS) -> ImageClip:
+def make_ken_burns_clip(image_path: str, duration: float, fps: int = FPS) -> VideoClip:
     """
-    Return a moviepy ImageClip with Ken Burns pan + zoom applied to the image.
+    Return a moviepy VideoClip with Ken Burns zoom+pan applied.
 
-    Uses PIL AFFINE transform for sub-pixel accuracy (no integer rounding
-    artifacts) and a smooth-step ease-in-out curve for cinematic motion.
+    For each frame at time t:
+      1. Compute a linear progress p in [0, 1].
+      2. zoom = ZOOM_START + (ZOOM_END - ZOOM_START) * p
+         scale = 1 / zoom  (the fraction of the image we show)
+      3. slack_x = iw * (1 - scale)  -- pixels available to pan in x
+         slack_y = ih * (1 - scale)  -- pixels available to pan in y
+      4. tx = slack_x * (0.5 + PAN_X * (p - 0.5))
+             = 0 when zoom=1 (slack=0), grows as zoom increases.
+      5. PIL AFFINE matrix (scale, 0, tx, 0, scale, ty) maps each output
+         pixel (x, y) to input float position (scale*x + tx, scale*y + ty),
+         bicubic-interpolated -- true sub-pixel, no integer rounding.
     """
     img = PILImage.open(image_path).convert("RGB")
     iw, ih = img.size
 
-    def apply_ken_burns(frame: np.ndarray, t: float) -> np.ndarray:
-        # Raw linear progress 0 → 1
-        raw = t / max(duration - 1 / fps, 1 / fps)
-        raw = max(0.0, min(1.0, raw))
+    def make_frame(t: float) -> np.ndarray:
+        progress = max(0.0, min(1.0, t / max(duration, 1.0 / fps)))
 
-        # Smooth-step ease-in-out: accelerate from rest, decelerate to rest
-        progress = raw * raw * (3 - 2 * raw)
-
-        zoom = ZOOM_START + (ZOOM_END - ZOOM_START) * progress
-
-        # scale < 1 means we sample a smaller region → zoomed in
+        zoom  = ZOOM_START + (ZOOM_END - ZOOM_START) * progress
         scale = 1.0 / zoom
-        tx = iw * (1 - scale) / 2 + iw * scale * PAN_X * (progress - 0.5)
-        ty = ih * (1 - scale) / 2 + ih * scale * PAN_Y * (progress - 0.5)
 
-        # AFFINE matrix (a,b,c,d,e,f): output(x,y) ← input(a·x+b·y+c, d·x+e·y+f)
-        result = img.transform(
+        # Slack = unshown portion of image (0 when zoom=1)
+        slack_x = iw * (1.0 - scale)
+        slack_y = ih * (1.0 - scale)
+
+        # Pan within slack: 0.5 = centre, < 0.5 = left/up, > 0.5 = right/down
+        tx = slack_x * (0.5 + PAN_X * (progress - 0.5))
+        ty = slack_y * (0.5 + PAN_Y * (progress - 0.5))
+
+        # Clamp to valid range (safety, not normally needed for small PAN values)
+        tx = max(0.0, min(tx, slack_x))
+        ty = max(0.0, min(ty, slack_y))
+
+        frame = img.transform(
             (iw, ih),
             PILImage.AFFINE,
             (scale, 0, tx, 0, scale, ty),
             resample=PILImage.BICUBIC,
         )
-        return np.array(result)
+        return np.array(frame)
 
-    base = ImageClip(image_path, duration=duration)
-    return base.transform(lambda gf, t: apply_ken_burns(gf(t), t)).with_fps(fps)
+    return VideoClip(make_frame, duration=duration).with_fps(fps)
 
 
-# ── Main ──────────────────────────────────────────────────────────────────────
+# Main
 if __name__ == "__main__":
     image_path = sys.argv[1] if len(sys.argv) > 1 else _pick_latest("Images", ".png")
     audio_path = sys.argv[2] if len(sys.argv) > 2 else None
@@ -92,18 +107,17 @@ if __name__ == "__main__":
         print("No image found in Images/. Pass a path as argument.")
         sys.exit(1)
 
-    print(f"\n  Image : {image_path}")
-
     duration = DURATION
     audio_clip = None
     if audio_path:
         audio_clip = AudioFileClip(audio_path)
         duration = audio_clip.duration
-        print(f"  Audio : {audio_path}  ({duration:.1f}s)")
-    else:
-        print(f"  Audio : none  (using {duration:.1f}s duration)")
 
-    print(f"  Zoom  : {ZOOM_START:.2f} → {ZOOM_END:.2f}  |  Pan: ({PAN_X:+.2f}, {PAN_Y:+.2f})\n")
+    print(f"\n  Image : {image_path}")
+    print(f"  Audio : {audio_path}  ({duration:.1f}s)" if audio_path else
+          f"  Audio : none  (using {duration:.1f}s duration)")
+    print(f"  Zoom  : {ZOOM_START:.2f} -> {ZOOM_END:.2f}")
+    print(f"  Pan   : ({PAN_X:+.2f}, {PAN_Y:+.2f})\n")
 
     clip = make_ken_burns_clip(image_path, duration)
     if audio_clip:
@@ -120,8 +134,6 @@ if __name__ == "__main__":
         threads=4,
         logger=None,
     )
-    print(f"\n  Saved → {OUTPUT_PATH}")
-    print("  Done. Open Videos/ken_burns_test.mp4 to review.")
 
-    import subprocess
+    print(f"\n  Saved -> {OUTPUT_PATH}")
     subprocess.run(["open", OUTPUT_PATH])

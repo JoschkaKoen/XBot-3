@@ -372,9 +372,9 @@
       "like_count": 0,
       "quote_count": 1,
       "bookmark_count": 0,
-      "impression_count": 113
+      "impression_count": 114
     },
-    "engagement_score": 3.13,
+    "engagement_score": 3.14,
     "cycle": 3
   },
   {
@@ -603,9 +603,9 @@
       "like_count": 0,
       "quote_count": 0,
       "bookmark_count": 0,
-      "impression_count": 49
+      "impression_count": 51
     },
-    "engagement_score": 0.49,
+    "engagement_score": 0.51,
     "cycle": 0
   },
   {
@@ -624,9 +624,9 @@
       "like_count": 0,
       "quote_count": 0,
       "bookmark_count": 0,
-      "impression_count": 51
+      "impression_count": 53
     },
-    "engagement_score": 0.51,
+    "engagement_score": 0.53,
     "cycle": 0
   },
   {
@@ -645,9 +645,9 @@
       "like_count": 0,
       "quote_count": 0,
       "bookmark_count": 0,
-      "impression_count": 48
+      "impression_count": 50
     },
-    "engagement_score": 0.48,
+    "engagement_score": 0.5,
     "cycle": 0
   },
   {
@@ -666,9 +666,9 @@
       "like_count": 0,
       "quote_count": 0,
       "bookmark_count": 0,
-      "impression_count": 28
+      "impression_count": 31
     },
-    "engagement_score": 0.28,
+    "engagement_score": 0.31,
     "cycle": 0
   },
   {
@@ -687,9 +687,9 @@
       "like_count": 0,
       "quote_count": 0,
       "bookmark_count": 0,
-      "impression_count": 21
+      "impression_count": 26
     },
-    "engagement_score": 0.21,
+    "engagement_score": 0.26,
     "cycle": 1
   },
   {
@@ -708,9 +708,9 @@
       "like_count": 0,
       "quote_count": 0,
       "bookmark_count": 0,
-      "impression_count": 16
+      "impression_count": 21
     },
-    "engagement_score": 0.16,
+    "engagement_score": 0.21,
     "cycle": 0
   },
   {
@@ -723,22 +723,15 @@
     "cefr_level": "B1",
     "example_sentence_de": "Ich liebe die Gemütlichkeit zu Hause, besonders wenn der Pizzabote klingelt!",
     "example_sentence_en": "I love the coziness at home, especially when the pizza delivery guy rings!",
-    "metrics": {},
-    "engagement_score": 0.0,
-    "cycle": 0
-  },
-  {
-    "timestamp": "2026-03-12T08:24:19.986929+00:00",
-    "tweet_id": "2032009782971036048",
-    "tweet_url": "https://x.com/i/web/status/2032009782971036048",
-    "full_tweet": "🇩🇪  Word of the Day  ☕☕\ndie Gemütlichkeit\n→  that untranslatable feeling of coziness and warmth\n🇩🇪  Die Gemütlichkeit meines Zimmers: Bett, Kissen und mein Wecker, der gerade Urlaub macht!\n🇺🇸  The coziness of my room: bed, pillows, and my alarm clock that's currently on vacation!  🛏️🛏️\n#WordOfTheDay #LearnGerman",
-    "source_word": "Gemütlichkeit",
-    "article": "die",
-    "cefr_level": "B1",
-    "example_sentence_source": "Die Gemütlichkeit meines Zimmers: Bett, Kissen und mein Wecker, der gerade Urlaub macht!",
-    "example_sentence_target": "The coziness of my room: bed, pillows, and my alarm clock that's currently on vacation!",
-    "metrics": {},
-    "engagement_score": 0.0,
+    "metrics": {
+      "retweet_count": 0,
+      "reply_count": 0,
+      "like_count": 0,
+      "quote_count": 0,
+      "bookmark_count": 0,
+      "impression_count": 23
+    },
+    "engagement_score": 0.23,
     "cycle": 0
   },
   {
@@ -751,8 +744,15 @@
     "cefr_level": "B1",
     "example_sentence_source": "Der Ohrwurm in meinem Kopf ist so hartnäckig, er hat sogar Miete gezahlt!",
     "example_sentence_target": "The earworm in my head is so persistent, it even paid rent!",
-    "metrics": {},
-    "engagement_score": 0.0,
+    "metrics": {
+      "retweet_count": 0,
+      "reply_count": 0,
+      "like_count": 0,
+      "quote_count": 0,
+      "bookmark_count": 0,
+      "impression_count": 14
+    },
+    "engagement_score": 0.14,
     "cycle": 0
   },
   {
@@ -765,22 +765,15 @@
     "cefr_level": "B1",
     "example_sentence_source": "Ich habe so viel Vorfreude auf Weihnachten, dass ich im Juli schon den Baum schmücke.",
     "example_sentence_target": "I have so much joyful anticipation for Christmas that I already decorate the tree in July.",
-    "metrics": {},
-    "engagement_score": 0.0,
-    "cycle": 0
-  },
-  {
-    "timestamp": "2026-03-12T12:02:39.900874+00:00",
-    "tweet_id": "2032064728286351368",
-    "tweet_url": "https://x.com/i/web/status/2032064728286351368",
-    "full_tweet": "🇩🇪 der Feierabend (B1)\n🇺🇸 the end of the workday 🍺🍺\n\n🇩🇪 Ich dachte, Feierabend bedeutet Partyabend, also habe ich Freunde eingeladen!\n🇺🇸 I thought Feierabend meant party evening, so I invited friends! 🎉🎉\n\n#LearnGerman #GermanVocabulary",
-    "source_word": "Feierabend",
-    "article": "der",
-    "cefr_level": "B1",
-    "example_sentence_source": "Ich dachte, Feierabend bedeutet Partyabend, also habe ich Freunde eingeladen!",
-    "example_sentence_target": "I thought Feierabend meant party evening, so I invited friends!",
-    "metrics": {},
-    "engagement_score": 0.0,
+    "metrics": {
+      "retweet_count": 0,
+      "reply_count": 0,
+      "like_count": 0,
+      "quote_count": 0,
+      "bookmark_count": 0,
+      "impression_count": 16
+    },
+    "engagement_score": 0.16,
     "cycle": 0
   },
   {
@@ -793,6 +786,27 @@
     "cefr_level": "B1",
     "example_sentence_source": "Die Vorfreude auf den Gewinn ist groß – ich habe das Lotterielos schon gerahmt!",
     "example_sentence_target": "The anticipation of the win is great – I've already framed the lottery ticket!",
+    "metrics": {
+      "retweet_count": 0,
+      "reply_count": 0,
+      "like_count": 0,
+      "quote_count": 0,
+      "bookmark_count": 0,
+      "impression_count": 10
+    },
+    "engagement_score": 0.1,
+    "cycle": 0
+  },
+  {
+    "timestamp": "2026-03-13T07:48:42.651496+00:00",
+    "tweet_id": "2032363205352419765",
+    "tweet_url": "https://x.com/i/web/status/2032363205352419765",
+    "full_tweet": "der Feierabend = quitting time  ⏰⏰\n\n🇩🇪  Nach Feierabend wird mein Schreibtisch zur Tanzfläche für Elefanten!\n🇺🇸  After quitting time, my desk turns into a dance floor for elephants!  🐘🐘\n\n#LearnGerman #GermanWords",
+    "source_word": "Feierabend",
+    "article": "der",
+    "cefr_level": "B1",
+    "example_sentence_source": "Nach Feierabend wird mein Schreibtisch zur Tanzfläche für Elefanten!",
+    "example_sentence_target": "After quitting time, my desk turns into a dance floor for elephants!",
     "metrics": {},
     "engagement_score": 0.0,
     "cycle": 0

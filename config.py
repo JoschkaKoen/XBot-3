@@ -145,8 +145,8 @@ def reload_settings() -> None:
     global TWEET_STYLE_CYCLE, TWEET_STYLE
     global IMAGE_PROVIDER, GROK_IMAGE_COUNT
     global MAX_TWEET_LENGTH, MAX_EXAMPLE_WORDS, POST_INTERVAL_SECONDS, VIDEO_STYLE, ANALYZE_LAST_N
-    global FLAG_OVERLAY
-    global ENABLE_GROK_VIDEO, GROK_VIDEO_FREQUENCY
+    global FUNNY_MODE, FLAG_OVERLAY
+    global ENABLE_GROK_VIDEO, GROK_VIDEO_FREQUENCY, ENABLE_KEN_BURNS
     global ENABLE_SELF_IMPROVEMENT, IMPROVEMENT_INTERVAL_CYCLES, IMPROVEMENT_SCORE_THRESHOLD
     global STRATEGY_UPDATE_INTERVAL_HOURS
     global TWEET_MODEL, TWEET_PICKER_MODEL, STRATEGY_MODEL
@@ -170,6 +170,7 @@ def reload_settings() -> None:
     ANALYZE_LAST_N                 = int(os.getenv("ANALYZE_LAST_N", "10"))
     FLAG_OVERLAY                   = os.getenv("FLAG_OVERLAY", "true").lower().strip() == "true"
     ENABLE_GROK_VIDEO              = os.getenv("ENABLE_GROK_VIDEO", "false").lower().strip() == "true"
+    ENABLE_KEN_BURNS               = os.getenv("ENABLE_KEN_BURNS", "false").lower().strip() == "true"
     GROK_VIDEO_FREQUENCY           = int(os.getenv("GROK_VIDEO_FREQUENCY", "1"))
     ENABLE_SELF_IMPROVEMENT        = os.getenv("ENABLE_SELF_IMPROVEMENT", "false").lower().strip() == "true"
     IMPROVEMENT_INTERVAL_CYCLES    = int(os.getenv("IMPROVEMENT_INTERVAL_CYCLES", "5"))
@@ -233,6 +234,10 @@ IMPROVEMENT_SCORE_THRESHOLD: float = float(os.getenv("IMPROVEMENT_SCORE_THRESHOL
 # When True, Grok Imagine animates the selected image into a short video used as the
 # animated base for the KTV overlay.  Requires XAI_API_KEY.
 ENABLE_GROK_VIDEO: bool = os.getenv("ENABLE_GROK_VIDEO", "false").lower().strip() == "true"
+
+# When True, applies a slow PIL AFFINE Ken Burns zoom+pan to the still image
+# on the static video path (i.e. when Grok video is disabled or skipped).
+ENABLE_KEN_BURNS: bool = os.getenv("ENABLE_KEN_BURNS", "false").lower().strip() == "true"
 
 # How often to generate a Grok video: every Nth tweet.
 #   1 = every tweet  (default)
