@@ -41,6 +41,76 @@ logger = logging.getLogger("german_bot.graph")
 _PROJECT_DIR = Path(__file__).parent.resolve()
 
 
+# ── auto-update from GitHub ───────────────────────────────────────────────────
+
+def _check_for_update() -> None:
+    """
+    Fetch origin/main and, if new commits exist, pull and restart the process.
+
+    Uses os.execv to replace the current process in-place (same args, no
+    orphan processes).  Any error (network failure, git not available, etc.)
+    is caught and logged so the bot continues normally.
+    """
+    if os.getenv("AUTO_UPDATE", "true").lower().strip() != "true":
+        return
+
+    try:
+        from utils.ui import ok, warn as ui_warn
+
+        # Fetch without merging
+        subprocess.run(
+            ["git", "fetch", "origin", "main"],
+            cwd=str(_PROJECT_DIR),
+            capture_output=True,
+            timeout=30,
+        )
+
+        local = subprocess.run(
+            ["git", "rev-parse", "HEAD"],
+            cwd=str(_PROJECT_DIR),
+            capture_output=True,
+            text=True,
+            timeout=10,
+        ).stdout.strip()
+
+        remote = subprocess.run(
+            ["git", "rev-parse", "origin/main"],
+            cwd=str(_PROJECT_DIR),
+            capture_output=True,
+            text=True,
+            timeout=10,
+        ).stdout.strip()
+
+        if local == remote:
+            logger.info("Auto-update: already up to date (%s).", local[:7])
+            return
+
+        logger.info(
+            "Auto-update: new commits on origin/main (%s → %s). Pulling …",
+            local[:7], remote[:7],
+        )
+        ok(f"Update found ({local[:7]} → {remote[:7]}) — pulling and restarting …")
+
+        pull = subprocess.run(
+            ["git", "pull", "origin", "main"],
+            cwd=str(_PROJECT_DIR),
+            capture_output=True,
+            text=True,
+            timeout=60,
+        )
+        if pull.returncode != 0:
+            logger.warning("Auto-update: git pull failed:\n%s", pull.stderr)
+            ui_warn("git pull failed — continuing without update.")
+            return
+
+        logger.info("Auto-update: pull successful. Restarting …")
+        os.execv(sys.executable, [sys.executable] + sys.argv)
+        # os.execv replaces the process — code below is unreachable
+
+    except Exception as exc:
+        logger.warning("Auto-update check failed: %s — continuing.", exc)
+
+
 # ── wait node ─────────────────────────────────────────────────────────────────
 
 def wait_node(state: dict) -> dict:
@@ -84,6 +154,9 @@ def wait_node(state: dict) -> dict:
     logger.info("Waiting %ds before next cycle …", remaining)
     wait_countdown(remaining)
     logger.info("Wait complete.")
+
+    _check_for_update()
+
     return state
 
 

@@ -3,10 +3,10 @@
     "name": "Classic",
     "template": [
       "[SOURCE_FLAG]  [ARTICLE] [SOURCE_WORD]",
-      "[TARGET_FLAG]  [TARGET_TRANSLATION]  [EMOJI1][EMOJI1]",
+      "[TARGET_FLAG]  [TARGET_TRANSLATION]  [EMOJI1]",
       "",
       "[SOURCE_FLAG]  [SHORT_FUNNY_SOURCE_SENTENCE]",
-      "[TARGET_FLAG]  [TARGET_TRANSLATION_OF_SENTENCE]  [EMOJI2][EMOJI2]",
+      "[TARGET_FLAG]  [TARGET_TRANSLATION_OF_SENTENCE]  [EMOJI2]",
       "",
       "#Learn[SOURCE_LANGUAGE] #[SOURCE_LANGUAGE]Vocabulary"
     ]
@@ -15,10 +15,10 @@
     "name": "Clean Bilingual",
     "template": [
       "[SOURCE_FLAG]  [ARTICLE] [SOURCE_WORD]",
-      "[TARGET_FLAG]  [TARGET_TRANSLATION]  [EMOJI1][EMOJI1]",
+      "[TARGET_FLAG]  [TARGET_TRANSLATION]  [EMOJI1]",
       "",
       "[SOURCE_FLAG]  [SHORT_FUNNY_SOURCE_SENTENCE]",
-      "[TARGET_FLAG]  [TARGET_TRANSLATION_OF_SENTENCE]  [EMOJI2][EMOJI2]",
+      "[TARGET_FLAG]  [TARGET_TRANSLATION_OF_SENTENCE]  [EMOJI2]",
       "",
       "#Learn[SOURCE_LANGUAGE] #[SOURCE_LANGUAGE]Vocabulary"
     ]
@@ -26,11 +26,11 @@
   {
     "name": "Arrow",
     "template": [
-      "[ARTICLE] [SOURCE_WORD]  [EMOJI1][EMOJI1]",
+      "[ARTICLE] [SOURCE_WORD]  [EMOJI1]",
       "→  [TARGET_TRANSLATION]",
       "",
       "[SOURCE_FLAG]  [SHORT_FUNNY_SOURCE_SENTENCE]",
-      "[TARGET_FLAG]  [TARGET_TRANSLATION_OF_SENTENCE]  [EMOJI2][EMOJI2]",
+      "[TARGET_FLAG]  [TARGET_TRANSLATION_OF_SENTENCE]  [EMOJI2]",
       "",
       "#Learn[SOURCE_LANGUAGE] #[SOURCE_LANGUAGE]Vocabulary"
     ]
@@ -38,10 +38,10 @@
   {
     "name": "Equals",
     "template": [
-      "[ARTICLE] [SOURCE_WORD] = [TARGET_TRANSLATION]  [EMOJI1][EMOJI1]",
+      "[ARTICLE] [SOURCE_WORD] = [TARGET_TRANSLATION]  [EMOJI1]",
       "",
       "[SOURCE_FLAG]  [SHORT_FUNNY_SOURCE_SENTENCE]",
-      "[TARGET_FLAG]  [TARGET_TRANSLATION_OF_SENTENCE]  [EMOJI2][EMOJI2]",
+      "[TARGET_FLAG]  [TARGET_TRANSLATION_OF_SENTENCE]  [EMOJI2]",
       "",
       "#Learn[SOURCE_LANGUAGE] #[SOURCE_LANGUAGE]Words"
     ]
@@ -49,13 +49,13 @@
   {
     "name": "Word of the Day",
     "template": [
-      "[SOURCE_FLAG]  Word of the Day  [EMOJI1][EMOJI1]",
+      "[SOURCE_FLAG]  Word of the Day  [EMOJI1]",
       "",
       "[ARTICLE] [SOURCE_WORD]",
       "→  [TARGET_TRANSLATION]",
       "",
       "[SOURCE_FLAG]  [SHORT_FUNNY_SOURCE_SENTENCE]",
-      "[TARGET_FLAG]  [TARGET_TRANSLATION_OF_SENTENCE]  [EMOJI2][EMOJI2]",
+      "[TARGET_FLAG]  [TARGET_TRANSLATION_OF_SENTENCE]  [EMOJI2]",
       "",
       "#WordOfTheDay #Learn[SOURCE_LANGUAGE]"
     ]
@@ -64,10 +64,10 @@
     "name": "Quotes",
     "template": [
       "[SOURCE_FLAG]  [ARTICLE] [SOURCE_WORD]",
-      "[TARGET_FLAG]  [TARGET_TRANSLATION]  [EMOJI1][EMOJI1]",
+      "[TARGET_FLAG]  [TARGET_TRANSLATION]  [EMOJI1]",
       "",
       "\u201e[SHORT_FUNNY_SOURCE_SENTENCE]\u201c",
-      "= [TARGET_TRANSLATION_OF_SENTENCE]  [EMOJI2][EMOJI2]",
+      "= [TARGET_TRANSLATION_OF_SENTENCE]  [EMOJI2]",
       "",
       "#Learn[SOURCE_LANGUAGE] #LanguageLearning"
     ]
