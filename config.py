@@ -146,7 +146,7 @@ def reload_settings() -> None:
     global IMAGE_PROVIDER, GROK_IMAGE_COUNT
     global MAX_TWEET_LENGTH, MAX_EXAMPLE_WORDS, POST_INTERVAL_SECONDS, VIDEO_STYLE, ANALYZE_LAST_N
     global FLAG_OVERLAY
-    global ENABLE_VIDEO, ENABLE_GROK_VIDEO, VIDEO_FREQUENCY, GROK_VIDEO_FREQUENCY, ENABLE_KEN_BURNS, WAN_VIDEO_DIR
+    global ENABLE_VIDEO, ENABLE_GROK_VIDEO, VIDEO_FREQUENCY, GROK_VIDEO_FREQUENCY, ENABLE_KEN_BURNS, WAN_VIDEO_DIR, WAN_VIDEO_STEPS
     global ENABLE_SELF_IMPROVEMENT, IMPROVEMENT_INTERVAL_CYCLES, IMPROVEMENT_SCORE_THRESHOLD
     global STRATEGY_UPDATE_INTERVAL_HOURS
     global TWEET_MODEL, TWEET_PICKER_MODEL, STRATEGY_MODEL
@@ -175,6 +175,7 @@ def reload_settings() -> None:
     VIDEO_FREQUENCY                = int(os.getenv("VIDEO_FREQUENCY", os.getenv("GROK_VIDEO_FREQUENCY", "1")))
     GROK_VIDEO_FREQUENCY           = VIDEO_FREQUENCY
     WAN_VIDEO_DIR                  = os.getenv("WAN_VIDEO_DIR", str(os.path.join(os.path.expanduser("~"), "Programming", "Wan2GP")))
+    WAN_VIDEO_STEPS                = int(os.getenv("WAN_VIDEO_STEPS", "10"))
     ENABLE_SELF_IMPROVEMENT        = os.getenv("ENABLE_SELF_IMPROVEMENT", "false").lower().strip() == "true"
     IMPROVEMENT_INTERVAL_CYCLES    = int(os.getenv("IMPROVEMENT_INTERVAL_CYCLES", "5"))
     IMPROVEMENT_SCORE_THRESHOLD    = float(os.getenv("IMPROVEMENT_SCORE_THRESHOLD", "9999"))
@@ -260,6 +261,10 @@ GROK_VIDEO_FREQUENCY: int = VIDEO_FREQUENCY
 # Filesystem path to the Wan2GP installation directory.
 # Only used when ENABLE_VIDEO=wan.
 WAN_VIDEO_DIR: str = os.getenv("WAN_VIDEO_DIR", str(os.path.join(os.path.expanduser("~"), "Programming", "Wan2GP")))
+
+# Number of denoising steps for Wan video generation.
+# Lower = faster but lower quality. Higher = slower but better quality.
+WAN_VIDEO_STEPS: int = int(os.getenv("WAN_VIDEO_STEPS", "10"))
 
 # When True, a source→target flag badge is added to the top-right corner of
 # each generated image, reinforcing the language-learning branding.

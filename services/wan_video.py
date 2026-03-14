@@ -79,11 +79,15 @@ def generate_video(image_path: str, motion_prompt: str) -> str:
             "Make sure the Wan2GP directory contains run_i2v.py."
         )
 
+    import config as _cfg
+    steps = getattr(_cfg, "WAN_VIDEO_STEPS", 10)
+
     cmd = [
         python, str(script),
         str(Path(image_path).resolve()),
         motion_prompt,
-        "--no-nvfp4",   # use int8 (no RTX 50xx required)
+        "--no-nvfp4",           # use int8 (no RTX 50xx required)
+        "--steps", str(steps),
     ]
 
     env = {
@@ -92,7 +96,7 @@ def generate_video(image_path: str, motion_prompt: str) -> str:
         "PYTORCH_ALLOC_CONF": "expandable_segments:True",
     }
 
-    logger.info("Starting Wan2.1 I2V generation …")
+    logger.info("Starting Wan I2V generation (%d steps) …", steps)
     logger.info("  Image : %s", image_path)
     logger.info("  Prompt: %s", motion_prompt[:100])
 
@@ -107,7 +111,6 @@ def generate_video(image_path: str, motion_prompt: str) -> str:
 
     # run_i2v.py saves to XBot 3/Videos/ if it exists, otherwise Wan2GP/outputs/.
     # Check the XBot Videos dir first, then fall back to Wan2GP outputs/.
-    import config as _cfg
     xbot_videos = Path(_cfg.VIDEOS_DIR).resolve()
     outputs_dir = xbot_videos if xbot_videos.exists() else wan_dir / "outputs"
     mp4_files = sorted(outputs_dir.glob("*.mp4"), key=lambda p: p.stat().st_mtime, reverse=True)
