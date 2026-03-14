@@ -838,5 +838,22 @@
       "Feierabend"
     ],
     "scaffold": "#DeutschLernen [LEVEL]\n\n🇩🇪  [ARTICLE] [GERMAN_WORD]\n🇬🇧  [ENGLISH_TRANSLATION]  [EMOJI][EMOJI]\n\n🇩🇪  [SHORT_FUNNY_GERMAN_SENTENCE]\n🇬🇧  [ENGLISH_TRANSLATION_OF_SENTENCE]  [EMOJI][EMOJI]"
+  },
+  {
+    "timestamp": "2026-03-14T07:25:50.823560+00:00",
+    "preferred_cefr": "A1, A2, B1, B2, C1, C2",
+    "next_topic": "German public transport experiences",
+    "style": "use a twist ending",
+    "avoid_words": [
+      "Ohrwurm",
+      "Vorfreude",
+      "Stammtisch",
+      "Wanderlust",
+      "Feierabend",
+      "Kaffeepause",
+      "Milchkaffee",
+      "Filterkaffee"
+    ],
+    "scaffold": "#DeutschLernen [LEVEL]\n\n🇩🇪  [ARTICLE] [GERMAN_WORD]\n🇬🇧  [ENGLISH_TRANSLATION]  [EMOJI][EMOJI]\n\n🇩🇪  [SHORT_FUNNY_GERMAN_SENTENCE]\n🇬🇧  [ENGLISH_TRANSLATION_OF_SENTENCE]  [EMOJI][EMOJI]"
   }
 ]

@@ -729,9 +729,9 @@
       "like_count": 0,
       "quote_count": 0,
       "bookmark_count": 0,
-      "impression_count": 22
+      "impression_count": 23
     },
-    "engagement_score": 0.22,
+    "engagement_score": 0.23,
     "cycle": 0
   },
   {
@@ -750,9 +750,9 @@
       "like_count": 0,
       "quote_count": 0,
       "bookmark_count": 0,
-      "impression_count": 13
+      "impression_count": 16
     },
-    "engagement_score": 0.13,
+    "engagement_score": 0.16,
     "cycle": 0
   },
   {
@@ -771,9 +771,9 @@
       "like_count": 0,
       "quote_count": 0,
       "bookmark_count": 0,
-      "impression_count": 15
+      "impression_count": 19
     },
-    "engagement_score": 0.15,
+    "engagement_score": 0.19,
     "cycle": 0
   },
   {
@@ -792,9 +792,9 @@
       "like_count": 0,
       "quote_count": 0,
       "bookmark_count": 0,
-      "impression_count": 9
+      "impression_count": 14
     },
-    "engagement_score": 0.09,
+    "engagement_score": 0.14,
     "cycle": 0
   },
   {
@@ -813,9 +813,9 @@
       "like_count": 0,
       "quote_count": 0,
       "bookmark_count": 0,
-      "impression_count": 10
+      "impression_count": 17
     },
-    "engagement_score": 0.1,
+    "engagement_score": 0.17,
     "cycle": 0
   },
   {
@@ -834,9 +834,9 @@
       "like_count": 0,
       "quote_count": 0,
       "bookmark_count": 0,
-      "impression_count": 13
+      "impression_count": 23
     },
-    "engagement_score": 0.13,
+    "engagement_score": 0.23,
     "cycle": 0
   },
   {
@@ -855,9 +855,9 @@
       "like_count": 0,
       "quote_count": 0,
       "bookmark_count": 0,
-      "impression_count": 5
+      "impression_count": 17
     },
-    "engagement_score": 0.05,
+    "engagement_score": 0.17,
     "cycle": 1
   },
   {
@@ -870,8 +870,15 @@
     "cefr_level": "B1",
     "example_sentence_source": "Die deutsche Kaffeepause: Trinken, plaudern, und plötzlich ist es Feierabend!",
     "example_sentence_target": "The German coffee break: Drink, chat, and suddenly it's quitting time!",
-    "metrics": {},
-    "engagement_score": 0.0,
+    "metrics": {
+      "retweet_count": 0,
+      "reply_count": 0,
+      "like_count": 0,
+      "quote_count": 0,
+      "bookmark_count": 0,
+      "impression_count": 20
+    },
+    "engagement_score": 0.2,
     "cycle": 4
   },
   {
@@ -884,8 +891,78 @@
     "cefr_level": "A2",
     "example_sentence_source": "Ich will einen Milchkaffee, aber ohne Kaffee!",
     "example_sentence_target": "I want a milky coffee, but without the coffee!",
+    "metrics": {
+      "retweet_count": 0,
+      "reply_count": 0,
+      "like_count": 0,
+      "quote_count": 0,
+      "bookmark_count": 0,
+      "impression_count": 24
+    },
+    "engagement_score": 0.24,
+    "cycle": 5
+  },
+  {
+    "timestamp": "2026-03-14T02:22:55.904824+00:00",
+    "tweet_id": "2032643608197935309",
+    "tweet_url": "https://x.com/i/web/status/2032643608197935309",
+    "full_tweet": "🇩🇪  der Filterkaffee\n🇺🇸  drip coffee ☕\n\n🇩🇪  Mein Filterkaffee ist so stark, er weckt die Nachbarn!\n🇺🇸  My drip coffee is so strong, it wakes the neighbors! 🏘️\n\n#LearnGerman #GermanVocabulary",
+    "source_word": "Filterkaffee",
+    "article": "der",
+    "cefr_level": "B1",
+    "example_sentence_source": "Mein Filterkaffee ist so stark, er weckt die Nachbarn!",
+    "example_sentence_target": "My drip coffee is so strong, it wakes the neighbors!",
+    "metrics": {
+      "retweet_count": 0,
+      "reply_count": 0,
+      "like_count": 0,
+      "quote_count": 0,
+      "bookmark_count": 0,
+      "impression_count": 18
+    },
+    "engagement_score": 0.18,
+    "cycle": 0
+  },
+  {
+    "timestamp": "2026-03-14T07:54:18.771421+00:00",
+    "tweet_id": "2032727002902573488",
+    "tweet_url": "https://x.com/i/web/status/2032727002902573488",
+    "full_tweet": "🇩🇪  die U-Bahn (A2)\n🇺🇸  subway  🚇\n\n🇩🇪  Ich verpasse die U-Bahn nicht, sie verpasst mich!\n🇺🇸  I don't miss the subway, it misses me!  🚇❤️\n\n#LearnGerman #GermanVocabulary",
+    "source_word": "U-Bahn",
+    "article": "die",
+    "cefr_level": "A2",
+    "example_sentence_source": "Ich verpasse die U-Bahn nicht, sie verpasst mich!",
+    "example_sentence_target": "I don't miss the subway, it misses me!",
     "metrics": {},
     "engagement_score": 0.0,
-    "cycle": 5
+    "cycle": 0
+  },
+  {
+    "timestamp": "2026-03-14T09:59:37.339764+00:00",
+    "tweet_id": "2032758538133737512",
+    "tweet_url": "https://x.com/i/web/status/2032758538133737512",
+    "full_tweet": "die Fahrkarte 🎫\n→ ticket\n\n🇩🇪 Der Hund frisst meine Fahrkarte – jetzt fährt er mit!\n🇺🇸 The dog eats my ticket – now he's coming along! 🐶\n\n#LearnGerman #GermanVocabulary",
+    "source_word": "Fahrkarte",
+    "article": "die",
+    "cefr_level": "A2",
+    "example_sentence_source": "Der Hund frisst meine Fahrkarte – jetzt fährt er mit!",
+    "example_sentence_target": "The dog eats my ticket – now he's coming along!",
+    "metrics": {},
+    "engagement_score": 0.0,
+    "cycle": 0
+  },
+  {
+    "timestamp": "2026-03-14T15:01:25.852441+00:00",
+    "tweet_id": "2032834490217935158",
+    "tweet_url": "https://x.com/i/web/status/2032834490217935158",
+    "full_tweet": "pünktlich = punctual 🕒\n\n🇩🇪  Der Zug kommt pünktlich an, aber ich nicht.\n🇺🇸  The train arrives on time, but I don't. 🚂\n\n#LearnGerman #GermanWords",
+    "source_word": "pünktlich",
+    "article": "no known noun",
+    "cefr_level": "B1",
+    "example_sentence_source": "Der Zug kommt pünktlich an, aber ich nicht.",
+    "example_sentence_target": "The train arrives on time, but I don't.",
+    "metrics": {},
+    "engagement_score": 0.0,
+    "cycle": 1
   }
 ]
