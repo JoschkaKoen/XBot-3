@@ -106,11 +106,13 @@ def _model_lines() -> list:
         lines.append(("  Candidate limit:", f"{_config.TREND_CANDIDATE_LIMIT}  (top-{_config.TREND_CANDIDATE_LIMIT}, then AI fallback)"))
     lines.append(("Image style:",         image_style_label))
     lines.append(("Tweet style:",         tweet_style_label))
-    if _config.ENABLE_GROK_VIDEO:
-        freq_label = "every tweet" if _config.GROK_VIDEO_FREQUENCY <= 1 else f"every {_config.GROK_VIDEO_FREQUENCY} tweets"
-        lines.append(("Grok video (I2V):", f"ON 🎬  ({freq_label} via Grok Imagine)"))
+    _engine = _config.ENABLE_VIDEO
+    if _engine in ("grok", "wan"):
+        freq_label = "every tweet" if _config.VIDEO_FREQUENCY <= 1 else f"every {_config.VIDEO_FREQUENCY} tweets"
+        engine_display = "Grok Imagine" if _engine == "grok" else "Wan2.1 (local)"
+        lines.append(("Video (I2V):", f"ON  ({freq_label} via {engine_display})"))
     else:
-        lines.append(("Grok video (I2V):", "off"))
+        lines.append(("Video (I2V):", "off"))
     return lines
 
 setup_logging()

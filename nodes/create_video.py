@@ -3,11 +3,10 @@ Node: create_video
 
 1. Combines voice MP3 with background music (pydub).
 2. Creates the final MP4:
-   - If ENABLE_GROK_VIDEO=true AND Grok hasn't been called today:
-       • Calls Grok Imagine to animate the selected image (8 s, 720p)
-       • Applies KTV text overlay on top of the animated clip
-       • Marks the daily gate so subsequent cycles fall back to static
-   - Otherwise:
+   - If ENABLE_VIDEO=grok: calls Grok Imagine to animate the image (8 s, 720p)
+   - If ENABLE_VIDEO=wan:  calls local Wan2.1 via Wan2GP (~5 s, 480p)
+   - Both animated paths apply the same KTV text overlay on the result.
+   - Otherwise (ENABLE_VIDEO=off):
        • Creates a static KTV or simple video from the still image
          (existing behaviour, unchanged)
 """
@@ -343,51 +342,59 @@ def create_video(state: dict) -> dict:
         ok("Audio mixed with background music")
 
     # ── Step 2: Render video ──────────────────────────────────────────────────
-    grok_video_path: str | None = None
+    animated_video_path: str | None = None
 
-    if config.ENABLE_GROK_VIDEO:
-        from services import grok_video as _gv
-        if not _gv.should_generate_video():
-            freq_str = f"every {config.GROK_VIDEO_FREQUENCY} tweets" if config.GROK_VIDEO_FREQUENCY > 1 else "every tweet"
-            logger.info("Grok video frequency gate: skipping this cycle (%s).", freq_str)
-            ui_warn(f"Grok video: skipping this cycle ({freq_str}) — using static KTV video.")
-            _gv.advance_cycle()
+    if config.ENABLE_VIDEO in ("grok", "wan"):
+        _svc = None
+        if config.ENABLE_VIDEO == "grok":
+            from services import grok_video as _svc
+            engine_label = "Grok Imagine"
+        else:
+            from services import wan_video as _svc
+            engine_label = "Wan2.1 (local)"
+
+        freq = config.VIDEO_FREQUENCY
+        if not _svc.should_generate_video():
+            freq_str = f"every {freq} tweets" if freq > 1 else "every tweet"
+            logger.info("%s frequency gate: skipping this cycle (%s).", engine_label, freq_str)
+            ui_warn(f"{engine_label}: skipping this cycle ({freq_str}) — using static KTV video.")
+            _svc.advance_cycle()
         else:
             try:
                 from utils.ui import info as ui_info
-                ui_info("🎬  Grok Imagine video enabled — animating image …")
+                ui_info(f"🎬  {engine_label} video enabled — animating image …")
 
                 example_en: str = state.get("example_sentence_target", "")
                 mj_prompt: str  = state.get("midjourney_prompt", "")
 
                 ui_info("  Step 1/3  Generating cinematic motion prompt …")
-                motion_prompt = _gv.build_motion_prompt(example_en, mj_prompt)
+                motion_prompt = _svc.build_motion_prompt(example_en, mj_prompt)
                 ui_info(f"  Motion prompt: {motion_prompt[:80]}{'…' if len(motion_prompt) > 80 else ''}")
 
-                ui_info("  Step 2/3  Submitting image to Grok Imagine API …")
-                grok_video_path = _gv.generate_video(image_path, motion_prompt)
-                ok(f"  Step 2/3  Grok video downloaded → {os.path.basename(grok_video_path)}")
+                ui_info(f"  Step 2/3  Generating animated video with {engine_label} …")
+                animated_video_path = _svc.generate_video(image_path, motion_prompt)
+                ok(f"  Step 2/3  Video ready → {os.path.basename(animated_video_path)}")
 
                 ui_info("  Step 3/3  Applying KTV overlay on animated video …")
             except Exception as exc:
-                logger.warning("Grok video generation failed (%s) — falling back to static.", exc)
-                ui_warn(f"Grok video failed ({exc}) — falling back to static KTV video.")
-                grok_video_path = None
+                logger.warning("%s video generation failed (%s) — falling back to static.", engine_label, exc)
+                ui_warn(f"{engine_label} video failed ({exc}) — falling back to static KTV video.")
+                animated_video_path = None
             finally:
-                _gv.advance_cycle()
+                _svc.advance_cycle()
 
-    if grok_video_path and style == "ktv":
+    if animated_video_path and style == "ktv":
         video_path = create_ktv_video_from_motion(
-            base_video_path=grok_video_path,
+            base_video_path=animated_video_path,
             audio_path=mixed_audio,
             german_text=german_text,
             word_timings=word_timings,
         )
         ok(f"  Step 3/3  KTV overlay applied → {os.path.basename(video_path)}")
-    elif grok_video_path:
-        # Simple style with Grok base: just overlay audio onto the animated clip
+    elif animated_video_path:
+        # Simple style with animated base: overlay audio only, no text
         video_path = create_ktv_video_from_motion(
-            base_video_path=grok_video_path,
+            base_video_path=animated_video_path,
             audio_path=mixed_audio,
             german_text="",
             word_timings=[],

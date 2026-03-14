@@ -145,8 +145,8 @@ def reload_settings() -> None:
     global TWEET_STYLE_CYCLE, TWEET_STYLE
     global IMAGE_PROVIDER, GROK_IMAGE_COUNT
     global MAX_TWEET_LENGTH, MAX_EXAMPLE_WORDS, POST_INTERVAL_SECONDS, VIDEO_STYLE, ANALYZE_LAST_N
-    global FUNNY_MODE, FLAG_OVERLAY
-    global ENABLE_GROK_VIDEO, GROK_VIDEO_FREQUENCY, ENABLE_KEN_BURNS
+    global FLAG_OVERLAY
+    global ENABLE_VIDEO, ENABLE_GROK_VIDEO, VIDEO_FREQUENCY, GROK_VIDEO_FREQUENCY, ENABLE_KEN_BURNS, WAN_VIDEO_DIR
     global ENABLE_SELF_IMPROVEMENT, IMPROVEMENT_INTERVAL_CYCLES, IMPROVEMENT_SCORE_THRESHOLD
     global STRATEGY_UPDATE_INTERVAL_HOURS
     global TWEET_MODEL, TWEET_PICKER_MODEL, STRATEGY_MODEL
@@ -169,9 +169,12 @@ def reload_settings() -> None:
     VIDEO_STYLE                    = os.getenv("VIDEO_STYLE", "ktv").lower().strip()
     ANALYZE_LAST_N                 = int(os.getenv("ANALYZE_LAST_N", "10"))
     FLAG_OVERLAY                   = os.getenv("FLAG_OVERLAY", "true").lower().strip() == "true"
-    ENABLE_GROK_VIDEO              = os.getenv("ENABLE_GROK_VIDEO", "false").lower().strip() == "true"
+    ENABLE_VIDEO                   = os.getenv("ENABLE_VIDEO", "off").lower().strip()
+    ENABLE_GROK_VIDEO              = ENABLE_VIDEO == "grok"
     ENABLE_KEN_BURNS               = os.getenv("ENABLE_KEN_BURNS", "false").lower().strip() == "true"
-    GROK_VIDEO_FREQUENCY           = int(os.getenv("GROK_VIDEO_FREQUENCY", "1"))
+    VIDEO_FREQUENCY                = int(os.getenv("VIDEO_FREQUENCY", os.getenv("GROK_VIDEO_FREQUENCY", "1")))
+    GROK_VIDEO_FREQUENCY           = VIDEO_FREQUENCY
+    WAN_VIDEO_DIR                  = os.getenv("WAN_VIDEO_DIR", str(os.path.join(os.path.expanduser("~"), "Programming", "Wan2GP")))
     ENABLE_SELF_IMPROVEMENT        = os.getenv("ENABLE_SELF_IMPROVEMENT", "false").lower().strip() == "true"
     IMPROVEMENT_INTERVAL_CYCLES    = int(os.getenv("IMPROVEMENT_INTERVAL_CYCLES", "5"))
     IMPROVEMENT_SCORE_THRESHOLD    = float(os.getenv("IMPROVEMENT_SCORE_THRESHOLD", "9999"))
@@ -231,20 +234,32 @@ IMPROVEMENT_INTERVAL_CYCLES: int = int(os.getenv("IMPROVEMENT_INTERVAL_CYCLES", 
 IMPROVEMENT_SCORE_THRESHOLD: float = float(os.getenv("IMPROVEMENT_SCORE_THRESHOLD", "9999"))
 
 
-# When True, Grok Imagine animates the selected image into a short video used as the
-# animated base for the KTV overlay.  Requires XAI_API_KEY.
-ENABLE_GROK_VIDEO: bool = os.getenv("ENABLE_GROK_VIDEO", "false").lower().strip() == "true"
+# Which video engine to use for animating the generated image.
+#   "off"  → no video animation; static KTV or Ken Burns only (default)
+#   "grok" → Grok Imagine API (requires XAI_API_KEY)
+#   "wan"  → local Wan2.1 model via Wan2GP (requires WAN_VIDEO_DIR)
+ENABLE_VIDEO: str = os.getenv("ENABLE_VIDEO", "off").lower().strip()
+
+# Backward-compat alias used by older code paths.
+ENABLE_GROK_VIDEO: bool = ENABLE_VIDEO == "grok"
 
 # When True, applies a slow PIL AFFINE Ken Burns zoom+pan to the still image
-# on the static video path (i.e. when Grok video is disabled or skipped).
+# on the static video path (i.e. when ENABLE_VIDEO=off or when the video gate
+# skips this cycle).
 ENABLE_KEN_BURNS: bool = os.getenv("ENABLE_KEN_BURNS", "false").lower().strip() == "true"
 
-# How often to generate a Grok video: every Nth tweet.
+# How often to generate a video: every Nth tweet.
 #   1 = every tweet  (default)
-#   2 = every 2nd tweet
-#   3 = every 3rd tweet  …etc.
-# Only used when ENABLE_GROK_VIDEO=true.
-GROK_VIDEO_FREQUENCY: int = int(os.getenv("GROK_VIDEO_FREQUENCY", "1"))
+#   2 = every 2nd tweet  …etc.
+# Applies to both "grok" and "wan" engines.
+VIDEO_FREQUENCY: int = int(os.getenv("VIDEO_FREQUENCY", os.getenv("GROK_VIDEO_FREQUENCY", "1")))
+
+# Backward-compat alias.
+GROK_VIDEO_FREQUENCY: int = VIDEO_FREQUENCY
+
+# Filesystem path to the Wan2GP installation directory.
+# Only used when ENABLE_VIDEO=wan.
+WAN_VIDEO_DIR: str = os.getenv("WAN_VIDEO_DIR", str(os.path.join(os.path.expanduser("~"), "Programming", "Wan2GP")))
 
 # When True, a source→target flag badge is added to the top-right corner of
 # each generated image, reinforcing the language-learning branding.
