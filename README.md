@@ -1,68 +1,51 @@
-# German Learning X Bot
+# XBot 3 — Language Learning X Bot
 
-An autonomous, fully self-improving X (Twitter) bot that teaches German vocabulary
-to English speakers. Powered by LangGraph, ElevenLabs, Midjourney, and your choice
-of Grok or Scaleway as the AI backend.
+An autonomous X (Twitter) bot that teaches vocabulary from any source language to any target language. Posts every ~5 hours with AI-generated images, karaoke-style animated videos, and native-speaker TTS audio. Self-improving: the bot analyses its own engagement and updates its content strategy automatically.
 
 ---
 
 ## What the bot does
 
-Every ~5.25 hours the bot:
+Every cycle the bot:
 
-1. **Picks a German word** (noun, verb, adjective, or common phrase) chosen by the LLM
-   based on an evolving content strategy.
-2. **Writes a short, funny German example sentence** containing the word and translates
-   both the word and the sentence to English via DeepL.
-3. **Determines the CEFR level** (A1–C1) and looks up the grammatical article
-   (der/die/das) for nouns.
-4. **Assembles the tweet** in the standard format (see below).
-5. **Generates a Midjourney image** (16:9, beautiful photography) matching the sentence.
-6. **Generates German TTS audio** via ElevenLabs (Matilda voice, slowed for learners).
-7. **Overlays background music** on the voice track.
-8. **Renders an MP4 video** — either a simple static image+audio video or a
-   karaoke-style video with gold word-by-word highlighting (configurable).
+1. **Picks a vocabulary word** — chosen by the LLM based on an evolving content strategy (CEFR level, theme, style).
+2. **Writes a short example sentence** in the source language and translates both the word and the sentence to the target language.
+3. **Determines CEFR level** (A1–C2) and looks up the grammatical article (der/die/das for German nouns).
+4. **Generates an image** — via Grok Imagine or Midjourney, matching the example sentence. Multiple images are scored and ranked automatically.
+5. **Animates the image** — optionally via Grok Imagine I2V or a local Wan2.1/2.2 model, producing a short MP4.
+6. **Generates TTS audio** — via ElevenLabs. Voice is selected per-tweet by the LLM based on the sentence mood.
+7. **Mixes background music** onto the voice track.
+8. **Renders a KTV video** — karaoke-style word-by-word highlighting synced to the audio, overlaid on the animated image.
 9. **Posts the tweet** with the video attached to X.
-10. **Waits ~5.25 hours**, then fetches engagement metrics (likes, reposts, replies,
-    quotes, impressions).
-11. **Scores** the post and saves it to `data/post_history.json`.
-12. **Analyses** the last N posts with the LLM and updates the content strategy
-    (preferred CEFR levels, themes, etc.) for future posts.
-13. **Loops forever.**
+10. **Waits**, then fetches engagement metrics (impressions, likes, reposts, replies, bookmarks).
+11. **Scores** the post and updates `data/post_history.json`.
+12. **Analyses** recent posts with the LLM and updates the content strategy for the next cycle.
+13. **Loops forever.** Catches its own errors and resumes automatically.
 
-### Tweet format
+### Example tweet
 
 ```
-#DeutschLernen A2
+🇩🇪  der Führerschein  (B1)
+🇺🇸  driving licence  🚗
 
-🇩🇪  der Führerschein
-🇬🇧  driving license  🚗🚗
+🇩🇪  Herzlichen Glückwunsch, du hast deinen Führerschein bestanden!
+🇺🇸  Congratulations, you passed your driving test!  🎉
 
-🇩🇪  Herzlichen Glückwunsch, du hast deinen Führerschein!
-🇬🇧  Congratulations, you got your license!  🎉🎉
+#LearnGerman #GermanVocabulary
 ```
 
 ---
 
 ## Setup
 
-### 1. Clone / copy the project
+### 1. Clone the repository
 
 ```bash
-cd ~/Programming
-# Already done if you're reading this inside german-bot/
+git clone https://github.com/JoschkaKoen/XBot-3.git
+cd "XBot-3"
 ```
 
-### 2. Use the shared virtual environment
-
-This bot shares the venv from your existing `XBot 1` project (all required
-packages are already installed or will be added there):
-
-```bash
-source "/home/tobias/Programming/XBot 1/venv/bin/activate"
-```
-
-If you prefer an isolated venv just for this bot:
+### 2. Create a virtual environment
 
 ```bash
 python3 -m venv venv
@@ -72,337 +55,230 @@ source venv/bin/activate
 ### 3. Install Python dependencies
 
 ```bash
-# Make sure the venv is active first (see step 2)
-pip install --index-url https://pypi.org/simple/ -r requirements.txt
+pip install -r requirements.txt
 ```
 
 ### 4. Install system dependencies
 
-`moviepy` needs **ffmpeg**. The karaoke video mode also needs **ImageMagick**
-so that `TextClip` can render text.
-
 ```bash
 # Ubuntu / Debian
 sudo apt update
-sudo apt install ffmpeg imagemagick
+sudo apt install ffmpeg imagemagick fonts-lato
 
-# Allow ImageMagick to write files (security policy sometimes blocks this)
+# Allow ImageMagick to write files (required for KTV video rendering)
 sudo sed -i 's/rights="none" pattern="PDF"/rights="read|write" pattern="PDF"/' \
     /etc/ImageMagick-6/policy.xml
-# If TextClip still fails, also edit /etc/ImageMagick-6/policy.xml and change
-# the @PS/@EPS/@PDF/@XPS lines from rights="none" to rights="read|write".
 ```
 
-### 5. Configure `.env`
+### 5. Configure API keys (`.env`)
+
+Create `.env` in the project root with your secrets (this file is gitignored):
 
 ```bash
 cp .env.example .env
-nano .env   # or your preferred editor
+nano .env
 ```
 
 | Variable | Description |
 |---|---|
-| `AI_PROVIDER` | `grok` (xAI) or `scaleway` |
-| `XAI_API_KEY` | API key for Grok (xAI). Get it at [console.x.ai](https://console.x.ai) |
-| `SCW_SECRET_KEY` | Scaleway secret key (only needed if `AI_PROVIDER=scaleway`) |
-| `SCW_DEFAULT_PROJECT_ID` | Scaleway project ID (only needed if `AI_PROVIDER=scaleway`) |
+| `XAI_API_KEY` | xAI API key — used for Grok LLM, Grok Imagine image generation, and Grok I2V |
 | `TWITTER_CONSUMER_KEY` | X Developer App Consumer Key |
 | `TWITTER_CONSUMER_SECRET` | X Developer App Consumer Secret |
 | `TWITTER_ACCESS_TOKEN` | X OAuth 1.0a Access Token |
 | `TWITTER_ACCESS_TOKEN_SECRET` | X OAuth 1.0a Access Token Secret |
-| `ELEVENLABS_API_KEY` | ElevenLabs API key |
-| `DEEPL_AUTH_KEY` | DeepL free API key (format: `xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx:fx`) |
-| `TT_API_KEY` | TTAPI.io key for Midjourney access |
-| `POST_INTERVAL_SECONDS` | Seconds between posts (default `18900` ≈ 5.25 h) |
-| `HISTORY_FILE` | Path for post history JSON (default `data/post_history.json`) |
-| `LOG_FILE` | Path for log file (default `data/bot.log`) |
-| `VIDEO_STYLE` | `karaoke` (gold word highlights) or `simple` (static image+audio) |
-| `ANALYZE_LAST_N` | How many recent posts to review during self-improvement (default `10`) |
+| `ELEVENLABS_API_KEY` | ElevenLabs API key for TTS |
+| `TT_API_KEY` | TTAPI.io key for Midjourney access (only if `IMAGE_PROVIDER=midjourney`) |
+| `SCW_SECRET_KEY` | Scaleway secret key (only if `AI_PROVIDER=scaleway`) |
+| `SCW_DEFAULT_PROJECT_ID` | Scaleway project ID (only if `AI_PROVIDER=scaleway`) |
 
-### 6. Add background music
+### 6. Configure bot behaviour (`settings.env`)
 
-Place your music file at:
+All non-secret settings live in `settings.env`. Key parameters:
+
+| Setting | Default | Description |
+|---|---|---|
+| `SOURCE_LANGUAGE` | `German` | Language being taught |
+| `TARGET_LANGUAGE` | `English` | Language of the audience |
+| `AI_PROVIDER` | `grok` | `grok` or `scaleway` |
+| `IMAGE_PROVIDER` | `grok` | `grok` or `midjourney` |
+| `IMAGE_STYLE` | `photographic` | `photographic`, `disney`, or comma-separated cycle |
+| `TWEET_STYLE` | `funny,normal` | `funny`, `normal`, or comma-separated cycle |
+| `VIDEO_STYLE` | `ktv` | `ktv` (karaoke highlights) or `simple` (static) |
+| `ENABLE_VIDEO` | `grok` | `off`, `grok` (Grok I2V), or `wan` (local Wan2.1) |
+| `VIDEO_FREQUENCY` | `2` | Generate video every N tweets |
+| `WAN_VIDEO_STEPS` | `10` | Denoising steps for Wan video (higher = slower + better) |
+| `WAN_VIDEO_DIR` | `~/Programming/Wan2GP` | Path to Wan2GP installation |
+| `ENABLE_KEN_BURNS` | `false` | Apply Ken Burns zoom/pan when no animated video |
+| `FLAG_OVERLAY` | `true` | Add source→target language flag badge to images |
+| `POST_INTERVAL_SECONDS` | `18000` | Seconds between posts (18000 = 5 hours) |
+| `MAX_TWEET_LENGTH` | `500` | Max characters (280 for standard, up to 25000 for Premium) |
+| `USE_TRENDS` | `false` | Use X trending topics for word selection |
+| `STRATEGY_UPDATE_INTERVAL_HOURS` | `24` | How often to refresh metrics and re-run strategy analysis |
+| `AUTO_UPDATE` | `true` | Auto-pull from `origin/main` and restart between cycles |
+| `ENABLE_SELF_IMPROVEMENT` | `false` | Enable automatic code self-improvement |
+
+### 7. Add background music
+
+Place a royalty-free loopable MP3 at:
 
 ```
 Background Music/music.mp3
 ```
 
-The bot will automatically mix the voice audio with this music (volume reduced by
-7 dB, faded out at the end). Any royalty-free loopable music works well.
-
-If no music file is found the bot logs a warning and uses voice-only audio — it
-will still post successfully.
+The voice audio is mixed with this track (music lowered by 7 dB, faded out at the end). If no file is found the bot uses voice-only audio and continues normally.
 
 ---
 
 ## Running the bot
 
 ```bash
-source "/home/tobias/Programming/XBot 1/venv/bin/activate"
-cd /home/tobias/Programming/german-bot
+source venv/bin/activate
 python main.py
 ```
 
-The bot logs to both the terminal and `data/bot.log`. It runs indefinitely.
-Stop it with `Ctrl+C`.
+The bot logs to both the terminal and `data/bot.log`. Stop it with `Ctrl+C` — it finishes the current cycle cleanly before exiting.
 
 ---
 
-## Deployment on a VPS (systemd)
+## Video generation
 
-Create a service file:
+### KTV overlay (karaoke)
 
-```bash
-sudo nano /etc/systemd/system/german-bot.service
-```
+When `VIDEO_STYLE=ktv`, the bot renders a word-by-word karaoke highlight over the video: each word in the source-language sentence turns white as it is spoken, with a semi-transparent black bar and light-blue text styling.
 
-```ini
-[Unit]
-Description=German Learning X Bot
-After=network.target
+### Animated video engines
 
-[Service]
-Type=simple
-User=YOUR_USERNAME
-WorkingDirectory=/home/YOUR_USERNAME/Programming/german-bot
-ExecStart=/home/tobias/Programming/XBot\ 1/venv/bin/python /home/tobias/Programming/german-bot/main.py
-Restart=on-failure
-RestartSec=30
-StandardOutput=journal
-StandardError=journal
-Environment=PYTHONUNBUFFERED=1
+Set `ENABLE_VIDEO` to control what plays behind the KTV overlay:
 
-[Install]
-WantedBy=multi-user.target
-```
+| Value | Description | Speed |
+|---|---|---|
+| `off` | Static image (or Ken Burns pan if `ENABLE_KEN_BURNS=true`) | instant |
+| `grok` | Grok Imagine I2V — cloud API, 720p, ~15 s | ~15 s |
+| `wan` | Local Wan2.1/2.2 via Wan2GP — 480p, runs entirely on your GPU | ~7–40 min |
 
-Then enable and start it:
+`VIDEO_FREQUENCY=N` skips animation every N-1 out of N tweets to reduce cost or generation time.
 
-```bash
-sudo systemctl daemon-reload
-sudo systemctl enable german-bot
-sudo systemctl start german-bot
+### Local Wan2GP setup (optional)
 
-# Monitor logs
-sudo journalctl -u german-bot -f
-# or
-tail -f data/bot.log
-```
+To use `ENABLE_VIDEO=wan` you need [Wan2GP](https://github.com/deepbeepmeep/Wan2GP) installed alongside this project and `run_i2v.py` present in the Wan2GP directory. Set `WAN_VIDEO_DIR` in `settings.env` to its path.
 
 ---
 
-## Self-improvement loop
+## Language pair configuration
 
-After every post cycle the `analyze_and_improve` node:
-
-1. Reads the last N posts from `data/post_history.json` (configurable via
-   `ANALYZE_LAST_N`).
-2. Sends the words, CEFR levels, sentences, and engagement scores to the LLM.
-3. The LLM identifies which CEFR levels, themes, and sentence styles perform best.
-4. It returns a JSON strategy object that is injected into the next
-   `generate_content` call, steering word/theme selection.
-
-The strategy includes:
-- **`preferred_cefr`** — CEFR levels that got the most engagement
-- **`preferred_themes`** — themes to focus on (food, travel, emotions, etc.)
-- **`focus`** — a short free-text instruction (e.g. "use funnier sentences")
-- **`avoid_words`** — words already used recently (prevents repetition)
-
-The strategy evolves every cycle. After ~20 posts you'll see clear learning
-of what your audience responds to.
+Set `SOURCE_LANGUAGE` and `TARGET_LANGUAGE` in `settings.env` to any pair (e.g. `French` / `English`, `Spanish` / `German`). On first run the bot calls the LLM to derive language codes, flag emojis, flag colors, and the Google Trends country — the result is cached in `data/language_config.json` and reused on subsequent starts.
 
 ---
 
-## Code Self-Improvement Pipeline
+## Self-improvement loop (content strategy)
 
-The bot can automatically improve its own **code** using Claude Code CLI,
-triggered during the wait period after posting.
+After every `STRATEGY_UPDATE_INTERVAL_HOURS` hours the bot:
 
-### How it works (4 phases, up to 3 live verification attempts)
+1. Reads the last `ANALYZE_LAST_N` posts from `data/post_history.json`.
+2. Sends words, CEFR levels, sentences, and engagement scores to the LLM.
+3. The LLM identifies which themes, CEFR levels, and sentence styles perform best.
+4. Returns a JSON strategy object saved to `data/strategy.json` and injected into every subsequent content generation call.
+
+The strategy evolves continuously. After ~20 posts the bot noticeably steers toward what your audience engages with most.
+
+---
+
+## Code self-improvement engine
+
+When `ENABLE_SELF_IMPROVEMENT=true`, the bot runs an automated 4-phase pipeline during the wait period to improve its own source code using Claude Code CLI.
+
+### How it works
 
 ```
-PHASE 1 — Code Improvement
-  • Creates a git branch: auto-improve/YYYYMMDD-HHMM
-  • Passes performance data (top/bottom tweets) to Claude Code CLI
-  • Claude Code reads source files and makes targeted improvements
-  • If requirements.txt was changed, pip install runs automatically
-  • Basic import checks verify nothing is broken
+PHASE 1 — Improvement
+  • Creates branch: auto-improve/YYYYMMDD-HHMM
+  • Passes top/bottom performing tweets to Claude Code
+  • Claude makes targeted code changes (prompts, scoring, strategy logic, etc.)
 
-PHASE 2+3 — Live Cycle + Verification (repeated up to 3 times)
+PHASE 2+3 — Live Verification (up to 3 attempts)
   • Runs python main.py --single-cycle on the improved branch
-  • This runs a REAL complete cycle and posts a REAL tweet to X
+  • Posts a REAL tweet to X
   • Four checks must ALL pass:
-      ✅ Tweet exists on X (via Tweepy v2 lookup)
+      ✅ Tweet found on X (Tweepy v2 lookup)
       ✅ Tweet text quality ≥ 7/10 (AI review: format, grammar, CEFR, emojis)
-      ✅ Image quality score > -1.0 (ImageReward-v1.0)
-      ✅ Terminal output score ≥ 7/10 (AI review: all stages present, no crashes)
-  • If an attempt fails, Claude Code is asked to review and fix the issue
-  • Claude Code may respond FIXED, NO_CHANGE, or GIVE_UP
-  • One successful attempt is enough to proceed
+      ✅ Image quality score > -1.0 (ImageReward model)
+      ✅ Terminal output quality ≥ 7/10 (AI review: no crashes, all stages)
+  • On failure, Claude Code reviews and may fix or give up
 
 PHASE 4 — Decision
-  • If ANY attempt passed: kills old bot, starts new bot running on the branch
-  • If ALL attempts failed (or GIVE_UP): deletes ALL tweets from failed attempts,
-    discards branch, old bot continues
+  • All checks passed → new bot process starts on the improved branch
+  • All failed → failed tweets deleted from X, branch discarded, original continues
 ```
 
-### Important: the branch is NEVER auto-merged
+The improved branch is **never auto-merged into main** — you review and merge manually:
 
-The improvement engine does **not** merge branches into main. The flow is:
-
-- Old bot runs on `main`
-- Improvement creates branch `auto-improve/YYYYMMDD-HHMM`
-- If verification passes → new bot starts **on the branch** (not main)
-- Old bot is killed
-- You review and merge manually when satisfied
-
-To review and merge:
 ```bash
 bash merge_improvement.sh
 ```
 
-To go back to main if you don't like the changes:
-```bash
-git checkout main
-python main.py
-```
-
-### What Claude Code may (and may not) modify
-
-**Never touched:**
-- `.env` — API keys and secrets
-- `improve_with_claude_code.py` — self-modification forbidden
-- `verify_quality.py` — verifier must stay unchanged
-
-**Fair game (anything else), including:**
-- `nodes/generate_content.py` — tweet prompts, word selection, scaffold
-- `nodes/generate_image.py` — Midjourney prompt construction
-- `nodes/analyze.py` — strategy analysis prompts
-- `nodes/score.py` — engagement score weighting
-- `services/grok_ai.py` — model constants, call parameters
-- `data/strategy.json` — strategy parameters
-- Any other file where a genuine improvement is found
-
-### Attempt tracking — all tweets cleaned up on failure
-
-All tweets posted during failed verification attempts are tracked and **deleted
-from X** if the overall improvement fails. Their entries are also removed from
-`data/post_history.json`. No orphaned test tweets left behind.
-
 ### Prerequisites
 
 ```bash
-npm install -g @anthropic-ai/claude-code   # Claude Code CLI
+npm install -g @anthropic-ai/claude-code
 ```
-
-### Configuration
-
-Set in `.env`:
-
-| Variable | Default | Description |
-|---|---|---|
-| `ENABLE_SELF_IMPROVEMENT` | `false` | Enable automatic improvement runs |
-| `IMPROVEMENT_INTERVAL_CYCLES` | `5` | Run improvement every N cycles |
-| `IMPROVEMENT_SCORE_THRESHOLD` | `9999` | Only improve if avg score < threshold |
 
 ### Manual trigger
 
 ```bash
-python improve_with_claude_code.py          # respects ENABLE_SELF_IMPROVEMENT setting
-python improve_with_claude_code.py --force  # runs regardless of setting
-```
-
-### Standalone quality check (after a manual --single-cycle run)
-
-```bash
-python main.py --single-cycle      # run one real cycle and write test_cycle_output.json
-python verify_quality.py           # check tweet text, image, terminal output
-```
-
-### Logs
-
-All improvement engine activity is logged to `data/improvement.log` in addition
-to the terminal. Artifacts (`data/test_cycle_output.json`, `data/test_cycle_terminal.txt`)
-are automatically deleted after each improvement run.
-
----
-
-## Video style: simple vs karaoke
-
-Set `VIDEO_STYLE` in `.env`:
-
-| Value | Description |
-|---|---|
-| `karaoke` | German sentence overlaid at bottom of image; words highlighted gold as they're spoken |
-| `simple` | Static image with audio — no text overlay |
-
-Karaoke mode requires ImageMagick (see system dependencies above).
-
----
-
-## Switching AI providers
-
-Set `AI_PROVIDER` in `.env`:
-
-| Value | Model | Notes |
-|---|---|---|
-| `grok` | `grok-4-1-fast-non-reasoning` | Fast, excellent for German content |
-| `scaleway` | `llama-3.3-70b-instruct` | Free-tier friendly |
-
-To add a new provider:
-1. Create `services/my_provider_ai.py` with a `get_my_provider_response()` function
-   matching the signature `(user_message, system_prompt, max_tokens, temperature) -> str`.
-2. Add an `elif` branch in `services/ai_client.py`.
-3. Set `AI_PROVIDER=my_provider` in `.env`.
-
----
-
-## Project structure
-
-```
-german-bot/
-├── main.py                      # Entry point (+ --single-cycle mode)
-├── graph.py                     # LangGraph graph (nodes, edges, checkpointing)
-├── state.py                     # LangGraph TypedDict state schema
-├── config.py                    # Env var loading, folder creation, logging
-├── improve_with_claude_code.py  # Self-improvement engine (4-phase pipeline)
-├── verify_quality.py            # Standalone quality checker
-├── merge_improvement.sh         # Interactive branch review & merge helper
-├── requirements.txt
-├── .env.example
-├── README.md
-├── nodes/
-│   ├── generate_content.py      # Word selection, sentence, translation, tweet assembly
-│   ├── generate_image.py        # Midjourney prompt + image generation
-│   ├── generate_audio.py        # ElevenLabs TTS (simple + karaoke timings)
-│   ├── create_video.py          # combine_audio + simple/karaoke video render
-│   ├── publish.py               # Post to X with video
-│   ├── fetch_metrics.py         # Fetch tweet engagement via tweepy v2
-│   ├── score.py                 # Engagement scoring + JSON history
-│   └── analyze.py               # LLM self-improvement strategy update
-├── services/
-│   ├── ai_client.py             # Switchable AI provider router
-│   ├── grok_ai.py               # Grok (xAI) client
-│   ├── scaleway_ai.py           # Scaleway Llama client
-│   ├── deepl.py                 # DeepL translation
-│   └── get_article.py           # German noun article lookup
-├── utils/
-│   └── retry.py                 # Exponential back-off decorator + helper
-├── data/                        # post_history.json, bot.log, checkpoints.sqlite
-├── Background Music/            # Place music.mp3 here
-├── Images/                      # Midjourney PNGs saved here
-├── Voices/                      # ElevenLabs MP3s saved here
-├── Voices with Background Music/ # Mixed audio saved here
-└── Videos/                      # Final MP4s saved here
+python improve_with_claude_code.py          # respects ENABLE_SELF_IMPROVEMENT
+python improve_with_claude_code.py --force  # always runs
 ```
 
 ---
 
 ## Crash recovery
 
-LangGraph uses `SqliteSaver` to checkpoint state after every node. If the bot
-crashes mid-pipeline (e.g. during Midjourney generation), on the next restart it
-automatically resumes from the last successfully completed node — no duplicate
-posts, no wasted API calls.
+LangGraph checkpoints state after every node using `SqliteSaver` (`data/checkpoints.sqlite`). If the bot crashes mid-pipeline it resumes from the last completed node on restart — no duplicate posts, no wasted API calls.
 
-The checkpoint database is stored at `data/checkpoints.sqlite`.
+---
+
+## Project structure
+
+```
+XBot 3/
+├── main.py                        # Entry point; --single-cycle mode for verification
+├── graph.py                       # LangGraph pipeline (nodes, edges, checkpointing)
+├── state.py                       # LangGraph TypedDict state schema
+├── config.py                      # Settings loader, folder creation, logging
+├── scaffolds.py                   # Tweet format templates
+├── improve_with_claude_code.py    # Code self-improvement engine
+├── verify_quality.py              # Standalone quality checker
+├── merge_improvement.sh           # Interactive branch review & merge helper
+├── requirements.txt
+├── settings.env                   # Public bot configuration (committed)
+├── .env                           # Secret API keys (gitignored)
+├── .env.example                   # Template for .env
+├── nodes/
+│   ├── generate_content.py        # Word selection, sentence, translation, tweet assembly
+│   ├── generate_image.py          # Image generation (Grok Imagine or Midjourney) + ranking
+│   ├── generate_audio.py          # ElevenLabs TTS — voice selection + karaoke timings
+│   ├── create_video.py            # Audio mix, video animation, KTV overlay
+│   ├── publish.py                 # Post tweet with video to X
+│   ├── fetch_metrics.py           # Fetch engagement metrics via Tweepy v2
+│   ├── score.py                   # Engagement scoring + post history update
+│   └── analyze.py                 # LLM strategy analysis + update
+├── services/
+│   ├── ai_client.py               # Switchable AI provider router
+│   ├── grok_ai.py                 # xAI Grok LLM client
+│   ├── scaleway_ai.py             # Scaleway Llama client
+│   ├── grok_video.py              # Grok Imagine I2V service
+│   ├── wan_video.py               # Local Wan2.1/2.2 I2V service (via Wan2GP)
+│   ├── image_ranker.py            # ImageReward scoring for image selection
+│   ├── voice_pool.py              # ElevenLabs voice management
+│   ├── language_config.py         # AI-derived language pair config + caching
+│   └── x_trends.py                # Google Trends integration
+├── utils/
+│   ├── ui.py                      # Terminal banner and cycle output formatting
+│   └── retry.py                   # Exponential back-off decorator
+├── data/                          # post_history.json, strategy.json, bot.log, checkpoints.sqlite
+├── Background Music/              # Place music.mp3 here
+├── Images/                        # Generated images saved here
+├── Voices/                        # ElevenLabs audio saved here
+├── Voices with Background Music/  # Mixed audio saved here
+└── Videos/                        # Final MP4 videos saved here
+```
