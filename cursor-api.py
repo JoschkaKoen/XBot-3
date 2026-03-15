@@ -3,12 +3,10 @@
 cursor-api — instantly switch Cursor's OpenAI-compatible endpoint + API key.
 
 Usage:
-    export PATH="$HOME/bin:$PATH"
-
-    cursor-api zai        # switch to z.ai / GLM
-    cursor-api minimax    # switch to MiniMax
-    cursor-api default    # switch back to Cursor Pro (no override)
-    cursor-api status     # show current setting
+    python cursor-api.py zai        # switch to z.ai / GLM
+    python cursor-api.py minimax    # switch to MiniMax
+    python cursor-api.py default    # switch back to Cursor Pro (no override)
+    python cursor-api.py status     # show current setting
 
 Config file: ~/.cursor-api-presets.json
   {
@@ -16,13 +14,16 @@ Config file: ~/.cursor-api-presets.json
     "minimax": { "key": "YOUR_MINIMAX_KEY", "base_url": "https://api.minimax.chat/v1" }
   }
 
-NOTE: Cursor must be restarted after switching for changes to take effect.
+The script automatically closes Cursor, writes the settings, then relaunches it.
 """
 
 import json
 import os
+import signal
 import sqlite3
+import subprocess
 import sys
+import time
 from pathlib import Path
 
 # ── paths ──────────────────────────────────────────────────────────────────────
@@ -52,7 +53,58 @@ BUILTIN = {
     },
 }
 
+CURSOR_BIN = "/usr/share/cursor/cursor"
+
 # ── helpers ────────────────────────────────────────────────────────────────────
+def cursor_pids() -> list[int]:
+    """Return PIDs of all running Cursor main processes."""
+    try:
+        out = subprocess.check_output(
+            ["pgrep", "-f", CURSOR_BIN], text=True
+        ).strip()
+        return [int(p) for p in out.splitlines() if p.strip()]
+    except subprocess.CalledProcessError:
+        return []
+
+
+def kill_cursor() -> bool:
+    """Gracefully close Cursor; wait up to 8 s; force-kill if needed.
+    Returns True if Cursor was running."""
+    pids = cursor_pids()
+    if not pids:
+        return False
+
+    # Find the main process (lowest PID = parent)
+    main_pid = min(pids)
+    print(f"Closing Cursor (pid {main_pid}) …", flush=True)
+    os.kill(main_pid, signal.SIGTERM)
+
+    for _ in range(16):          # wait up to 8 s
+        time.sleep(0.5)
+        if not cursor_pids():
+            return True
+
+    print("Force-killing Cursor …", flush=True)
+    for pid in cursor_pids():
+        try:
+            os.kill(pid, signal.SIGKILL)
+        except ProcessLookupError:
+            pass
+    time.sleep(1)
+    return True
+
+
+def launch_cursor() -> None:
+    """Start Cursor in the background."""
+    subprocess.Popen(
+        [CURSOR_BIN],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        start_new_session=True,
+    )
+    print("Cursor relaunched.")
+
+
 def load_config() -> dict:
     if not CFG_FILE.exists():
         return {}
@@ -154,6 +206,8 @@ def main() -> None:
         )
         sys.exit(1)
 
+    was_running = kill_cursor()
+
     apply(key, url)
 
     label = preset.get("label", cmd)
@@ -161,7 +215,12 @@ def main() -> None:
     if url:
         print(f"  base_url : {url}")
         print(f"  key      : {key[:12]}…" if len(key) > 12 else f"  key      : {key}")
-    print("\nRestart Cursor for changes to take effect.")
+
+    if was_running:
+        time.sleep(0.5)   # let the DB flush fully
+        launch_cursor()
+    else:
+        print("Cursor was not running — start it manually.")
 
 
 if __name__ == "__main__":
