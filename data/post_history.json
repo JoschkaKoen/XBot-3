@@ -964,5 +964,33 @@
     "metrics": {},
     "engagement_score": 0.0,
     "cycle": 1
+  },
+  {
+    "timestamp": "2026-03-14T20:04:18.934189+00:00",
+    "tweet_id": "2032910714248274014",
+    "tweet_url": "https://x.com/i/web/status/2032910714248274014",
+    "full_tweet": "🇩🇪  Word of the Day  🚂\n\nDer Zug (A1)\n→  train\n\n🇩🇪  Ich verpasse den Zug, aber er wartet auf mich!\n🇺🇸  I miss the train, but it waits for me!  🏃‍♂️\n\n#WordOfTheDay #LearnGerman",
+    "source_word": "Zug",
+    "article": "Der",
+    "cefr_level": "A1",
+    "example_sentence_source": "Ich verpasse den Zug, aber er wartet auf mich!",
+    "example_sentence_target": "I miss the train, but it waits for me!",
+    "metrics": {},
+    "engagement_score": 0.0,
+    "cycle": 2
+  },
+  {
+    "timestamp": "2026-03-15T01:07:33.708019+00:00",
+    "tweet_id": "2032987028577800552",
+    "tweet_url": "https://x.com/i/web/status/2032987028577800552",
+    "full_tweet": "🇩🇪  die Haltestelle\n🇺🇸  bus stop  🚏\n\n„Ich verpasse meine Haltestelle, weil ich schlafe.“\n= I miss my stop because I'm sleeping.  😴🚍\n\n#LearnGerman #LanguageLearning",
+    "source_word": "Haltestelle",
+    "article": "die",
+    "cefr_level": "A2",
+    "example_sentence_source": "Ich verpasse meine Haltestelle, weil ich schlafe.",
+    "example_sentence_target": "I miss my stop because I'm sleeping.",
+    "metrics": {},
+    "engagement_score": 0.0,
+    "cycle": 3
   }
 ]
