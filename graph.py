@@ -114,10 +114,15 @@ def _check_for_update() -> None:
 # ── wait node ─────────────────────────────────────────────────────────────────
 
 def wait_node(state: dict) -> dict:
-    """Optionally run self-improvement, then sleep before the next cycle."""
+    """
+    Wait before the next cycle.  Runs (in order):
+      1. Self-improvement (if ENABLE_SELF_IMPROVEMENT and cycle % N == 0)
+      2. Countdown sleep for POST_INTERVAL_SECONDS (minus improvement time)
+      3. _check_for_update() — if origin/main has new commits, pull and restart
+    """
     from utils.ui import stage_banner, wait_countdown
 
-    # In single-cycle mode, skip everything — just return immediately
+    # Single-cycle mode: skip wait and auto-update
     if "--single-cycle" in sys.argv:
         logger.info("Single-cycle mode — skipping wait.")
         return state
@@ -161,6 +166,8 @@ def wait_node(state: dict) -> dict:
 
 
 # ── graph builder ─────────────────────────────────────────────────────────────
+# Node order is fixed; each node reads/writes BotState.  To add a node or change
+# order, update the edges below and the docstring at the top of this file.
 
 def build_graph(checkpointer=None):
     builder = StateGraph(BotState)

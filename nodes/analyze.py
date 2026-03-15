@@ -1,12 +1,19 @@
 """
 Node: analyze_and_improve
 
-Reads the last N posts from history, asks the LLM to identify patterns
-(which CEFR levels, themes, sentence styles perform best), and outputs
-an updated strategy dict that is fed into generate_content.
+Reads the last N posts from history (ANALYZE_LAST_N), asks the LLM to identify
+patterns (CEFR, themes, sentence styles that perform best), and outputs an
+updated strategy dict fed into generate_content.
 
-Strategy is persisted to data/strategy.json so it survives restarts.
-Every version is also appended to data/strategy_history.json.
+================================================================================
+ FILES & SECTIONS YOU MAY EDIT
+================================================================================
+  data/strategy.json       — current strategy (also written by this node)
+  data/strategy_history.json — append-only log of every strategy update
+  _system_prompt()         — system prompt for the strategy LLM
+  _DEFAULT_STRATEGY        — default keys when no history exists
+  _DEFAULT_SCAFFOLD        — example tweet format shown to the LLM
+================================================================================
 """
 
 import json

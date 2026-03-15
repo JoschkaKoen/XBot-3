@@ -1,8 +1,23 @@
 """
 Node: publish
 
-Uploads the video to X (Twitter) and posts the tweet.
-Uses tweepy v1.1 for media upload and v2 for tweet creation.
+Uploads the MP4 to X (Twitter) and posts the tweet text.
+
+================================================================================
+ X/TWITTER API KEYS (set in .env, never settings.env)
+================================================================================
+  TWITTER_CONSUMER_KEY / TWITTER_CONSUMER_SECRET
+    → from your app at developer.twitter.com (OAuth 1.0a App-only)
+
+  TWITTER_ACCESS_TOKEN / TWITTER_ACCESS_TOKEN_SECRET
+    → generated under "Keys and Tokens" for your specific account
+
+  Required app permissions: Read and Write (to post tweets) + media upload.
+
+Two API versions are used:
+  v1.1 — media upload (tweepy.API) — v2 does not support video upload yet
+  v2   — tweet creation (tweepy.Client)
+================================================================================
 """
 
 import time

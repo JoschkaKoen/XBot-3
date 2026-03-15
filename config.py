@@ -1,3 +1,46 @@
+"""
+Configuration for XBot-3 Language Learning Bot.
+
+Most settings are read from settings.env (git-tracked) and .env (gitignored, API keys).
+
+================================================================================
+ USER-TUNABLE SETTINGS (edit in settings.env)
+================================================================================
+
+  LANGUAGE PAIR
+    SOURCE_LANGUAGE     → e.g. "German", "Spanish", "French"
+    TARGET_LANGUAGE     → e.g. "English"
+
+  CONTENT GENERATION
+    IMAGE_STYLE        → "photographic" (realistic) or "disney" (Pixar-style)
+    TWEET_STYLE        → "funny" (jokes) or "educational" (plain)
+    MAX_EXAMPLE_WORDS  → max words in example sentence (default: 13)
+
+  VIDEO OPTIONS
+    ENABLE_VIDEO       → "off" (static image) | "grok" (Grok Imagine) | "wan" (local Wan2.1)
+    VIDEO_STYLE        → "ktv" (karaoke highlight) or "simple"
+    ENABLE_KEN_BURNS   → true/false — slow zoom+pan on static videos
+    VIDEO_FREQUENCY    → generate video every N tweets (1 = every tweet)
+
+  IMAGE GENERATION
+    IMAGE_PROVIDER     → "midjourney" (TTAPI) or "grok" (xAI)
+    FLAG_OVERLAY       → true/false — show country flags on images
+
+  X/TWITTER
+    USE_TRENDS         → true/false — pick words from trending topics
+    MAX_TWEET_LENGTH   → character limit (280 standard, up to 25000 premium)
+
+  BOT BEHAVIOUR
+    POST_INTERVAL_SECONDS → time between posts (18000 = 5 hours)
+    AUTO_UPDATE         → true/false — pull GitHub updates after each wait
+
+  AI MODELS (advanced)
+    TWEET_MODEL, STRATEGY_MODEL, WORD_PICK_MODEL, etc.
+    Valid values: "flagship", "reasoning", "non-reasoning"
+
+================================================================================
+"""
+
 import os
 import platform
 import logging

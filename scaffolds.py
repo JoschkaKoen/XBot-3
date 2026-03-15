@@ -1,21 +1,27 @@
 """
 Tweet scaffold pool and rotation.
 
-Scaffold templates are defined in data/scaffolds.json.
-Each entry has a "name" and a "template" string with these placeholders:
-  [LEVEL]                              — CEFR level, e.g. A1, B2
-  [ARTICLE]                            — grammatical article (omitted for non-nouns)
-  [SOURCE_WORD]                        — the bare source-language word
-  [TARGET_TRANSLATION]                 — translation of the word in the target language
-  [SHORT_FUNNY_SOURCE_SENTENCE]        — example sentence in the source language
-  [TARGET_TRANSLATION_OF_SENTENCE]     — target-language translation of the sentence
-  [EMOJI1][EMOJI1]                     — first emoji pair (two identical emojis)
-  [EMOJI2][EMOJI2]                     — second emoji pair (two identical emojis, may differ from EMOJI1)
-  [SOURCE_FLAG] / [TARGET_FLAG]        — flag emojis substituted at runtime from config
-  [SOURCE_LANGUAGE] / [TARGET_LANGUAGE]— language names substituted at runtime from config
+================================================================================
+ WHERE TO EDIT TEMPLATES
+================================================================================
+  data/scaffolds.json  — one object per scaffold with "name" and "template".
+  Each "template" is an array of lines (joined with newlines at runtime).
+
+================================================================================
+ PLACEHOLDERS (substituted in generate_content._expand_scaffold)
+================================================================================
+  [LEVEL]                        — CEFR level, e.g. A1, B2
+  [ARTICLE]                      — grammatical article (omitted for non-nouns)
+  [SOURCE_WORD]                  — the source-language word
+  [TARGET_TRANSLATION]            — translation of the word
+  [SHORT_FUNNY_SOURCE_SENTENCE]   — example sentence (source language)
+  [TARGET_TRANSLATION_OF_SENTENCE]— translation of the example sentence
+  [EMOJI1] / [EMOJI2]            — emojis chosen by the LLM for the tweet
+  [SOURCE_FLAG] / [TARGET_FLAG]   — from config (e.g. 🇩🇪, 🇺🇸)
+  [SOURCE_LANGUAGE] / [TARGET_LANGUAGE] — from config (e.g. German, English)
 
 Rotation is round-robin and persisted to data/scaffold_state.json so the
-sequence survives restarts and is predictable.
+sequence survives restarts.
 """
 
 import json

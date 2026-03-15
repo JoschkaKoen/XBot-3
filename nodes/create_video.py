@@ -1,14 +1,28 @@
 """
 Node: create_video
 
-1. Combines voice MP3 with background music (pydub).
-2. Creates the final MP4:
-   - If ENABLE_VIDEO=grok: calls Grok Imagine to animate the image (8 s, 720p)
-   - If ENABLE_VIDEO=wan:  calls local Wan2.1 via Wan2GP (~5 s, 480p)
-   - Both animated paths apply the same KTV text overlay on the result.
-   - Otherwise (ENABLE_VIDEO=off):
-       • Creates a static KTV or simple video from the still image
-         (existing behaviour, unchanged)
+================================================================================
+ VIDEO PIPELINE
+================================================================================
+
+This node creates the final MP4 video posted to X.  It combines:
+    1. Audio: voice recording (generate_audio) + background music
+    2. Visual: generated image (generate_image) — possibly animated
+
+VIDEO ENGINE OPTIONS (set ENABLE_VIDEO in settings.env):
+    "off"  → static image + optional Ken Burns zoom/pan
+    "grok" → Grok Imagine API (8s, 720p) animation
+    "wan"  → local Wan2.1 model via Wan2GP (5s, 480p)
+
+KTV OVERLAY:
+    The "ktv" VIDEO_STYLE adds a karaoke-style word-by-word highlight bar
+    at the bottom of the video, synced to the audio timing.
+
+KEN BURNS:
+    ENABLE_KEN_BURNS adds a slow zoom+pan effect to static images (works
+    independently of ENABLE_VIDEO).
+
+================================================================================
 """
 
 import os
@@ -74,6 +88,12 @@ def combine_audio(
 
 
 # ── KTV overlay builder (shared by both image and video paths) ────────────────
+# Tune these constants to change the look of the karaoke bar and caption text:
+#   _BAR_H   — height of the black bar at the bottom (px)
+#   _TEXT_W  — caption width (fraction of video width)
+#   _TEXT_H  — caption line height (px)
+#   _TEXT_X  — horizontal inset (px)
+#   font_size, color, stroke_* — in the TextClip calls below
 
 def _build_ktv_overlay_clips(
     base_clip,
@@ -88,7 +108,7 @@ def _build_ktv_overlay_clips(
     Args:
         base_clip:    The underlying ImageClip or VideoFileClip (already sized).
         duration:     Final video duration in seconds.
-        german_text:  Full German sentence shown as the base caption.
+        german_text:  Full source-language sentence shown as the base caption.
         word_timings: Optional list of {word, start, end} dicts for highlighting.
     """
     _BAR_H  = 180

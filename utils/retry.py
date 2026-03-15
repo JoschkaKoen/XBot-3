@@ -1,3 +1,18 @@
+"""
+Retry utilities — decorator and inline helper with configurable delay.
+
+Usage:
+    # As decorator:
+    @with_retry(max_attempts=3, base_delay=0.1, backoff=1.0, label="my_call")
+    def my_fn(...): ...
+
+    # Inline (no decorator needed):
+    result = retry_call(some_fn, arg1, arg2, max_attempts=3, label="my_call")
+
+backoff=1.0 → fixed delay between retries (default).
+backoff=2.0 → exponential back-off (delay doubles after each failure).
+"""
+
 import time
 import functools
 import logging

@@ -1,14 +1,22 @@
 """
 Node: generate_image
 
-Generates an image prompt via LLM, then submits to the configured image
-provider (Midjourney via TTAPI, or xAI Grok Imagine), polls until done,
-downloads all images, and picks the best one using ImageReward-v1.0.
-Falls back to the first image if the ranker model is unavailable.
+Builds an image prompt via LLM from the tweet content, then calls the
+configured provider (Midjourney via TTAPI or Grok Imagine), downloads
+images, and picks the best with ImageReward.  Optionally overlays a
+source/target flag badge (FLAG_OVERLAY).
 
-IMAGE_PROVIDER setting controls which backend is used:
-  "midjourney" (default) — requires TT_API_KEY
-  "grok"                 — requires XAI_API_KEY
+================================================================================
+ SECTIONS YOU MAY WANT TO EDIT
+================================================================================
+  _RULES                  — global rules appended to every image prompt
+  _DISNEY_AESTHETIC       — style block for image_style=disney
+  _IMMERSIVE / _AESTHETIC — style blocks for image_style=photographic
+  STYLE_SUFFIX (Midjourney)— suffix added to prompts (e.g. "positive facial expressions")
+  Flag overlay: _overlay_flags(), _create_flag_badge() — see _FLAGCDN_* constants
+================================================================================
+
+IMAGE_PROVIDER (settings.env): "midjourney" (TT_API_KEY) or "grok" (XAI_API_KEY).
 """
 
 import io

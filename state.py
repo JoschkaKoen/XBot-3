@@ -1,3 +1,12 @@
+"""
+BotState — the single state dict passed through every graph node.
+
+Keys here are read/written by the nodes in graph.py.  If you add or rename a
+key, update all nodes that use it (generate_content, generate_image,
+generate_audio, create_video, publish, score_and_store, analyze_and_improve,
+fetch_all_metrics).
+"""
+
 from typing import Optional, Any
 from typing_extensions import TypedDict
 

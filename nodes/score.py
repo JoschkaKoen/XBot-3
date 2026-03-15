@@ -2,7 +2,23 @@
 Node: score_and_store
 
 Computes a weighted engagement score and appends the full record
-(tweet text, word, metrics, score, timestamps) to a persistent JSON file.
+(tweet text, word, metrics, score, timestamps) to data/post_history.json.
+
+================================================================================
+ ENGAGEMENT SCORE FORMULA  (edit _compute_score to change weights)
+================================================================================
+  score = likes + 3×reposts + 5×replies + 2×quotes + impressions/100
+
+  Rationale for weights:
+    - replies are valued most (active engagement, signals discussion)
+    - reposts indicate shareability
+    - quotes show enough interest to add commentary
+    - impressions give a small baseline signal even with no interactions
+
+  The age-normalised score (see normalized_score) divides by hours since
+  posting and is used by the strategy analyser to fairly compare tweets
+  of different ages.
+================================================================================
 """
 
 import json

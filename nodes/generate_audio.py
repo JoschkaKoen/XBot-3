@@ -1,15 +1,29 @@
 """
 Node: generate_audio
 
-Generates TTS audio via ElevenLabs.
-Uses generate_source_audio_with_timings() for ktv mode,
-or generate_source_audio() for simple mode.
+Generates TTS audio via ElevenLabs for the source-language example sentence.
+Uses generate_source_audio_with_timings() (ktv mode, returns word timing data)
+or generate_source_audio() (simple mode, audio only).
 
-Voice pool
-----------
-Voices are stored in data/voice_pool.json and grown automatically each run
-via services/voice_pool.py (ElevenLabs Shared Voices API).
-The AI picks the most suitable voice from the pool for each tweet.
+================================================================================
+ TUNABLE CONSTANTS
+================================================================================
+  _DEFAULT_SPEED   — TTS playback speed (0.70 = 30 % slower than normal,
+                      readable for language learners; 1.0 = native speed)
+
+  _voice_settings() — stability (0–1, higher = less expressive but more
+                      consistent), similarity_boost (how closely the model
+                      matches the original voice clone)
+
+================================================================================
+ VOICE POOL
+================================================================================
+  data/voice_pool.json  — cached list of ElevenLabs shared voices.
+  services/voice_pool.py — grows the pool automatically on each run up to
+                            TARGET_POOL_SIZE voices for the configured language.
+  The AI picks the best voice from the pool for each tweet based on the
+  tweet's mood, topic, and language.
+================================================================================
 """
 
 import os
@@ -28,7 +42,7 @@ from elevenlabs.types import VoiceSettings
 
 logger = logging.getLogger("german_bot.generate_audio")
 
-_DEFAULT_SPEED  = 0.70
+_DEFAULT_SPEED = 0.70   # 0.70 = 30 % slower — deliberate pacing for language learners
 
 os.makedirs(VOICES_DIR, exist_ok=True)
 
@@ -40,6 +54,8 @@ def _get_client() -> ElevenLabs:
 
 
 def _voice_settings(speed: float) -> VoiceSettings:
+    # stability      — 0 = expressive/varied, 1 = robotic/consistent.  0.75 is a good middle ground.
+    # similarity_boost — how closely the model adheres to the original voice clone.  0.85 = high fidelity.
     return VoiceSettings(stability=0.75, similarity_boost=0.85, speed=speed)
 
 

@@ -1,9 +1,22 @@
 """
 Node: generate_content
 
-Picks a German word (trend-based or AI-free), then generates the complete
-tweet in a single Grok call that returns JSON.  Local post-processing handles
-tweet-length enforcement.
+Picks a source-language word (from trends or AI), then generates the full
+tweet in one or more LLM calls.  Output is JSON; post-processing enforces
+MAX_EXAMPLE_WORDS and MAX_TWEET_LENGTH.
+
+================================================================================
+ SECTIONS YOU MAY WANT TO EDIT
+================================================================================
+  _build_word_prompt()     — prompt for picking the word (topic, CEFR, avoid list)
+  _build_tweet_prompt()    — prompt for generating tweet + example sentences
+  _expand_scaffold()       — placeholder substitution ([SOURCE_WORD], etc.)
+  _select_best_tweet()     — prompt for choosing the best candidate
+  _is_word_too_similar()   — prompt for duplicate/similarity check
+
+Strategy (topic, style, avoid_words) comes from data/strategy.json and is
+updated by the analyze node after each cycle.
+================================================================================
 """
 
 import json

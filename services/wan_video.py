@@ -2,12 +2,24 @@
 Service: wan_video
 
 Generates a ~5-second animated video from a still image using the local
-Wan2.1 model via Wan2GP (run_i2v.py).  The motion prompt is produced by the
-same AI call used for the Grok video path, so the two engines are drop-in
-swappable from create_video.py's perspective.
+Wan2.1 model via Wan2GP (run_i2v.py).
 
-Cycle-frequency gate (should_generate_video / advance_cycle) is shared with
-grok_video so a single VIDEO_FREQUENCY setting governs both engines.
+================================================================================
+ SETUP REQUIREMENTS
+================================================================================
+  1. Clone and set up Wan2GP:  https://github.com/deepbeepmeep/Wan2GP
+  2. Set WAN_VIDEO_DIR in settings.env to its directory, e.g.:
+       WAN_VIDEO_DIR=/Users/yourname/Programming/Wan2GP
+  3. Make sure run_i2v.py exists in that directory.
+  4. A dedicated venv inside Wan2GP/venv/ is used automatically if present.
+
+The --no-nvfp4 flag passed to run_i2v.py forces int8 quantisation instead of
+the default FP4 mode, which requires an RTX 50xx GPU.  Remove it if you have
+an RTX 50xx card and want maximum quality/speed.
+
+Motion prompt and cycle-frequency gate are shared with grok_video, so both
+engines are drop-in swappable and VIDEO_FREQUENCY governs both.
+================================================================================
 """
 
 import logging
@@ -86,7 +98,7 @@ def generate_video(image_path: str, motion_prompt: str) -> str:
         python, str(script),
         str(Path(image_path).resolve()),
         motion_prompt,
-        "--no-nvfp4",           # use int8 (no RTX 50xx required)
+        "--no-nvfp4",   # use int8 quantisation; remove if you have an RTX 50xx GPU
         "--steps", str(steps),
     ]
 

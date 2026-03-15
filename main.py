@@ -1,22 +1,31 @@
 """
-Entry point for the German Learning X Bot.
+XBot-3 Language Learning Bot — Main Entry Point
 
-Run with:
-    macos:  source venv/bin/activate
-
+================================================================================
+ QUICK START
+================================================================================
+    cd /path/to/XBot-3
+    source venv/bin/activate
     python main.py
 
-    python main.py --single-cycle   # run exactly one cycle then exit (used by improvement engine)
+Run one cycle only (for testing or improvement engine):
+    python main.py --single-cycle
 
-- To commit and push changes:
-    git add -A
-    git commit -m "Improvements to the bot"
-    git push
+================================================================================
+ BOT FLOW
+================================================================================
+The bot runs an endless loop, each cycle:
+    1. fetch_all_metrics    → refresh tweet engagement metrics
+    2. analyze_and_improve → update strategy based on past performance
+    3. generate_content    → pick word + write tweet(s)
+    4. generate_image      → create visual for the tweet
+    5. generate_audio      → text-to-speech for the sentence
+    6. create_video        → combine image + audio → MP4
+    7. publish             → post to X/Twitter
+    8. score_and_store    → record engagement score
+    9. wait                → sleep until next cycle (or run self-improvement)
 
-- To merge with the main branch:
-    git checkout main
-    git merge dev
-    git push
+================================================================================
 """
 
 import json
