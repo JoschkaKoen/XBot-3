@@ -270,14 +270,6 @@ def generate_audio(state: dict) -> dict:
             return {**state, "clean_audio_path": audio_path, "word_timings": []}
 
     except Exception as exc:
-        logger.warning("ElevenLabs failed (%s). Attempting fallback to last known audio.", exc)
-        existing = sorted(
-            [f for f in os.listdir(VOICES_DIR) if f.endswith(".mp3")],
-            reverse=True,
-        )
-        if existing:
-            fallback_path = os.path.join(VOICES_DIR, existing[0])
-            ui_warn(f"ElevenLabs unavailable -- using fallback audio: {os.path.basename(fallback_path)}")
-            logger.warning("Using fallback audio: %s", fallback_path)
-            return {**state, "clean_audio_path": fallback_path, "word_timings": []}
+        logger.warning("ElevenLabs failed (%s) — no fallback audio used; re-raising.", exc)
+        ui_warn(f"ElevenLabs unavailable ({exc}) — skipping this cycle (no audio generated).")
         raise

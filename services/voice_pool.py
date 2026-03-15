@@ -29,6 +29,7 @@ from datetime import datetime, timezone
 import requests
 
 from config import ELEVENLABS_API_KEY
+from utils.io import atomic_json_write
 
 logger = logging.getLogger("german_bot.voice_pool")
 
@@ -60,9 +61,7 @@ def _load_full_pool() -> list:
 
 
 def _save_pool(pool: list) -> None:
-    os.makedirs(os.path.dirname(_POOL_FILE), exist_ok=True)
-    with open(_POOL_FILE, "w", encoding="utf-8") as f:
-        json.dump(pool, f, ensure_ascii=False, indent=2)
+    atomic_json_write(_POOL_FILE, pool, ensure_ascii=False, indent=2)
 
 
 # ── ElevenLabs API helpers ────────────────────────────────────────────────────

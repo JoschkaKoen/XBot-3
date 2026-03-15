@@ -282,7 +282,11 @@ def _call_tweet_ai(
         if raw.startswith("```"):
             lines = raw.split("\n")
             raw = "\n".join(lines[1:-1] if lines[-1].strip() == "```" else lines[1:])
-        result = json.loads(raw)
+        try:
+            result = json.loads(raw)
+        except json.JSONDecodeError as e:
+            logger.warning("Candidate %d: invalid JSON (%s) — skipping.", idx, e)
+            raise
         if isinstance(result, list):
             result = result[0]  # graceful fallback if AI returns array
         with lock:
@@ -321,6 +325,8 @@ def _select_best_tweet(candidates: list, source_word: str, cefr_level: str, funn
     _GRAY = "\033[90m"
     _GREEN = "\033[92m"
 
+    if not candidates:
+        raise ValueError("No tweet candidates succeeded; all 3 generations failed or returned invalid JSON. Check logs and try again.")
     if len(candidates) == 1:
         print(f"\n  {_GREEN}✔  Only one candidate — selected automatically.{_R}\n", flush=True)
         return candidates[0]
@@ -642,11 +648,9 @@ def generate_content(state: dict) -> dict:
             word_from_trends = True
 
     if not german_word:
-        if not config.USE_TRENDS:
-            from nodes.score import _load_history
-            history_words = [r.get("source_word", "") for r in _load_history() if r.get("source_word")]
-        # Always enrich avoid_words with the full history before building the word prompt.
-        # When USE_TRENDS=True but trend selection failed, history_words was already built above.
+        from nodes.score import _load_history
+        history_words = [r.get("source_word", "") for r in _load_history() if r.get("source_word")]
+        # Enrich avoid_words with full history before building the word prompt.
         avoid_words = list(dict.fromkeys(history_words + strategy.get("avoid_words", [])))
         strategy = {**strategy, "avoid_words": avoid_words}
         word_prompt = _build_word_prompt(strategy)
@@ -790,11 +794,14 @@ def generate_content(state: dict) -> dict:
             result["full_tweet"] = result.get("tweet", "")
         else:
             logger.warning(
-                "Tweet still too long (%d chars) after %d retries — truncating emoji pairs.",
+                "Tweet still too long (%d chars) after %d retries — truncating emoji pairs, then hard cap.",
                 tweet_len, max_retries,
             )
-            ui_warn(f"Tweet still too long ({tweet_len} chars) — truncating emoji pairs.")
+            ui_warn(f"Tweet still too long ({tweet_len} chars) — truncating emoji pairs, then hard cap.")
             result["full_tweet"] = _truncate_emoji_pairs(result["full_tweet"])
+            # Hard cap in case emoji truncation didn't get under limit
+            if len(result["full_tweet"]) > config.MAX_TWEET_LENGTH:
+                result["full_tweet"] = result["full_tweet"][: config.MAX_TWEET_LENGTH - 3].rstrip() + "…"
 
     full_tweet = result["full_tweet"]
     tweet_box(full_tweet)

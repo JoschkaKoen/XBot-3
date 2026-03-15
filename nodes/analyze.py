@@ -18,6 +18,7 @@ import config
 from config import HISTORY_FILE, STRATEGY_FILE, STRATEGY_HISTORY_FILE
 from services.ai_client import get_ai_response
 from nodes.score import _load_history
+from utils.io import atomic_json_write
 
 
 def _get_strategy_ai() -> callable:
@@ -76,9 +77,7 @@ def load_strategy() -> dict:
 
 
 def _save_strategy(strategy: dict) -> None:
-    os.makedirs(os.path.dirname(STRATEGY_FILE) or ".", exist_ok=True)
-    with open(STRATEGY_FILE, "w", encoding="utf-8") as f:
-        json.dump(strategy, f, ensure_ascii=False, indent=2)
+    atomic_json_write(STRATEGY_FILE, strategy, ensure_ascii=False, indent=2)
 
 
 def _append_strategy_history(strategy: dict) -> None:
@@ -92,8 +91,7 @@ def _append_strategy_history(strategy: dict) -> None:
     entry = {"timestamp": datetime.now(timezone.utc).isoformat(), **strategy}
     history.append(entry)
     history = history[-50:]   # keep last 50 versions
-    with open(STRATEGY_HISTORY_FILE, "w", encoding="utf-8") as f:
-        json.dump(history, f, ensure_ascii=False, indent=2)
+    atomic_json_write(STRATEGY_HISTORY_FILE, history, ensure_ascii=False, indent=2)
 
 
 # ── diff logging ───────────────────────────────────────────────────────────────

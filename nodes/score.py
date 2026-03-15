@@ -12,6 +12,7 @@ from datetime import datetime, timezone
 
 from config import HISTORY_FILE
 from utils.ui import stage_banner, ok
+from utils.io import atomic_json_write
 
 logger = logging.getLogger("german_bot.score")
 
@@ -76,9 +77,7 @@ def _load_history() -> list:
 
 
 def _save_history(history: list) -> None:
-    os.makedirs(os.path.dirname(HISTORY_FILE) or ".", exist_ok=True)
-    with open(HISTORY_FILE, "w", encoding="utf-8") as f:
-        json.dump(history, f, ensure_ascii=False, indent=2)
+    atomic_json_write(HISTORY_FILE, history, ensure_ascii=False, indent=2)
 
 
 # ── node ──────────────────────────────────────────────────────────────────────

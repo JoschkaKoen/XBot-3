@@ -25,7 +25,7 @@ from config import TT_API_KEY, IMAGES_DIR, resolve_image_style
 from services.ai_client import get_ai_response
 from services.image_ranker import pick_best_image
 from utils.retry import retry_call, with_retry
-from utils.ui import stage_banner, ok, info
+from utils.ui import stage_banner, ok, info, warn as ui_warn
 
 logger = logging.getLogger("german_bot.generate_image")
 
@@ -561,6 +561,7 @@ def generate_image(state: dict) -> dict:
             _overlay_flags(chosen)
         except Exception as exc:
             logger.warning("Flag overlay skipped — could not fetch flag images: %s", exc)
+            ui_warn(f"Flag overlay skipped (could not fetch flag images: {exc}) — image posted without flags.")
 
     return {
         **state,
