@@ -1,5 +1,7 @@
 # Secrets — never commit API keys
 .env
+api-keys.env
+*.local.env
 .cursor-api-presets.json
 # Public configuration (no keys) — tracked by git
 !settings.env
