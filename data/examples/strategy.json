@@ -1,0 +1,7 @@
+{
+  "preferred_cefr": "A1, A2, B1, B2, C1, C2",
+  "next_topic": "",
+  "style": "",
+  "avoid_words": [],
+  "scaffold": "#Learn[SOURCE_LANGUAGE] [LEVEL]\n\n[SOURCE_FLAG]  [ARTICLE] [SOURCE_WORD]\n[TARGET_FLAG]  [TARGET_TRANSLATION]  [EMOJI][EMOJI]\n\n[SOURCE_FLAG]  [SHORT_FUNNY_SOURCE_SENTENCE]\n[TARGET_FLAG]  [TARGET_TRANSLATION_OF_SENTENCE]  [EMOJI][EMOJI]"
+}

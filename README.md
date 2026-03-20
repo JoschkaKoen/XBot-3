@@ -91,6 +91,14 @@ nano .env
 | `SCW_SECRET_KEY` | Scaleway secret key (only if `AI_PROVIDER=scaleway`) |
 | `SCW_DEFAULT_PROJECT_ID` | Scaleway project ID (only if `AI_PROVIDER=scaleway`) |
 
+**Optional:** set `WAN_VIDEO_DIR` here if you use local Wan video (`ENABLE_VIDEO=wan`) and don’t want to edit `settings.env`.
+
+### Local runtime data & privacy
+
+Tweet history, strategy state, and voice cache live under `data/` as JSON files. Those files are **gitignored** in this repo so clones don’t inherit your posts or account-specific state. Empty templates are in `data/examples/` (see `data/examples/README.md`). The bot creates what it needs on first run; you usually don’t have to copy anything.
+
+See **`SECURITY.md`** for secrets and safe publishing.
+
 ### 6. Configure bot behaviour (`settings.env`)
 
 All non-secret settings live in `settings.env`. Key parameters:
@@ -107,7 +115,7 @@ All non-secret settings live in `settings.env`. Key parameters:
 | `ENABLE_VIDEO` | `grok` | `off`, `grok` (Grok I2V), or `wan` (local Wan2.1) |
 | `VIDEO_FREQUENCY` | `2` | Generate video every N tweets |
 | `WAN_VIDEO_STEPS` | `10` | Denoising steps for Wan video (higher = slower + better) |
-| `WAN_VIDEO_DIR` | `~/Programming/Wan2GP` | Path to Wan2GP installation |
+| `WAN_VIDEO_DIR` | `/path/to/Wan2GP` (template) | Path to Wan2GP installation — set your real path here or via `WAN_VIDEO_DIR` in `.env` |
 | `ENABLE_KEN_BURNS` | `false` | Apply Ken Burns zoom/pan when no animated video |
 | `FLAG_OVERLAY` | `true` | Add source→target language flag badge to images |
 | `POST_INTERVAL_SECONDS` | `18000` | Seconds between posts (18000 = 5 hours) |

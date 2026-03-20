@@ -22,7 +22,15 @@ data/checkpoints.sqlite*
 data/test_cycle_output.json
 data/test_cycle_terminal.txt
 data/new_bot_branch.txt
-# post_history.json IS tracked — it contains tweet history and engagement data
+
+# Private / machine-specific runtime JSON (tweet URLs, strategy, voice cache — not for public repo)
+data/post_history.json
+data/strategy.json
+data/strategy_history.json
+data/metrics_refresh.json
+data/video_state.json
+data/voice_pool.json
+data/scaffold_state.json
 
 # Big media — images, video, audio
 *.mp4
