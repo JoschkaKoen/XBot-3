@@ -121,7 +121,9 @@ All non-secret settings live in `settings.env`. Key parameters:
 | `POST_INTERVAL_SECONDS` | `18000` | Seconds between posts (18000 = 5 hours) |
 | `MAX_TWEET_LENGTH` | `500` | Max characters (280 for standard, up to 25000 for Premium) |
 | `USE_TRENDS` | `false` | Use X trending topics for word selection |
-| `STRATEGY_UPDATE_INTERVAL_HOURS` | `24` | How often to refresh metrics and re-run strategy analysis |
+| `ANALYZE_LAST_N` | `10` | How many recent posts the strategy LLM sees (engagement summary) |
+| `METRICS_FETCH_MAX_TWEETS` | _(see below)_ | Max `get_tweet` calls per metrics refresh. **Default if unset:** `max(ANALYZE_LAST_N, 30)` — only the **newest** N posts are refreshed; older rows keep stored scores. Set `0` or `all` for no cap (entire `post_history.json`). |
+| `STRATEGY_UPDATE_INTERVAL_HOURS` | `24` | Hours between X metrics refresh + strategy re-analysis. Use `false` / `off` / `never` / `disabled` to **disable both** (no metric API calls). Integers or expressions like `168` or `24*7` (weekly) are OK. |
 | `AUTO_UPDATE` | `true` | Auto-pull from `origin/main` and restart between cycles |
 | `ENABLE_SELF_IMPROVEMENT` | `false` | Enable automatic code self-improvement |
 

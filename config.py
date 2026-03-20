@@ -33,6 +33,8 @@ Most settings are read from settings.env (git-tracked) and .env (gitignored, API
   BOT BEHAVIOUR
     POST_INTERVAL_SECONDS → time between posts (18000 = 5 hours)
     AUTO_UPDATE         → true/false — pull GitHub updates after each wait
+    STRATEGY_UPDATE_INTERVAL_HOURS → hours between X metrics refresh + strategy
+                            re-analysis; set false/off/never/disabled to disable both
 
   AI MODELS (advanced)
     TWEET_MODEL, STRATEGY_MODEL, WORD_PICK_MODEL, etc.
@@ -44,7 +46,59 @@ Most settings are read from settings.env (git-tracked) and .env (gitignored, API
 import os
 import platform
 import logging
+import re
 from dotenv import load_dotenv
+
+_LOG = logging.getLogger(__name__)
+
+
+def _parse_strategy_update_interval(raw: str | None) -> tuple[bool, int]:
+    """
+    Parse STRATEGY_UPDATE_INTERVAL_HOURS.
+
+    Returns (metrics_and_strategy_updates_enabled, interval_hours).
+    When enabled is False, the bot never calls the X API to refresh metrics and
+    never re-runs LLM strategy analysis (same as leaving metrics_refreshed=False).
+
+    Accepts: false / off / no / never / disabled (case-insensitive) → disabled.
+    Accepts: plain integers, or simple expressions like 24*7 or 24 * 7 → hours.
+    """
+    if raw is None or not str(raw).strip():
+        return True, 24
+    s = str(raw).strip()
+    low = s.lower()
+    if low in ("false", "off", "no", "never", "disabled", "none"):
+        return False, 24
+    # e.g. 24*7, 24 * 7
+    mul = re.fullmatch(r"^\s*(\d+)\s*\*\s*(\d+)\s*$", s)
+    if mul:
+        try:
+            return True, int(mul.group(1)) * int(mul.group(2))
+        except ValueError:
+            pass
+    try:
+        return True, int(s)
+    except ValueError:
+        _LOG.warning(
+            "Invalid STRATEGY_UPDATE_INTERVAL_HOURS=%r — using 24h. "
+            "Use an integer, e.g. 24, 168, or false to disable metrics + strategy updates.",
+            raw,
+        )
+        return True, 24
+
+
+def _parse_metrics_fetch_max(raw: str | None, analyze_last_n: int) -> int:
+    """
+    Max tweets to refresh per metrics run (X API calls). Empty/unset → max(analyze_last_n, 30).
+    Set to 0 or 'all' / 'unlimited' for no cap (every row in post_history).
+    """
+    if raw is None or not str(raw).strip():
+        return max(analyze_last_n, 30)
+    s = str(raw).strip().lower()
+    if s in ("0", "all", "unlimited", "none"):
+        return 0
+    return max(1, int(s))
+
 
 # Load public configuration first, then secret keys.
 # Values in .env take precedence over settings.env (override=True on .env).
@@ -191,7 +245,8 @@ def reload_settings() -> None:
     global FLAG_OVERLAY
     global ENABLE_VIDEO, ENABLE_GROK_VIDEO, VIDEO_FREQUENCY, GROK_VIDEO_FREQUENCY, ENABLE_KEN_BURNS, WAN_VIDEO_DIR, WAN_VIDEO_STEPS
     global ENABLE_SELF_IMPROVEMENT, IMPROVEMENT_INTERVAL_CYCLES, IMPROVEMENT_SCORE_THRESHOLD
-    global STRATEGY_UPDATE_INTERVAL_HOURS
+    global STRATEGY_METRICS_UPDATES_ENABLED, STRATEGY_UPDATE_INTERVAL_HOURS
+    global METRICS_FETCH_MAX_TWEETS
     global TWEET_MODEL, TWEET_PICKER_MODEL, STRATEGY_MODEL
     global TREND_FILTER_MODEL, WORD_PICK_MODEL, SIMILARITY_MODEL, VOICE_PICKER_MODEL
 
@@ -211,6 +266,9 @@ def reload_settings() -> None:
     POST_INTERVAL_SECONDS          = int(os.getenv("POST_INTERVAL_SECONDS", "18000"))
     VIDEO_STYLE                    = os.getenv("VIDEO_STYLE", "ktv").lower().strip()
     ANALYZE_LAST_N                 = int(os.getenv("ANALYZE_LAST_N", "10"))
+    METRICS_FETCH_MAX_TWEETS       = _parse_metrics_fetch_max(
+        os.getenv("METRICS_FETCH_MAX_TWEETS"), ANALYZE_LAST_N
+    )
     FLAG_OVERLAY                   = os.getenv("FLAG_OVERLAY", "true").lower().strip() == "true"
     ENABLE_VIDEO                   = os.getenv("ENABLE_VIDEO", "off").lower().strip()
     ENABLE_GROK_VIDEO              = ENABLE_VIDEO == "grok"
@@ -222,7 +280,9 @@ def reload_settings() -> None:
     ENABLE_SELF_IMPROVEMENT        = os.getenv("ENABLE_SELF_IMPROVEMENT", "false").lower().strip() == "true"
     IMPROVEMENT_INTERVAL_CYCLES    = int(os.getenv("IMPROVEMENT_INTERVAL_CYCLES", "5"))
     IMPROVEMENT_SCORE_THRESHOLD    = float(os.getenv("IMPROVEMENT_SCORE_THRESHOLD", "9999"))
-    STRATEGY_UPDATE_INTERVAL_HOURS = int(os.getenv("STRATEGY_UPDATE_INTERVAL_HOURS", "24"))
+    STRATEGY_METRICS_UPDATES_ENABLED, STRATEGY_UPDATE_INTERVAL_HOURS = _parse_strategy_update_interval(
+        os.getenv("STRATEGY_UPDATE_INTERVAL_HOURS", "24")
+    )
     TWEET_MODEL                    = os.getenv("TWEET_MODEL", "flagship").lower().strip()
     TWEET_PICKER_MODEL             = os.getenv("TWEET_PICKER_MODEL", "flagship").lower().strip()
     STRATEGY_MODEL                 = os.getenv("STRATEGY_MODEL", "reasoning").lower().strip()
@@ -256,6 +316,10 @@ HISTORY_FILE: str = os.getenv("HISTORY_FILE", "data/post_history.json")
 LOG_FILE: str = os.getenv("LOG_FILE", "data/bot.log")
 VIDEO_STYLE: str = os.getenv("VIDEO_STYLE", "ktv").lower().strip()
 ANALYZE_LAST_N: int = int(os.getenv("ANALYZE_LAST_N", "10"))
+# Cap X API get_tweet calls per refresh: default max(ANALYZE_LAST_N, 30); 0 = unlimited.
+METRICS_FETCH_MAX_TWEETS: int = _parse_metrics_fetch_max(
+    os.getenv("METRICS_FETCH_MAX_TWEETS"), ANALYZE_LAST_N
+)
 # When True, word selection is based on real-time trending topics (TRENDS_COUNTRY).
 # When False (default), the AI picks the word freely.
 USE_TRENDS: bool = os.getenv("USE_TRENDS", "false").lower().strip() == "true"
@@ -360,8 +424,11 @@ SIMILARITY_MODEL: str = os.getenv("SIMILARITY_MODEL", "non-reasoning").lower().s
 VOICE_PICKER_MODEL: str = os.getenv("VOICE_PICKER_MODEL", "non-reasoning").lower().strip()
 
 # How many hours must pass before metrics are refreshed and strategy is re-analysed.
-# Both steps are skipped together when the interval has not elapsed (default: 24h).
-STRATEGY_UPDATE_INTERVAL_HOURS: int = int(os.getenv("STRATEGY_UPDATE_INTERVAL_HOURS", "24"))
+# Set STRATEGY_UPDATE_INTERVAL_HOURS=false (or off/never/disabled) to never refresh
+# X metrics and never re-run strategy analysis.
+STRATEGY_METRICS_UPDATES_ENABLED, STRATEGY_UPDATE_INTERVAL_HOURS = _parse_strategy_update_interval(
+    os.getenv("STRATEGY_UPDATE_INTERVAL_HOURS", "24")
+)
 
 # ── Folder layout ─────────────────────────────────────────────────────────────
 

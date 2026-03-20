@@ -315,7 +315,13 @@ def analyze_and_improve(state: dict) -> dict:
     # Skip if metrics were not refreshed this cycle — no new signal to learn from.
     if not state.get("metrics_refreshed", True):
         old_strategy = load_strategy()
-        ui_info("Metrics not refreshed — skipping strategy analysis, reusing current strategy.")
+        if not getattr(config, "STRATEGY_METRICS_UPDATES_ENABLED", True):
+            ui_info(
+                "Strategy analysis skipped — STRATEGY_UPDATE_INTERVAL_HOURS=false "
+                "(metrics + strategy updates disabled)."
+            )
+        else:
+            ui_info("Metrics not refreshed — skipping strategy analysis, reusing current strategy.")
         logger.info("Strategy analysis skipped (metrics_refreshed=False).")
         return {**state, "strategy": old_strategy}
 

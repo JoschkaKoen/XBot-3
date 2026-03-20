@@ -88,12 +88,31 @@ def combine_audio(
 
 
 # ── KTV overlay builder (shared by both image and video paths) ────────────────
-# Tune these constants to change the look of the karaoke bar and caption text:
-#   _BAR_H   — height of the black bar at the bottom (px)
-#   _TEXT_W  — caption width (fraction of video width)
-#   _TEXT_H  — caption line height (px)
-#   _TEXT_X  — horizontal inset (px)
-#   font_size, color, stroke_* — in the TextClip calls below
+# Dimensions below are defined at _KTV_REF_FRAME_HEIGHT (≈480p, typical Wan2 I2V).
+# They are scaled by actual frame height so subtitles match the *relative* size
+# of Wan videos on Grok (720p), static images, and any other resolution.
+
+_KTV_REF_FRAME_HEIGHT: float = 480.0
+_KTV_BAR_H_REF: int = 180
+_KTV_TEXT_H_REF: int = 148
+_KTV_FONT_SIZE_REF: int = 58
+_KTV_STROKE_REF: int = 3
+_KTV_BOTTOM_INSET_REF: int = 20
+
+
+def _ktv_scale_factors(base_clip) -> tuple[float, int, int, int, int, int, int, int]:
+    """Scale bar/text metrics from reference (480p) to *base_clip* height."""
+    s = float(base_clip.h) / _KTV_REF_FRAME_HEIGHT
+    bar_h = max(1, int(round(_KTV_BAR_H_REF * s)))
+    text_h = max(1, int(round(_KTV_TEXT_H_REF * s)))
+    font_size = max(12, int(round(_KTV_FONT_SIZE_REF * s)))
+    stroke_w = max(1, int(round(_KTV_STROKE_REF * s)))
+    bottom_inset = max(4, int(round(_KTV_BOTTOM_INSET_REF * s)))
+    text_w = int(base_clip.w * 0.90)
+    text_x = int(base_clip.w * 0.05)
+    text_y = base_clip.h - text_h - bottom_inset
+    return s, bar_h, text_h, font_size, stroke_w, text_w, text_x, text_y
+
 
 def _build_ktv_overlay_clips(
     base_clip,
@@ -111,11 +130,9 @@ def _build_ktv_overlay_clips(
         german_text:  Full source-language sentence shown as the base caption.
         word_timings: Optional list of {word, start, end} dicts for highlighting.
     """
-    _BAR_H  = 180
-    _TEXT_W = int(base_clip.w * 0.90)
-    _TEXT_H = 148
-    _TEXT_X = int(base_clip.w * 0.05)
-    _TEXT_Y = base_clip.h - _TEXT_H - 20
+    _, _BAR_H, _TEXT_H, font_size, stroke_w, _TEXT_W, _TEXT_X, _TEXT_Y = (
+        _ktv_scale_factors(base_clip)
+    )
 
     bar = (
         ColorClip(size=(base_clip.w, _BAR_H), color=(0, 0, 0))
@@ -128,10 +145,10 @@ def _build_ktv_overlay_clips(
         TextClip(
             font=_FONT,
             text=german_text,
-            font_size=58,
+            font_size=font_size,
             color="#9FD8E8",
             stroke_color="black",
-            stroke_width=3,
+            stroke_width=stroke_w,
             size=(_TEXT_W, _TEXT_H),
             method="caption",
             text_align="left",
@@ -156,10 +173,10 @@ def _build_ktv_overlay_clips(
                 TextClip(
                     font=_FONT,
                     text=prefix,
-                    font_size=58,
+                    font_size=font_size,
                     color="white",
                     stroke_color="black",
-                    stroke_width=3,
+                    stroke_width=stroke_w,
                     size=(_TEXT_W, _TEXT_H),
                     method="caption",
                     text_align="left",
