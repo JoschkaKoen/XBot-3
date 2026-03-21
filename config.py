@@ -19,6 +19,7 @@ Most settings are read from settings.env (git-tracked) and .env (gitignored, API
   VIDEO OPTIONS
     ENABLE_VIDEO       → "off" (static image) | "grok" (Grok Imagine) | "wan" (local Wan2.1)
     VIDEO_STYLE        → "ktv" (karaoke highlight) or "simple"
+    KTV_FONT_SIZE      → base subtitle font size (px at ~480p frame height); bar scales with it
     ENABLE_KEN_BURNS   → true/false — slow zoom+pan on static videos
     VIDEO_FREQUENCY    → generate video every N tweets (1 = every tweet)
 
@@ -27,7 +28,7 @@ Most settings are read from settings.env (git-tracked) and .env (gitignored, API
     FLAG_OVERLAY       → true/false — show country flags on images
 
   X/TWITTER
-    USE_TRENDS         → true/false — pick words from trending topics
+    USE_TRENDS         → true/false or comma cycle, e.g. true,false,false,false — trends every 4th tweet
     MAX_TWEET_LENGTH   → character limit (280 standard, up to 25000 premium)
 
   BOT BEHAVIOUR
@@ -98,6 +99,48 @@ def _parse_metrics_fetch_max(raw: str | None, analyze_last_n: int) -> int:
     if s in ("0", "all", "unlimited", "none"):
         return 0
     return max(1, int(s))
+
+
+def _parse_use_trends_cycle(raw: str | None) -> list[bool]:
+    """
+    Parse USE_TRENDS: a single true/false or a comma-separated cycle.
+
+    Examples:
+      "true"                    → [True]  (always use trends)
+      "false"                   → [False]
+      "true,false,false,false"  → trends on cycle indices 0, 4, 8, … only
+    """
+    if raw is None or not str(raw).strip():
+        return [False]
+    parts = [p.strip().lower() for p in str(raw).split(",") if p.strip()]
+    if not parts:
+        return [False]
+    out: list[bool] = []
+    for p in parts:
+        if p in ("true", "1", "yes", "on"):
+            out.append(True)
+        elif p in ("false", "0", "no", "off"):
+            out.append(False)
+        else:
+            _LOG.warning("Invalid USE_TRENDS token %r — treating as false.", p)
+            out.append(False)
+    return out
+
+
+def _parse_ktv_font_size(raw: str | None) -> int:
+    """
+    KTV karaoke subtitle reference font size (px at ~480p-tall frame).
+    Scaled in create_video for other resolutions. Clamped to a safe range.
+    """
+    if raw is None or not str(raw).strip():
+        v = 58
+    else:
+        try:
+            v = int(str(raw).strip())
+        except ValueError:
+            _LOG.warning("Invalid KTV_FONT_SIZE=%r — using 58.", raw)
+            v = 58
+    return max(12, min(200, v))
 
 
 # Load public configuration first, then secret keys.
@@ -225,25 +268,31 @@ def resolve_tweet_style(cycle: int) -> str:
     return TWEET_STYLE_CYCLE[cycle % len(TWEET_STYLE_CYCLE)]
 
 
+def resolve_use_trends(cycle: int) -> bool:
+    """Return whether to use X trending topics for word pick at this cycle index."""
+    return USE_TRENDS_CYCLE[cycle % len(USE_TRENDS_CYCLE)]
+
+
 def reload_settings() -> None:
     """
     Re-read settings.env (and .env) so any changes made between cycles take
     effect on the next cycle without restarting the bot.
 
     Only the 'live' behavioural settings are updated — static things like file
-    paths, API keys, and the KTV font are left unchanged.
+    paths, API keys, and the KTV font *file* (KTV_FONT path) are left unchanged.
+    KTV_FONT_SIZE reloads here so subtitle size can be tuned between cycles.
     """
     load_dotenv("settings.env", override=True)
     load_dotenv(override=True)  # .env (API keys) always wins
 
     global AI_PROVIDER
-    global USE_TRENDS, TREND_CANDIDATE_LIMIT
+    global USE_TRENDS, USE_TRENDS_CYCLE, TREND_CANDIDATE_LIMIT
     global IMAGE_STYLE_CYCLE, IMAGE_STYLE
     global TWEET_STYLE_CYCLE, TWEET_STYLE
     global IMAGE_PROVIDER, GROK_IMAGE_COUNT
     global MAX_TWEET_LENGTH, MAX_EXAMPLE_WORDS, POST_INTERVAL_SECONDS, VIDEO_STYLE, ANALYZE_LAST_N
     global FLAG_OVERLAY
-    global ENABLE_VIDEO, ENABLE_GROK_VIDEO, VIDEO_FREQUENCY, GROK_VIDEO_FREQUENCY, ENABLE_KEN_BURNS, WAN_VIDEO_DIR, WAN_VIDEO_STEPS
+    global ENABLE_VIDEO, ENABLE_GROK_VIDEO, VIDEO_FREQUENCY, GROK_VIDEO_FREQUENCY, ENABLE_KEN_BURNS, WAN_VIDEO_DIR, WAN_VIDEO_STEPS, KTV_FONT_SIZE
     global ENABLE_SELF_IMPROVEMENT, IMPROVEMENT_INTERVAL_CYCLES, IMPROVEMENT_SCORE_THRESHOLD
     global STRATEGY_METRICS_UPDATES_ENABLED, STRATEGY_UPDATE_INTERVAL_HOURS
     global METRICS_FETCH_MAX_TWEETS
@@ -251,7 +300,8 @@ def reload_settings() -> None:
     global TREND_FILTER_MODEL, WORD_PICK_MODEL, SIMILARITY_MODEL, VOICE_PICKER_MODEL
 
     AI_PROVIDER                    = os.getenv("AI_PROVIDER", "grok").lower().strip()
-    USE_TRENDS                     = os.getenv("USE_TRENDS", "false").lower().strip() == "true"
+    USE_TRENDS_CYCLE               = _parse_use_trends_cycle(os.getenv("USE_TRENDS"))
+    USE_TRENDS                     = USE_TRENDS_CYCLE[0]
     TREND_CANDIDATE_LIMIT          = int(os.getenv("TREND_CANDIDATE_LIMIT", "5"))
     _raw                           = os.getenv("IMAGE_STYLE", "photographic")
     IMAGE_STYLE_CYCLE              = [s.lower().strip() for s in _raw.split(",") if s.strip()] or ["photographic"]
@@ -277,6 +327,7 @@ def reload_settings() -> None:
     GROK_VIDEO_FREQUENCY           = VIDEO_FREQUENCY
     WAN_VIDEO_DIR                  = os.getenv("WAN_VIDEO_DIR", str(os.path.join(os.path.expanduser("~"), "Programming", "Wan2GP")))
     WAN_VIDEO_STEPS                = int(os.getenv("WAN_VIDEO_STEPS", "10"))
+    KTV_FONT_SIZE                  = _parse_ktv_font_size(os.getenv("KTV_FONT_SIZE"))
     ENABLE_SELF_IMPROVEMENT        = os.getenv("ENABLE_SELF_IMPROVEMENT", "false").lower().strip() == "true"
     IMPROVEMENT_INTERVAL_CYCLES    = int(os.getenv("IMPROVEMENT_INTERVAL_CYCLES", "5"))
     IMPROVEMENT_SCORE_THRESHOLD    = float(os.getenv("IMPROVEMENT_SCORE_THRESHOLD", "9999"))
@@ -320,9 +371,13 @@ ANALYZE_LAST_N: int = int(os.getenv("ANALYZE_LAST_N", "10"))
 METRICS_FETCH_MAX_TWEETS: int = _parse_metrics_fetch_max(
     os.getenv("METRICS_FETCH_MAX_TWEETS"), ANALYZE_LAST_N
 )
-# When True, word selection is based on real-time trending topics (TRENDS_COUNTRY).
-# When False (default), the AI picks the word freely.
-USE_TRENDS: bool = os.getenv("USE_TRENDS", "false").lower().strip() == "true"
+# Word selection: use X trending topics or free AI pick.
+# Single value true/false, or comma-separated cycle (same index as TWEET_STYLE / IMAGE_STYLE).
+#   "true,false,false,false" → trends only every 4th cycle (0, 4, 8, …).
+_USE_TRENDS_RAW: str = os.getenv("USE_TRENDS", "false")
+USE_TRENDS_CYCLE: list[bool] = _parse_use_trends_cycle(_USE_TRENDS_RAW)
+# Convenience alias: first step of the cycle (backward compatible).
+USE_TRENDS: bool = USE_TRENDS_CYCLE[0]
 
 # How many of the AI's top-ranked trend word candidates to try before falling back to
 # pure AI word selection. Once the top N candidates are all already used, the bot gives
@@ -373,6 +428,10 @@ WAN_VIDEO_DIR: str = os.getenv("WAN_VIDEO_DIR", str(os.path.join(os.path.expandu
 # Lower = faster but lower quality. Higher = slower but better quality.
 WAN_VIDEO_STEPS: int = int(os.getenv("WAN_VIDEO_STEPS", "10"))
 
+# KTV overlay: reference font size in pixels at a ~480p-tall frame; scaled for
+# 720p, 1080p, etc. Bar / text box / stroke scale with this value (default 58).
+KTV_FONT_SIZE: int = _parse_ktv_font_size(os.getenv("KTV_FONT_SIZE"))
+
 # When True, a source→target flag badge is added to the top-right corner of
 # each generated image, reinforcing the language-learning branding.
 FLAG_OVERLAY: bool = os.getenv("FLAG_OVERLAY", "true").lower().strip() == "true"
@@ -402,7 +461,7 @@ TWEET_PICKER_MODEL: str = os.getenv("TWEET_PICKER_MODEL", "flagship").lower().st
 # Only applies when AI_PROVIDER=grok.
 TREND_FILTER_MODEL: str = os.getenv("TREND_FILTER_MODEL", "non-reasoning").lower().strip()
 
-# Model used for free-form word selection (when USE_TRENDS=false or trends yield nothing):
+# Model used for free-form word selection (when trends are off this cycle or trends yield nothing):
 #   "flagship"      = grok-4
 #   "reasoning"     = grok-4-1-fast
 #   "non-reasoning" = grok-4-1-fast-non-reasoning  (default)

@@ -95,19 +95,21 @@ def combine_audio(
 _KTV_REF_FRAME_HEIGHT: float = 480.0
 _KTV_BAR_H_REF: int = 180
 _KTV_TEXT_H_REF: int = 148
-_KTV_FONT_SIZE_REF: int = 58
+_KTV_FONT_DEFAULT: float = 58.0  # built-in reference; user size from config.KTV_FONT_SIZE
 _KTV_STROKE_REF: int = 3
 _KTV_BOTTOM_INSET_REF: int = 20
 
 
 def _ktv_scale_factors(base_clip) -> tuple[float, int, int, int, int, int, int, int]:
     """Scale bar/text metrics from reference (480p) to *base_clip* height."""
+    user_font = float(config.KTV_FONT_SIZE)
+    relative = user_font / _KTV_FONT_DEFAULT
     s = float(base_clip.h) / _KTV_REF_FRAME_HEIGHT
-    bar_h = max(1, int(round(_KTV_BAR_H_REF * s)))
-    text_h = max(1, int(round(_KTV_TEXT_H_REF * s)))
-    font_size = max(12, int(round(_KTV_FONT_SIZE_REF * s)))
-    stroke_w = max(1, int(round(_KTV_STROKE_REF * s)))
-    bottom_inset = max(4, int(round(_KTV_BOTTOM_INSET_REF * s)))
+    bar_h = max(1, int(round(_KTV_BAR_H_REF * s * relative)))
+    text_h = max(1, int(round(_KTV_TEXT_H_REF * s * relative)))
+    font_size = max(12, int(round(user_font * s)))
+    stroke_w = max(1, int(round(_KTV_STROKE_REF * s * relative)))
+    bottom_inset = max(4, int(round(_KTV_BOTTOM_INSET_REF * s * relative)))
     text_w = int(base_clip.w * 0.90)
     text_x = int(base_clip.w * 0.05)
     text_y = base_clip.h - text_h - bottom_inset

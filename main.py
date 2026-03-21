@@ -90,9 +90,17 @@ def _model_lines() -> list:
         # ── AI models ──────────────────────────────────────────────────────────
         ("Tweet generation:",  tweet_model),
         ("Strategy analysis:", strategy_model),
-        ("Word selection:",    trend_model if _config.USE_TRENDS else word_model),
     ]
-    if _config.USE_TRENDS:
+    _any_trends = any(_config.USE_TRENDS_CYCLE)
+    _all_trends = all(_config.USE_TRENDS_CYCLE)
+    if _all_trends:
+        _word_sel = trend_model
+    elif not _any_trends:
+        _word_sel = word_model
+    else:
+        _word_sel = f"{word_model}  /  {trend_model}  (by cycle)"
+    lines.append(("Word selection:", _word_sel))
+    if _any_trends:
         lines.append(("  (trend filtering):", trend_model))
 
     from collections import Counter
@@ -110,8 +118,9 @@ def _model_lines() -> list:
     tweet_style_label = _cycle_label(_config.TWEET_STYLE_CYCLE)
 
     lines.append(("─" * 22, "─" * 30))   # visual separator
-    lines.append(("Use trends:",          "ON" if _config.USE_TRENDS else "off"))
-    if _config.USE_TRENDS:
+    use_trends_label = _cycle_label(["on" if x else "off" for x in _config.USE_TRENDS_CYCLE])
+    lines.append(("Use trends:", use_trends_label))
+    if _any_trends:
         lines.append(("  Candidate limit:", f"{_config.TREND_CANDIDATE_LIMIT}  (top-{_config.TREND_CANDIDATE_LIMIT}, then AI fallback)"))
     lines.append(("Image style:",         image_style_label))
     lines.append(("Tweet style:",         tweet_style_label))

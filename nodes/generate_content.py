@@ -646,8 +646,9 @@ def generate_content(state: dict) -> dict:
     avoid_words: list = []
     word_from_trends: bool = False
 
-    if config.USE_TRENDS:
-        info(f"USE_TRENDS=true — fetching trends ({config.TRENDS_COUNTRY}) …")
+    use_trends = config.resolve_use_trends(cycle)
+    if use_trends:
+        info(f"USE_TRENDS on this cycle — fetching trends ({config.TRENDS_COUNTRY}) …")
         from nodes.score import _load_history
         history_words = [r.get("source_word", "") for r in _load_history() if r.get("source_word")]
         strategy_words = strategy.get("avoid_words", [])
