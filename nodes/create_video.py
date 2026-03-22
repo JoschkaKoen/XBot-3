@@ -23,6 +23,14 @@ KEN BURNS:
     independently of ENABLE_VIDEO).
 
 ================================================================================
+ RELATED MODULES
+================================================================================
+  - nodes.generate_audio: Provides clean_audio_path and word_timings
+  - nodes.generate_image: Provides image_path and midjourney_prompt
+  - services.grok_video:  Grok Imagine I2V video generation
+  - services.wan_video:   Wan2.1 local I2V video generation
+  - config:               KTV_FONT, VIDEO_STYLE, ENABLE_VIDEO, etc.
+================================================================================
 """
 
 import os
@@ -92,16 +100,32 @@ def combine_audio(
 # They are scaled by actual frame height so subtitles match the *relative* size
 # of Wan videos on Grok (720p), static images, and any other resolution.
 
-_KTV_REF_FRAME_HEIGHT: float = 480.0
-_KTV_BAR_H_REF: int = 180
-_KTV_TEXT_H_REF: int = 148
-_KTV_FONT_DEFAULT: float = 58.0  # built-in reference; user size from config.KTV_FONT_SIZE
-_KTV_STROKE_REF: int = 3
-_KTV_BOTTOM_INSET_REF: int = 20
+_KTV_REF_FRAME_HEIGHT: float = 720.0   # reference = standard HD (720p)
+_KTV_BAR_H_REF: int = 270             # bar height at reference resolution
+_KTV_TEXT_H_REF: int = 222            # text box height at reference resolution
+_KTV_FONT_DEFAULT: float = 87.0       # default font px at 720p (≈58px at 480p Wan)
+_KTV_STROKE_REF: int = 5
+_KTV_BOTTOM_INSET_REF: int = 30
 
 
 def _ktv_scale_factors(base_clip) -> tuple[float, int, int, int, int, int, int, int]:
-    """Scale bar/text metrics from reference (480p) to *base_clip* height."""
+    """Scale bar/text metrics from reference (720p) to *base_clip* height.
+
+    KTV_FONT_SIZE = font size in px at a 720p output frame (Grok standard HD).
+    Other resolutions (480p Wan, tall static images) are scaled proportionally.
+    
+    This ensures the KTV overlay looks consistent across different video sources:
+    - Grok Imagine: 720p (reference resolution)
+    - Wan2.1 local: 480p (scaled down proportionally)
+    - Static images: variable height (scaled accordingly)
+    
+    Args:
+        base_clip: The underlying video/image clip to scale metrics for.
+    
+    Returns:
+        Tuple of (scale_factor, bar_height, text_height, font_size, stroke_width,
+                  text_width, text_x, text_y) all scaled to the clip's resolution.
+    """
     user_font = float(config.KTV_FONT_SIZE)
     relative = user_font / _KTV_FONT_DEFAULT
     s = float(base_clip.h) / _KTV_REF_FRAME_HEIGHT
@@ -197,6 +221,8 @@ def _build_ktv_overlay_clips(
 # ── Ken Burns effect (PIL AFFINE, sub-pixel smooth) ──────────────────────────
 
 # Zoom and pan constants — kept here so they're easy to tune.
+# These values create a subtle, professional-looking motion that enhances
+# static images without being distracting.
 _KB_ZOOM_START = 1.0    # 1.0 = full frame visible at start
 _KB_ZOOM_END   = 1.08   # 1.08 = 8 % zoom-in at end
 _KB_PAN_X      = 0.3    # fraction of available slack to drift rightward
@@ -208,28 +234,54 @@ def _make_ken_burns_clip(image_path: str, duration: float, fps: int = 24) -> Vid
     Return a moviepy VideoClip with Ken Burns slow zoom+pan applied to the image.
 
     Uses PIL img.transform(AFFINE, BICUBIC) — true float-space sampling, no
-    integer rounding, no frame stutter.
+    integer rounding, no frame stutter. This produces buttery-smooth motion
+    that looks professional on social media.
 
-    Pan is expressed as a fraction of the available slack (iw * (1 - scale)).
+    The pan is expressed as a fraction of the available slack (iw * (1 - scale)).
     At ZOOM_START=1.0 slack is 0, so tx=ty=0 regardless of PAN values — the
     view is guaranteed to start exactly at the full image with no offset.
+    
+    The motion follows a linear interpolation from start to end, creating
+    a smooth, predictable zoom that stays centered-ish while drifting slightly.
+
+    Args:
+        image_path: Path to the source image file.
+        duration: Length of the output video in seconds.
+        fps: Frames per second for the output video (default: 24).
+    
+    Returns:
+        A VideoClip with the Ken Burns effect applied, ready for audio overlay.
     """
     img = _PILImage.open(image_path).convert("RGB")
     iw, ih = img.size
 
     def make_frame(t: float) -> np.ndarray:
+        # Calculate progress through the video (0.0 at start, 1.0 at end)
         progress = max(0.0, min(1.0, t / max(duration, 1.0 / fps)))
+        
+        # Interpolate zoom level: starts at 1.0 (full image), ends at 1.08 (8% zoomed in)
         zoom  = _KB_ZOOM_START + (_KB_ZOOM_END - _KB_ZOOM_START) * progress
         scale = 1.0 / zoom
 
+        # Calculate how much "slack" (unused space) the zoom creates
+        # At zoom=1.0, slack=0 (full image fills frame)
+        # At zoom=1.08, slack allows 8% of the image to be cropped
         slack_x = iw * (1.0 - scale)
         slack_y = ih * (1.0 - scale)
 
+        # Calculate pan offset: drifts rightward and downward as zoom increases
+        # The (progress - 0.5) term makes pan start centered and drift outward
         tx = slack_x * (0.5 + _KB_PAN_X * (progress - 0.5))
         ty = slack_y * (0.5 + _KB_PAN_Y * (progress - 0.5))
+        
+        # Clamp to valid range (don't pan beyond the image bounds)
         tx = max(0.0, min(tx, slack_x))
         ty = max(0.0, min(ty, slack_y))
 
+        # Apply affine transformation: scale + translate
+        # The matrix (scale, 0, tx, 0, scale, ty) defines:
+        #   x' = scale * x + tx
+        #   y' = scale * y + ty
         frame = img.transform(
             (iw, ih),
             _PILImage.AFFINE,

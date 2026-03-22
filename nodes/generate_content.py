@@ -16,6 +16,15 @@ MAX_EXAMPLE_WORDS and MAX_TWEET_LENGTH.
 
 Strategy (topic, style, avoid_words) comes from data/strategy.json and is
 updated by the analyze node after each cycle.
+
+================================================================================
+ RELATED MODULES
+================================================================================
+  - nodes.analyze:     Provides strategy via load_strategy()
+  - nodes.score:       Provides _load_history() for avoid_words
+  - services.x_trends: Provides get_trends() for trend-based word selection
+  - services.grok_ai:  AI functions for different model tiers
+  - scaffolds:         Provides next_scaffold() for tweet format templates
 ================================================================================
 """
 
@@ -87,15 +96,29 @@ logger = logging.getLogger("german_bot.generate_content")
 # ── helpers ───────────────────────────────────────────────────────────────────
 
 def _truncate_emoji_pairs(tweet: str) -> str:
-    """Replace doubled trailing emoji pairs (🚗🚗 → 🚗) to shorten the tweet."""
+    """
+    Replace doubled trailing emoji pairs (🚗🚗 → 🚗) to shorten the tweet.
+    
+    This is a post-processing step when tweets exceed MAX_TWEET_LENGTH.
+    The AI sometimes adds duplicate emoji pairs for emphasis, which can be
+    safely reduced without changing the meaning.
+    
+    Args:
+        tweet: The full tweet text, possibly with doubled emoji pairs.
+    
+    Returns:
+        The tweet with any doubled trailing emoji pairs collapsed to single.
+    """
     lines = tweet.split("\n")
     result = []
     for line in lines:
+        # Only process lines that have a double-space separator (tweet format)
         if "  " in line:
             idx = line.rfind("  ")
             prefix = line[: idx + 2]
             suffix = line[idx + 2 :].strip()
             n = len(suffix)
+            # Check if suffix is an even-length doubled string (e.g., "🚗🚗")
             if n % 2 == 0 and n > 0 and suffix[: n // 2] == suffix[n // 2 :]:
                 line = prefix + suffix[: n // 2]
         result.append(line)
@@ -253,7 +276,29 @@ def _call_tweet_ai(
     word_from_trends: bool = False,
     funny: bool = True,
 ) -> list:
-    """Fire 3 parallel API calls, each generating one tweet candidate. Returns list of dicts."""
+    """
+    Fire 3 parallel API calls, each generating one tweet candidate.
+    
+    Uses ThreadPoolExecutor to generate candidates concurrently, reducing
+    total latency from ~15s (sequential) to ~5s (parallel). Each candidate
+    is printed to the terminal as soon as it arrives for real-time feedback.
+    
+    Args:
+        trending_word: The source-language word to build the tweet around.
+        scaffold: The tweet format template with placeholders.
+        strategy: Current strategy dict (topic, style, avoid_words).
+        top_tweets: Past successful tweets for in-context learning (currently disabled).
+        tweet_ai: The AI function to call (flagship/reasoning/default).
+        cefr_level: Pre-determined CEFR level for the word, or empty.
+        extra_instruction: Additional constraint to append to the prompt.
+        word_from_trends: If True, skip topic/style from strategy (trend already sets topic).
+        funny: If True, use humorous tone; otherwise neutral/educational.
+    
+    Returns:
+        List of candidate dicts (may be fewer than 3 if some failed).
+        Each dict contains: tweet, source_word, article, cefr_level,
+        example_sentence_source, example_sentence_target.
+    """
     import threading
     from concurrent.futures import ThreadPoolExecutor, as_completed
 
@@ -437,8 +482,19 @@ def _pick_word_from_trends(avoid_words: list) -> Optional[tuple[str, str]]:
     Fetch German trends, log them, and ask the AI to choose the best one
     that works as a German vocabulary word.
 
-    Returns (word, cefr_level) tuple, or None if no suitable trend found
-    or if trend fetching fails (caller should fall back to AI-free selection).
+    The AI ranks trend-extracted words by learning value, NOT by trend relevance.
+    This ensures learners get everyday vocabulary rather than news-specific jargon.
+    
+    A candidate window (TREND_CANDIDATE_LIMIT) controls how many top-ranked words
+    are considered. If all words in the window are already used, the function
+    falls back to AI-free word selection instead of picking a lower-ranked word.
+
+    Args:
+        avoid_words: List of words that should not be repeated (from history + strategy).
+    
+    Returns:
+        (word, cefr_level) tuple if a suitable trend word was found.
+        None if no suitable trend found or if fetching failed (caller should fall back).
     """
     trends = get_trends(max_trends=20)
 

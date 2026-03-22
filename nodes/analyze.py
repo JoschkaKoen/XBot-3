@@ -14,6 +14,15 @@ updated strategy dict fed into generate_content.
   _DEFAULT_STRATEGY        — default keys when no history exists
   _DEFAULT_SCAFFOLD        — example tweet format shown to the LLM
 ================================================================================
+
+================================================================================
+ RELATED MODULES
+================================================================================
+  - nodes.score:        Provides _load_history() and tweet performance metrics
+  - nodes.generate_content: Consumes strategy for word/tweet generation
+  - services.ai_client: AI response handling
+  - config:             ANALYZE_LAST_N, STRATEGY_MODEL settings
+================================================================================
 """
 
 import json
