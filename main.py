@@ -8,6 +8,8 @@ XBot-3 Language Learning Bot — Main Entry Point
     source venv/bin/activate
     python main.py
 
+    source venv/bin/activate && python main.py
+
 Run one cycle only (for testing or improvement engine):
     python main.py --single-cycle
 
@@ -125,7 +127,7 @@ def _model_lines() -> list:
     lines.append(("Image style:",         image_style_label))
     lines.append(("Tweet style:",         tweet_style_label))
     _engine = _config.ENABLE_VIDEO
-    if _engine in ("grok", "wan"):
+    if _engine in ("grok", "wan2.1"):
         freq_label = "every tweet" if _config.VIDEO_FREQUENCY <= 1 else f"every {_config.VIDEO_FREQUENCY} tweets"
         engine_display = "Grok Imagine" if _engine == "grok" else "Wan2.1 (local)"
         lines.append(("Video (I2V):", f"ON  ({freq_label} via {engine_display})"))

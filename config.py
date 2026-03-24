@@ -17,15 +17,16 @@ Most settings are read from settings.env (git-tracked) and .env (gitignored, API
     MAX_EXAMPLE_WORDS  → max words in example sentence (default: 13)
 
   VIDEO OPTIONS
-    ENABLE_VIDEO       → "off" (static image) | "grok" (Grok Imagine) | "wan" (local Wan2.1)
+    ENABLE_VIDEO       → "off" (static image) | "grok" (Grok Imagine) | "WAN2.1" (local Wan2.1)
     VIDEO_STYLE        → "ktv" (karaoke highlight) or "simple"
     KTV_FONT_SIZE      → base subtitle font size (px at ~480p frame height); bar scales with it
     ENABLE_KEN_BURNS   → true/false — slow zoom+pan on static videos
     VIDEO_FREQUENCY    → generate video every N tweets (1 = every tweet)
 
   IMAGE GENERATION
-    IMAGE_PROVIDER     → "midjourney" (TTAPI) or "grok" (xAI)
-    FLAG_OVERLAY       → true/false — show country flags on images
+    IMAGE_PROVIDER        → "midjourney" (TTAPI), "grok" (xAI), or "z-image-turbo" (ComfyUI local)
+    FLAG_OVERLAY          → true/false — show country flags on images
+    Z_IMAGE_TURBO_STEPS   → denoising steps for Z-Image-Turbo (default: 8, range 8–9)
 
   X/TWITTER
     USE_TRENDS         → true/false or comma cycle, e.g. true,false,false,false — trends every 4th tweet
@@ -129,17 +130,18 @@ def _parse_use_trends_cycle(raw: str | None) -> list[bool]:
 
 def _parse_ktv_font_size(raw: str | None) -> int:
     """
-    KTV karaoke subtitle reference font size (px at ~480p-tall frame).
-    Scaled in create_video for other resolutions. Clamped to a safe range.
+    KTV karaoke subtitle font size in px at a 720p output frame (standard HD reference).
+    At other resolutions the size is scaled proportionally (e.g. ~53px at 480p Wan when
+    set to 80). Clamped to a safe range (12–200).
     """
     if raw is None or not str(raw).strip():
-        v = 58
+        v = 80
     else:
         try:
             v = int(str(raw).strip())
         except ValueError:
-            _LOG.warning("Invalid KTV_FONT_SIZE=%r — using 58.", raw)
-            v = 58
+            _LOG.warning("Invalid KTV_FONT_SIZE=%r — using 80.", raw)
+            v = 80
     return max(12, min(200, v))
 
 
@@ -289,10 +291,10 @@ def reload_settings() -> None:
     global USE_TRENDS, USE_TRENDS_CYCLE, TREND_CANDIDATE_LIMIT
     global IMAGE_STYLE_CYCLE, IMAGE_STYLE
     global TWEET_STYLE_CYCLE, TWEET_STYLE
-    global IMAGE_PROVIDER, GROK_IMAGE_COUNT
+    global IMAGE_PROVIDER, GROK_IMAGE_COUNT, Z_IMAGE_TURBO_STEPS
     global MAX_TWEET_LENGTH, MAX_EXAMPLE_WORDS, POST_INTERVAL_SECONDS, VIDEO_STYLE, ANALYZE_LAST_N
     global FLAG_OVERLAY
-    global ENABLE_VIDEO, ENABLE_GROK_VIDEO, VIDEO_FREQUENCY, GROK_VIDEO_FREQUENCY, ENABLE_KEN_BURNS, WAN_VIDEO_DIR, WAN_VIDEO_STEPS, KTV_FONT_SIZE
+    global ENABLE_VIDEO, ENABLE_GROK_VIDEO, VIDEO_FREQUENCY, GROK_VIDEO_FREQUENCY, ENABLE_KEN_BURNS, WAN_VIDEO_DIR, WAN_VIDEO_STEPS, WAN_VIDEO_FRAMES, WAN_VIDEO_HISTORY_FILE, KTV_FONT_SIZE
     global ENABLE_SELF_IMPROVEMENT, IMPROVEMENT_INTERVAL_CYCLES, IMPROVEMENT_SCORE_THRESHOLD
     global STRATEGY_METRICS_UPDATES_ENABLED, STRATEGY_UPDATE_INTERVAL_HOURS
     global METRICS_FETCH_MAX_TWEETS
@@ -311,6 +313,7 @@ def reload_settings() -> None:
     TWEET_STYLE                    = TWEET_STYLE_CYCLE[0]
     IMAGE_PROVIDER                 = os.getenv("IMAGE_PROVIDER", "midjourney").lower().strip()
     GROK_IMAGE_COUNT               = int(os.getenv("GROK_IMAGE_COUNT", "1"))
+    Z_IMAGE_TURBO_STEPS            = int(os.getenv("Z_IMAGE_TURBO_STEPS", "8"))
     MAX_TWEET_LENGTH               = int(os.getenv("MAX_TWEET_LENGTH", "280"))
     MAX_EXAMPLE_WORDS              = int(os.getenv("MAX_EXAMPLE_WORDS", "13"))
     POST_INTERVAL_SECONDS          = int(os.getenv("POST_INTERVAL_SECONDS", "18000"))
@@ -327,6 +330,8 @@ def reload_settings() -> None:
     GROK_VIDEO_FREQUENCY           = VIDEO_FREQUENCY
     WAN_VIDEO_DIR                  = os.getenv("WAN_VIDEO_DIR", str(os.path.join(os.path.expanduser("~"), "Programming", "Wan2GP")))
     WAN_VIDEO_STEPS                = int(os.getenv("WAN_VIDEO_STEPS", "10"))
+    WAN_VIDEO_FRAMES               = int(os.getenv("WAN_VIDEO_FRAMES", "81"))
+    WAN_VIDEO_HISTORY_FILE         = os.getenv("WAN_VIDEO_HISTORY_FILE", "data/wan_video_history.jsonl")
     KTV_FONT_SIZE                  = _parse_ktv_font_size(os.getenv("KTV_FONT_SIZE"))
     ENABLE_SELF_IMPROVEMENT        = os.getenv("ENABLE_SELF_IMPROVEMENT", "false").lower().strip() == "true"
     IMPROVEMENT_INTERVAL_CYCLES    = int(os.getenv("IMPROVEMENT_INTERVAL_CYCLES", "5"))
@@ -345,12 +350,17 @@ def reload_settings() -> None:
 # ── Image generation provider ────────────────────────────────────────────────
 # "midjourney" = Midjourney via TTAPI (default, requires TT_API_KEY)
 # "grok"       = xAI Grok Imagine API  (requires XAI_API_KEY)
+# "z-image-turbo" = Z-Image-Turbo FP8 AIO via local ComfyUI (requires COMFYUI_URL/COMFYUI_DIR)
 IMAGE_PROVIDER: str = os.getenv("IMAGE_PROVIDER", "midjourney").lower().strip()
 
 # Number of images to request per cycle when IMAGE_PROVIDER=grok.
 # If Grok Imagine ignores this and always returns a fixed count, all returned
 # images are still ranked and the best one is selected automatically.
 GROK_IMAGE_COUNT: int = int(os.getenv("GROK_IMAGE_COUNT", "1"))
+
+# Denoising steps for Z-Image-Turbo (IMAGE_PROVIDER=z-image-turbo).
+# Model card recommendation: 8–9. CFG/sampler/scheduler are locked in the service.
+Z_IMAGE_TURBO_STEPS: int = int(os.getenv("Z_IMAGE_TURBO_STEPS", "8"))
 
 # ── Tweet constraints ────────────────────────────────────────────────────────
 # Maximum character length of a posted tweet. X's hard limit is 280 for free
@@ -398,9 +408,9 @@ IMPROVEMENT_SCORE_THRESHOLD: float = float(os.getenv("IMPROVEMENT_SCORE_THRESHOL
 
 
 # Which video engine to use for animating the generated image.
-#   "off"  → no video animation; static KTV or Ken Burns only (default)
-#   "grok" → Grok Imagine API (requires XAI_API_KEY)
-#   "wan"  → local Wan2.1 model via Wan2GP (requires WAN_VIDEO_DIR)
+#   "off"    → no video animation; static KTV or Ken Burns only (default)
+#   "grok"   → Grok Imagine API (requires XAI_API_KEY)
+#   "WAN2.1" → local Wan2.1 model via Wan2GP (requires WAN_VIDEO_DIR)
 ENABLE_VIDEO: str = os.getenv("ENABLE_VIDEO", "off").lower().strip()
 
 # Backward-compat alias used by older code paths.
@@ -428,8 +438,16 @@ WAN_VIDEO_DIR: str = os.getenv("WAN_VIDEO_DIR", str(os.path.join(os.path.expandu
 # Lower = faster but lower quality. Higher = slower but better quality.
 WAN_VIDEO_STEPS: int = int(os.getenv("WAN_VIDEO_STEPS", "10"))
 
-# KTV overlay: reference font size in pixels at a ~480p-tall frame; scaled for
-# 720p, 1080p, etc. Bar / text box / stroke scale with this value (default 58).
+# Number of video frames (only used when ENABLE_VIDEO=WAN2.1).
+# 81 frames @ 16 fps ≈ 5 s. Must be 4k+1, e.g. 49, 65, 81, 97.
+WAN_VIDEO_FRAMES: int = int(os.getenv("WAN_VIDEO_FRAMES", "81"))
+
+# Append-only JSONL file: generation params + video reward scores per Wan run.
+WAN_VIDEO_HISTORY_FILE: str = os.getenv("WAN_VIDEO_HISTORY_FILE", "data/wan_video_history.jsonl")
+
+# KTV overlay subtitle font size in px at 720p (standard HD reference).
+# E.g. KTV_FONT_SIZE=80 → ~80px on 720p Grok video, ~53px on 480p Wan video.
+# Bar height, text box, and stroke all scale proportionally. Default: 80.
 KTV_FONT_SIZE: int = _parse_ktv_font_size(os.getenv("KTV_FONT_SIZE"))
 
 # When True, a source→target flag badge is added to the top-right corner of

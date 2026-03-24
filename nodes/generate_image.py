@@ -16,7 +16,7 @@ source/target flag badge (FLAG_OVERLAY).
   Flag overlay: _overlay_flags(), _create_flag_badge() — see _FLAGCDN_* constants
 ================================================================================
 
-IMAGE_PROVIDER (settings.env): "midjourney" (TT_API_KEY) or "grok" (XAI_API_KEY).
+IMAGE_PROVIDER (settings.env): "midjourney" (TT_API_KEY), "grok" (XAI_API_KEY), or "z-image-turbo" (ComfyUI local).
 """
 
 import io
@@ -207,6 +207,9 @@ class GrokImagineClient:
 def _make_client():
     if config.IMAGE_PROVIDER == "grok":
         return GrokImagineClient()
+    if config.IMAGE_PROVIDER == "z-image-turbo":
+        from services.zit_image import ZITImageClient
+        return ZITImageClient()
     return MidjourneyClient()
 
 
@@ -480,8 +483,9 @@ def generate_image(state: dict) -> dict:
                 "No parameter flags. No double hyphens. Output only the description."
             )
         else:
+            _aspect_hint = "square 1:1" if config.IMAGE_PROVIDER == "z-image-turbo" else "16:9"
             img_req = (
-                "Generate an image generation prompt for a photorealistic, aesthetically stunning 16:9 photograph.\n\n"
+                f"Generate an image generation prompt for a photorealistic, aesthetically stunning {_aspect_hint} photograph.\n\n"
                 f"Sentence: \"{example_en}\"\n\n"
                 f"{_IMMERSIVE}"
                 f"{_CLEAN_AESTHETIC}"
@@ -543,6 +547,14 @@ def generate_image(state: dict) -> dict:
             max_attempts=3,
             base_delay=5.0,
             label="grok_generate",
+        )
+    elif config.IMAGE_PROVIDER == "z-image-turbo":
+        image_paths = retry_call(
+            _image_client.generate,
+            image_prompt,
+            max_attempts=3,
+            base_delay=10.0,
+            label="z_image_turbo_generate",
         )
     else:
         image_paths = retry_call(

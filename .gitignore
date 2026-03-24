@@ -31,6 +31,7 @@ data/metrics_refresh.json
 data/video_state.json
 data/voice_pool.json
 data/scaffold_state.json
+data/*_history.jsonl
 
 # Big media — images, video, audio
 *.mp4

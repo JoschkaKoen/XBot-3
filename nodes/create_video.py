@@ -10,9 +10,9 @@ This node creates the final MP4 video posted to X.  It combines:
     2. Visual: generated image (generate_image) — possibly animated
 
 VIDEO ENGINE OPTIONS (set ENABLE_VIDEO in settings.env):
-    "off"  → static image + optional Ken Burns zoom/pan
-    "grok" → Grok Imagine API (8s, 720p) animation
-    "wan"  → local Wan2.1 model via Wan2GP (5s, 480p)
+    "off"    → static image + optional Ken Burns zoom/pan
+    "grok"   → Grok Imagine API (8s, 720p) animation
+    "WAN2.1" → local Wan2.1 model via Wan2GP (5s, 480p)
 
 KTV OVERLAY:
     The "ktv" VIDEO_STYLE adds a karaoke-style word-by-word highlight bar
@@ -435,7 +435,7 @@ def create_video(state: dict) -> dict:
     # ── Step 2: Render video ──────────────────────────────────────────────────
     animated_video_path: str | None = None
 
-    if config.ENABLE_VIDEO in ("grok", "wan"):
+    if config.ENABLE_VIDEO in ("grok", "wan2.1"):
         _svc = None
         if config.ENABLE_VIDEO == "grok":
             from services import grok_video as _svc
