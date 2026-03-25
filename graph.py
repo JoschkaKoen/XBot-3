@@ -128,7 +128,7 @@ def wait_node(state: dict) -> dict:
         logger.info("Single-cycle mode — skipping wait.")
         return state
 
-    stage_banner(9)
+    stage_banner(10)
 
     improvement_duration = 0
 

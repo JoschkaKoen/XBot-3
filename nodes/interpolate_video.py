@@ -16,26 +16,32 @@ import os
 
 import config
 from services.rife_video import RIFENotConfiguredError, interpolate
-from utils.ui import stage_banner, ok, warn as ui_warn
+from utils.ui import stage_banner, info, ok, warn as ui_warn
 
 logger = logging.getLogger("german_bot.interpolate_video")
 
 
 def interpolate_video(state: dict) -> dict:
-    stage_banner(7)   # sits between create_video (6) and publish (8 after this insert)
+    stage_banner(7)   # between create_video (6) and publish (8)
     logger.info("Node: interpolate_video")
 
     video_path: str | None = state.get("video_path")
 
     if not video_path:
+        info("RIFE: no video — skipping interpolation.")
         logger.info("interpolate_video: no video_path — skipping.")
         return state
 
     if config.ENABLE_VIDEO != "wan2.1":
+        info(
+            f"RIFE: skipped (ENABLE_VIDEO={config.ENABLE_VIDEO!r}, only Wan2.1 uses "
+            f"{config.VIDEO_FPS}→{config.VIDEO_UPLOAD_FPS} interpolation)."
+        )
         logger.info("interpolate_video: ENABLE_VIDEO=%s (not wan2.1) — skipping.", config.ENABLE_VIDEO)
         return state
 
     if not config.VIDEO_INTERPOLATION:
+        info("RIFE: VIDEO_INTERPOLATION=false — uploading at source FPS.")
         logger.info("interpolate_video: VIDEO_INTERPOLATION=false — skipping.")
         return state
 

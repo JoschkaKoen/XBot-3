@@ -524,8 +524,10 @@ class ZITImageClient:
                 f"Check ComfyUI output folder: {self._comfyui / 'output'}"
             )
 
-        ts   = datetime.now().strftime("%Y%m%d_%H%M%S")
-        dest = self._images_dir / f"zit_{ts}{comfy_image.suffix}"
+        # Second-only timestamps collide when several images finish in the same second,
+        # overwriting files and pairing the wrong PNG with a prompt. Use µs + seed.
+        ts = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
+        dest = self._images_dir / f"zit_{ts}_seed{seed}{comfy_image.suffix}"
         shutil.copy2(comfy_image, dest)
 
         logger.info("ZIT image saved: %s (%.0f KB)", dest.name, dest.stat().st_size / 1024)

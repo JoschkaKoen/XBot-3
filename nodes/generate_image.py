@@ -664,6 +664,16 @@ def generate_image(state: dict) -> dict:
         }
 
     image_paths = [p for _, p in prompt_image_pairs]
+    if len(set(image_paths)) != len(image_paths):
+        logger.error(
+            "Duplicate image paths in batch — files were likely overwritten; "
+            "ranking vs prompts may be wrong. Paths: %s",
+            image_paths,
+        )
+        ui_warn(
+            "Duplicate saved image paths detected — one file may have been overwritten. "
+            "Check Z-Image save naming (zit_image.py)."
+        )
 
     # ── 3. Rank images and pick the best ──────────────────────────────────────
     print(f"  ⏳  Ranking {len(image_paths)} image(s) with ImageReward …", flush=True)

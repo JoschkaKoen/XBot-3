@@ -31,15 +31,16 @@ def _stages() -> dict:
         1: ("📊", "Refreshing metrics for all past tweets"),
         2: ("🧠", "Analysing & improving strategy"),
         3: ("✍️ ", f"Crafting {src} vocabulary content"),
-        4: ("🎨", "Generating Midjourney image"),
+        4: ("🎨", "Generating image"),
         5: ("🎙️ ", f"Generating {src} TTS audio"),
         6: ("🎬", "Rendering video"),
-        7: ("📤", "Posting to X"),
-        8: ("🏅", "Recording new post"),
-        9: ("⏳", "Waiting before next cycle"),
+        7: ("🎞️ ", "Frame interpolation (optional)"),
+        8: ("📤", "Posting to X"),
+        9: ("🏅", "Recording new post"),
+        10: ("⏳", "Waiting before next cycle"),
     }
 
-_TOTAL = 9
+_TOTAL = 10
 
 
 # ── Public helpers ─────────────────────────────────────────────────────────────

@@ -510,15 +510,21 @@ def create_ktv_video_from_motion(
     audio_dur     = audio.duration
     raw_video     = VideoFileClip(base_video_path)
 
-    # Use the longer of the two so neither track gets cut off.
-    # with_duration() trims if audio_dur < video, or holds last frame if longer.
-    fps      = config.VIDEO_FPS
-    duration = max(audio_dur, raw_video.duration)
-    base     = raw_video.with_duration(duration).with_fps(fps)
+    # Preserve the source video's native FPS for compositing so MoviePy does
+    # not drop/duplicate frames. Only the final encode is written at VIDEO_FPS.
+    # (Forcing with_fps to a lower value before write caused frame-drops.)
+    src_fps   = raw_video.fps
+    encode_fps = config.VIDEO_FPS
+    duration  = max(audio_dur, raw_video.duration)
+    base      = raw_video.with_duration(duration)
+    logger.info(
+        "create_ktv_video_from_motion: src_fps=%.2f encode_fps=%d duration=%.2fs",
+        src_fps, encode_fps, duration,
+    )
 
     if config.FLAG_OVERLAY:
         try:
-            badge_layers = [_make_badge_clip(base.w, base.h, duration, fps)]
+            badge_layers = [_make_badge_clip(base.w, base.h, duration, src_fps)]
         except Exception as exc:
             logger.warning("Flag badge skipped in KTV motion video — could not fetch flag images: %s", exc)
             badge_layers = []
@@ -530,7 +536,7 @@ def create_ktv_video_from_motion(
         output_path,
         codec="libx264",
         audio_codec="aac",
-        fps=fps,
+        fps=encode_fps,
         bitrate="8000k",
         preset="medium",
         threads=4,

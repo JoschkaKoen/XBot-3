@@ -99,7 +99,7 @@ def _save_history(history: list) -> None:
 # ── node ──────────────────────────────────────────────────────────────────────
 
 def score_and_store(state: dict) -> dict:
-    stage_banner(8)
+    stage_banner(9)
     logger.info("Node: record_post")
 
     metrics: dict = state.get("metrics", {})

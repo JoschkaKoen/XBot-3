@@ -21,6 +21,7 @@ import os
 import subprocess
 import tempfile
 from pathlib import Path
+from subprocess import CalledProcessError
 
 import config
 
@@ -121,18 +122,25 @@ def interpolate(input_path: str) -> str:
         padded   = os.path.join(tmp, "padded.mp4")
         interped = os.path.join(tmp, "interped.mp4")
 
+        def _run(label: str, cmd: list, cwd=None):
+            """Run a subprocess, raising with stderr included on failure."""
+            try:
+                subprocess.run(cmd, check=True, capture_output=True, cwd=cwd)
+            except CalledProcessError as exc:
+                stderr = exc.stderr.decode(errors="replace").strip()
+                raise RuntimeError(
+                    f"RIFE {label} failed (exit {exc.returncode}):\n{stderr}"
+                ) from exc
+
         # ── Step 1: pad to multiple of 32 ────────────────────────────────────
         print(f"  ⏳  RIFE step 1/3 — padding to {pad_w}×{pad_h} …", flush=True)
-        subprocess.run(
-            [
-                "ffmpeg", "-y", "-i", str(input_abs),
-                "-vf", f"pad={pad_w}:{pad_h}:(ow-iw)/2:(oh-ih)/2",
-                "-c:v", "libx264", "-crf", "0",
-                "-an",          # drop audio for this temp file (RIFE ignores it)
-                padded,
-            ],
-            check=True, capture_output=True,
-        )
+        _run("step 1 (ffmpeg pad)", [
+            "ffmpeg", "-y", "-i", str(input_abs),
+            "-vf", f"pad={pad_w}:{pad_h}:(ow-iw)/2:(oh-ih)/2",
+            "-c:v", "libx264", "-crf", "0",
+            "-an",      # drop audio — RIFE ignores it
+            padded,
+        ])
 
         # ── Step 2: RIFE interpolation ────────────────────────────────────────
         # --exp 1 = 2x multiplier (16→32fps exactly).
@@ -144,38 +152,31 @@ def interpolate(input_path: str) -> str:
 
         print(f"  ⏳  RIFE step 2/3 — interpolating to {target_fps} fps …", flush=True)
         # --model expects the directory containing flownet.pkl + RIFE_HDv3.py (default: train_log)
-        subprocess.run(
-            [
-                str(venv_python),
-                "inference_video.py",
-                "--video",  padded,
-                "--output", interped,
-                "--model",  "train_log",
-                "--scale",  "1.0",
-            ] + rife_fps_args,
-            cwd=str(rife_dir),
-            check=True, capture_output=True,
-        )
+        _run("step 2 (RIFE inference)", [
+            str(venv_python),
+            "inference_video.py",
+            "--video",  padded,
+            "--output", interped,
+            "--model",  "train_log",
+            "--scale",  "1.0",
+        ] + rife_fps_args, cwd=str(rife_dir))
 
         # ── Step 3: crop back + re-attach audio + final encode ────────────────
         print(f"  ⏳  RIFE step 3/3 — encoding final video …", flush=True)
-        subprocess.run(
-            [
-                "ffmpeg", "-y",
-                "-i", interped,
-                "-i", str(input_abs),
-                "-vf", f"crop={w}:{h}",
-                "-map", "0:v:0",
-                "-map", "1:a:0?",       # re-attach audio from original (optional)
-                "-c:v", "libx264",
-                "-pix_fmt", "yuv420p",
-                "-crf", "18",
-                "-c:a", "aac",
-                "-shortest",
-                output_path,
-            ],
-            check=True, capture_output=True,
-        )
+        _run("step 3 (ffmpeg encode)", [
+            "ffmpeg", "-y",
+            "-i", interped,
+            "-i", str(input_abs),
+            "-vf", f"crop={w}:{h}",
+            "-map", "0:v:0",
+            "-map", "1:a:0?",       # re-attach audio from original (optional)
+            "-c:v", "libx264",
+            "-pix_fmt", "yuv420p",
+            "-crf", "18",
+            "-c:a", "aac",
+            "-shortest",
+            output_path,
+        ])
 
     logger.info("RIFE done → %s", output_path)
     return output_path
