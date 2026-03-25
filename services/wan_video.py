@@ -33,6 +33,8 @@ import sys
 from datetime import datetime
 from pathlib import Path
 
+import config
+
 logger = logging.getLogger("german_bot.wan_video")
 
 # ── Video reward scorer ───────────────────────────────────────────────────────
@@ -196,6 +198,7 @@ def generate_video(image_path: str, motion_prompt: str) -> str:
         "image_start":           str(image_abs),
         "prompt":                motion_prompt,
         "skip_steps_cache_type": "",
+        "force_fps":             str(config.VIDEO_FPS),
     }
     settings_file = wan_dir / f"_i2v_task_{timestamp}.json"
     settings_file.write_text(json.dumps(task, indent=2), encoding="utf-8")

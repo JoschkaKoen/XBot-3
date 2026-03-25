@@ -86,11 +86,12 @@ def build_motion_prompt(example_en: str, midjourney_prompt: str) -> str:
     user_msg = (
         f"Image description: {midjourney_prompt}\n\n"
         f"Scene context: {example_en}\n\n"
-        "Write a SHORT, vivid motion prompt (max 2 sentences) for animating this still "
-        "image into an 8-second cinematic video clip. Focus on realistic, subtle motion "
-        "that matches the scene: camera movement, subject animation, environmental motion "
-        "(wind, light, steam, etc.). "
-        "Output ONLY the motion description — no preamble, no quotes."
+        "Write a SHORT prompt (max 2 sentences) for animating this still "
+        "image into an 8-second cinematic video clip. "
+        "Camera motion MUST be slow, soft and smooth — no sudden cuts, no fast pans. "
+        "Focus on realistic, subtle motion that matches the beautiful scene: gentle camera movement, "
+        "soft subject animation, soft environmental motion (wind, light, steam, etc.). "
+        "Output ONLY the prompt — no preamble, no quotes."
     )
     system = (
         "You are a cinematographer writing motion descriptions for AI video generation. "

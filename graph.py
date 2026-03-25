@@ -3,7 +3,7 @@ LangGraph graph definition for the German Learning Bot.
 
 New cycle order (metrics-first):
   fetch_all_metrics → analyze_and_improve → generate_content → generate_image
-  → generate_audio → create_video → publish → score_and_store → wait → END
+  → generate_audio → create_video → interpolate_video → publish → score_and_store → wait → END
 
 main.py runs this graph in a while-True loop, carrying strategy + cycle counter
 forward between iterations via the state dict. SqliteSaver checkpointing means
@@ -32,6 +32,7 @@ from nodes import (
     generate_image,
     generate_audio,
     create_video,
+    interpolate_video,
     publish,
     score_and_store,
 )
@@ -178,6 +179,7 @@ def build_graph(checkpointer=None):
     builder.add_node("generate_image",      generate_image)
     builder.add_node("generate_audio",      generate_audio)
     builder.add_node("create_video",        create_video)
+    builder.add_node("interpolate_video",   interpolate_video)
     builder.add_node("publish",             publish)
     builder.add_node("score_and_store",     score_and_store)
     builder.add_node("wait",                wait_node)
@@ -188,7 +190,8 @@ def build_graph(checkpointer=None):
     builder.add_edge("generate_content",    "generate_image")
     builder.add_edge("generate_image",      "generate_audio")
     builder.add_edge("generate_audio",      "create_video")
-    builder.add_edge("create_video",        "publish")
+    builder.add_edge("create_video",        "interpolate_video")
+    builder.add_edge("interpolate_video",   "publish")
     builder.add_edge("publish",             "score_and_store")
     builder.add_edge("score_and_store",     "wait")
     builder.add_edge("wait",                END)

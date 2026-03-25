@@ -126,8 +126,9 @@ def _truncate_emoji_pairs(tweet: str) -> str:
 
 
 def _build_word_prompt(strategy: dict) -> str:
-    style = strategy.get("style", "")
-    next_topic = strategy.get("next_topic", "")
+    _strategy_updates_on = getattr(config, "STRATEGY_METRICS_UPDATES_ENABLED", True)
+    style      = strategy.get("style", "")      if _strategy_updates_on else ""
+    next_topic = strategy.get("next_topic", "") if _strategy_updates_on else ""
     cefr_hint = strategy.get("preferred_cefr", "A1, A2, B1, B2, C1, C2")
     avoid = strategy.get("avoid_words", [])
     avoid_str = ", ".join(avoid[-20:]) if avoid else "none"
@@ -181,11 +182,13 @@ def _build_tweet_prompt(
     funny: bool = True,
 ) -> str:
     preferred_cefr = strategy.get("preferred_cefr", "A1, A2, B1, B2, C1, C2")
-    # next_topic and style only make sense when the word was chosen freely (not from trends).
-    # When word_from_trends=True the topic is already fixed by the trend; injecting a
-    # separate next_topic would contradict the chosen word.
-    next_topic = "" if word_from_trends else strategy.get("next_topic", "")
-    style      = "" if word_from_trends else strategy.get("style", "")
+    # next_topic and style only make sense when:
+    #   (a) the word was chosen freely (not from trends — trend already sets topic), and
+    #   (b) strategy updates are enabled (STRATEGY_UPDATE_INTERVAL_HOURS != false).
+    #       When updates are disabled the style/topic are stale and should not be used.
+    _strategy_updates_on = getattr(config, "STRATEGY_METRICS_UPDATES_ENABLED", True)
+    next_topic = "" if (word_from_trends or not _strategy_updates_on) else strategy.get("next_topic", "")
+    style      = "" if (word_from_trends or not _strategy_updates_on) else strategy.get("style", "")
 
     examples_section = ""
     for i, tweet in enumerate(top_tweets[:3], 1):

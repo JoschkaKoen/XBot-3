@@ -22,6 +22,7 @@ import json
 import logging
 import os
 import shutil
+import subprocess
 import time
 import urllib.parse
 import urllib.request
@@ -33,13 +34,63 @@ import config
 
 logger = logging.getLogger("german_bot.zit_image")
 
+
+class ComfyUIUnavailableError(RuntimeError):
+    """Raised when ComfyUI cannot be reached after auto-start and the 60-second grace period."""
+
+
+def ensure_comfyui_running() -> None:
+    """
+    Non-blocking check-and-spawn called at the top of each bot cycle.
+
+    If ComfyUI is already responding at COMFYUI_URL the function returns
+    immediately.  Otherwise it spawns ComfyUI in a detached background
+    process and returns without waiting — later, when the image node
+    actually needs the server, ZITImageClient.generate() will wait up to
+    60 seconds for it to become ready.
+    """
+    url = config.COMFYUI_URL.rstrip("/")
+    try:
+        urllib.request.urlopen(f"{url}/system_stats", timeout=5)
+        logger.debug("ensure_comfyui_running: already up at %s.", url)
+        return
+    except Exception:
+        pass
+
+    comfyui = Path(config.COMFYUI_DIR)
+    venv_python = comfyui / "venv" / "bin" / "python"
+    if not venv_python.exists():
+        print(
+            f"  ⚠   ComfyUI venv not found at {venv_python} — cannot auto-start.\n"
+            f"      Check COMFYUI_DIR in settings.env.",
+            flush=True,
+        )
+        logger.warning(
+            "ensure_comfyui_running: venv not found at %s — cannot auto-start.", venv_python
+        )
+        return
+
+    extra_args = os.getenv("COMFYUI_ARGS", "--normalvram --fp16-vae").split()
+    cmd = [str(venv_python), "main.py"] + extra_args
+    log_path = comfyui / "comfyui_autostart.log"
+    with open(log_path, "a") as log_fh:
+        subprocess.Popen(
+            cmd,
+            cwd=str(comfyui),
+            stdout=log_fh,
+            stderr=log_fh,
+            start_new_session=True,
+        )
+    print(f"  ⏳  ComfyUI not running — spawning in background …", flush=True)
+    print(f"      cmd : {' '.join(cmd)}", flush=True)
+    print(f"      log : {log_path}", flush=True)
+    logger.info("ComfyUI spawned in background (cmd=%s).", " ".join(cmd))
+
 # ── Locked generation settings (model card requirements) ──────────────────────
 _FIXED_CFG       = 1.0
 _FIXED_SAMPLER   = "res_multistep"
 _FIXED_SCHEDULER = "simple"
 _FIXED_BATCH     = 1
-_FIXED_WIDTH     = 1024
-_FIXED_HEIGHT    = 1024
 
 # ── Node types that are display-only in the GUI and have no API function ───────
 _DISPLAY_TYPES = {
@@ -229,12 +280,14 @@ def _patch_workflow(
     prompt: str,
     steps: int,
     seed: int,
+    width: int,
+    height: int,
 ) -> dict:
     """
     Patch an API-format workflow dict with the prompt and generation parameters.
 
-    CFG, sampler, scheduler, resolution, and batch size are locked to model-card
-    values and enforced regardless of what the source workflow contains.
+    CFG, sampler, scheduler, and batch size are locked to model-card values.
+    Width and height come from Z_IMAGE_TURBO_WIDTH / Z_IMAGE_TURBO_HEIGHT.
     ConditioningZeroOut nodes are intentionally left untouched.
     """
     wf = copy.deepcopy(workflow)
@@ -261,10 +314,10 @@ def _patch_workflow(
                     if seed_key in inp:
                         inp[seed_key] = seed
 
-        # Resolution / latent size — locked to 1024×1024, batch 1
+        # Resolution / latent size
         if ct in ("EmptyLatentImage", "EmptySD3LatentImage"):
-            if "width"      in inp: inp["width"]      = _FIXED_WIDTH
-            if "height"     in inp: inp["height"]      = _FIXED_HEIGHT
+            if "width"      in inp: inp["width"]      = width
+            if "height"     in inp: inp["height"]      = height
             if "batch_size" in inp: inp["batch_size"]  = _FIXED_BATCH
 
     return wf
@@ -341,32 +394,108 @@ class ZITImageClient:
         self._project    = Path(__file__).parent.parent.resolve()
         self._images_dir = Path(config.IMAGES_DIR)
         self._images_dir.mkdir(parents=True, exist_ok=True)
-
-        # Fail fast on startup — give a clear error before the pipeline starts.
-        self._check_server()
         self._workflow_file = _find_workflow(self._comfyui, self._project)
         logger.info("ZITImageClient ready — workflow: %s", self._workflow_file)
 
-    def _check_server(self) -> None:
+    def _is_server_up(self) -> bool:
         try:
             urllib.request.urlopen(f"{self._url}/system_stats", timeout=5)
+            return True
+        except Exception:
+            return False
+
+    def _check_server(self) -> None:
+        """
+        Wait up to 60 s for ComfyUI to become ready.
+
+        ensure_comfyui_running() is called at the start of each cycle so
+        ComfyUI should already be warming up by the time this is reached.
+        If it still isn't responding after 60 s, raise ComfyUIUnavailableError
+        so the caller can skip image+video gracefully for this cycle.
+        """
+        if self._is_server_up():
+            logger.debug("ComfyUI ready at %s.", self._url)
+            return
+
+        grace   = 60
+        interval = 5
+        elapsed  = 0
+        dots     = 0
+        print(f"  ⏳  Waiting for ComfyUI to become ready (up to {grace}s) …", flush=True)
+        while elapsed < grace:
+            time.sleep(interval)
+            elapsed += interval
+            dots    += 1
+            print(
+                f"\r  ⏳  Waiting for ComfyUI{'.' * (dots % 4):<4} ({elapsed}s/{grace}s)",
+                end="", flush=True,
+            )
+            if self._is_server_up():
+                print(f"\n  ✔   ComfyUI ready at {self._url}", flush=True)
+                logger.info("ComfyUI ready after %ds.", elapsed)
+                return
+
+        print(f"\n  ✖   ComfyUI not ready after {grace}s — skipping image+video this cycle.", flush=True)
+        logger.warning("ComfyUI not ready after %ds.", grace)
+        raise ComfyUIUnavailableError(
+            f"ComfyUI not reachable at {self._url} after {grace}s. "
+            f"Check log: {self._comfyui / 'comfyui_autostart.log'}"
+        )
+
+    def unload_models(self) -> None:
+        """
+        Ask ComfyUI to unload models from VRAM.
+
+        Called after image generation is complete so that the next pipeline
+        stage (e.g. Wan2.1 video generation) has the full GPU budget available.
+        Failures are logged but never raised — freeing VRAM is best-effort.
+        """
+        try:
+            data = b'{"unload_models": true, "free_memory": true}'
+            req  = urllib.request.Request(
+                f"{self._url}/free",
+                data=data,
+                headers={"Content-Type": "application/json"},
+                method="POST",
+            )
+            urllib.request.urlopen(req, timeout=10)
+            print("  ✔   ComfyUI models unloaded from VRAM.", flush=True)
+            logger.info("ComfyUI models unloaded from VRAM.")
         except Exception as exc:
-            raise RuntimeError(
-                f"ComfyUI server not reachable at {self._url}\n\n"
-                "  Start it first (leave running in a separate terminal):\n"
-                f"    cd {self._comfyui} && source venv/bin/activate\n"
-                "    python main.py --normalvram --fp16-vae\n"
-            ) from exc
+            logger.warning("ComfyUI /free failed (non-fatal): %s", exc)
+
+    def ensure_ready(self) -> None:
+        """
+        Public entry point for the caller to verify ComfyUI is up before
+        starting a generation loop.  Raises ComfyUIUnavailableError if the
+        server is still unreachable after the 60-second grace period.
+
+        Separating this from generate() means retry_call() in the image loop
+        will never retry a ComfyUIUnavailableError (which already waited 60s);
+        it only retries genuine transient ComfyUI API failures.
+        """
+        self._check_server()
 
     def generate(self, prompt: str, seed: int = -1) -> List[str]:
         """
-        Generate one 1024×1024 image from *prompt* using Z-Image-Turbo.
+        Generate one image from *prompt* using Z-Image-Turbo.
+
+        Resolution is read from Z_IMAGE_TURBO_WIDTH × Z_IMAGE_TURBO_HEIGHT
+        (default 832×480, matching Wan2.1 480p I2V input exactly).
 
         Returns a single-element list containing the path to the saved PNG,
         matching the List[str] contract of the other image provider clients.
+
+        Call ensure_ready() once before starting a generation loop so that
+        ComfyUIUnavailableError is raised exactly once (not retried).
         """
-        steps = config.Z_IMAGE_TURBO_STEPS
-        logger.info("ZIT generate: steps=%d seed=%d prompt='%s'", steps, seed, prompt[:80])
+        steps  = config.Z_IMAGE_TURBO_STEPS
+        width  = config.Z_IMAGE_TURBO_WIDTH
+        height = config.Z_IMAGE_TURBO_HEIGHT
+        logger.info(
+            "ZIT generate: %dx%d steps=%d seed=%d prompt='%s'",
+            width, height, steps, seed, prompt[:80],
+        )
 
         # 1. Load workflow (GUI format is converted automatically)
         with open(self._workflow_file, encoding="utf-8") as fh:
@@ -377,13 +506,12 @@ class ZITImageClient:
             workflow = _gui_to_api(workflow, self._url, self._comfyui)
             logger.debug("ZIT: converted %d nodes", len(workflow))
 
-        workflow = _patch_workflow(workflow, prompt, steps, seed)
+        workflow = _patch_workflow(workflow, prompt, steps, seed, width, height)
 
         # 2. Submit
-        print(f"\r  ⏳  Submitting to ComfyUI (Z-Image-Turbo) …", flush=True)
+        print(f"      submitting to ComfyUI …", flush=True)
         prompt_id = _submit_prompt(workflow, self._url)
         logger.info("ZIT prompt_id: %s", prompt_id)
-        print(f"  ", end="", flush=True)
 
         # 3. Poll
         history_entry = _poll_until_done(prompt_id, self._url)

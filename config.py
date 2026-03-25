@@ -291,10 +291,11 @@ def reload_settings() -> None:
     global USE_TRENDS, USE_TRENDS_CYCLE, TREND_CANDIDATE_LIMIT
     global IMAGE_STYLE_CYCLE, IMAGE_STYLE
     global TWEET_STYLE_CYCLE, TWEET_STYLE
-    global IMAGE_PROVIDER, GROK_IMAGE_COUNT, Z_IMAGE_TURBO_STEPS
+    global IMAGE_PROVIDER, GENERATED_IMAGE_COUNT, INDIVIDUAL_IMAGE_PROMPTS, Z_IMAGE_TURBO_STEPS, Z_IMAGE_TURBO_WIDTH, Z_IMAGE_TURBO_HEIGHT, Z_IMAGE_PROMPT_SUFFIX
+    global VIDEO_INTERPOLATION, RIFE_DIR, RIFE_PYTHON, VIDEO_UPLOAD_FPS
     global MAX_TWEET_LENGTH, MAX_EXAMPLE_WORDS, POST_INTERVAL_SECONDS, VIDEO_STYLE, ANALYZE_LAST_N
     global FLAG_OVERLAY
-    global ENABLE_VIDEO, ENABLE_GROK_VIDEO, VIDEO_FREQUENCY, GROK_VIDEO_FREQUENCY, ENABLE_KEN_BURNS, WAN_VIDEO_DIR, WAN_VIDEO_STEPS, WAN_VIDEO_FRAMES, WAN_VIDEO_HISTORY_FILE, KTV_FONT_SIZE
+    global ENABLE_VIDEO, ENABLE_GROK_VIDEO, VIDEO_FREQUENCY, GROK_VIDEO_FREQUENCY, ENABLE_KEN_BURNS, WAN_VIDEO_DIR, WAN_VIDEO_STEPS, WAN_VIDEO_FRAMES, WAN_VIDEO_HISTORY_FILE, KTV_FONT_SIZE, VIDEO_FPS
     global ENABLE_SELF_IMPROVEMENT, IMPROVEMENT_INTERVAL_CYCLES, IMPROVEMENT_SCORE_THRESHOLD
     global STRATEGY_METRICS_UPDATES_ENABLED, STRATEGY_UPDATE_INTERVAL_HOURS
     global METRICS_FETCH_MAX_TWEETS
@@ -312,8 +313,16 @@ def reload_settings() -> None:
     TWEET_STYLE_CYCLE              = [s.lower().strip() for s in _raw_tweet.split(",") if s.strip()] or ["funny"]
     TWEET_STYLE                    = TWEET_STYLE_CYCLE[0]
     IMAGE_PROVIDER                 = os.getenv("IMAGE_PROVIDER", "midjourney").lower().strip()
-    GROK_IMAGE_COUNT               = int(os.getenv("GROK_IMAGE_COUNT", "1"))
-    Z_IMAGE_TURBO_STEPS            = int(os.getenv("Z_IMAGE_TURBO_STEPS", "8"))
+    GENERATED_IMAGE_COUNT          = int(os.getenv("GENERATED_IMAGE_COUNT", os.getenv("GROK_IMAGE_COUNT", "1")))
+    INDIVIDUAL_IMAGE_PROMPTS       = os.getenv("INDIVIDUAL_IMAGE_PROMPTS", "false").lower().strip() == "true"
+    Z_IMAGE_TURBO_STEPS            = int(os.getenv("Z_IMAGE_TURBO_STEPS",  "8"))
+    Z_IMAGE_TURBO_WIDTH            = int(os.getenv("Z_IMAGE_TURBO_WIDTH",  "832"))
+    Z_IMAGE_TURBO_HEIGHT           = int(os.getenv("Z_IMAGE_TURBO_HEIGHT", "480"))
+    Z_IMAGE_PROMPT_SUFFIX          = os.getenv("Z_IMAGE_PROMPT_SUFFIX", "").strip()
+    VIDEO_INTERPOLATION            = os.getenv("VIDEO_INTERPOLATION", "false").lower().strip() == "true"
+    RIFE_DIR                       = os.getenv("RIFE_DIR", os.path.join(os.path.expanduser("~"), "Programming", "Practical-RIFE"))
+    RIFE_PYTHON                    = os.getenv("RIFE_PYTHON", os.path.join(os.path.expanduser("~"), "Programming", "Practical-RIFE", "venv", "bin", "python"))
+    VIDEO_UPLOAD_FPS               = int(os.getenv("VIDEO_UPLOAD_FPS", "32"))
     MAX_TWEET_LENGTH               = int(os.getenv("MAX_TWEET_LENGTH", "280"))
     MAX_EXAMPLE_WORDS              = int(os.getenv("MAX_EXAMPLE_WORDS", "13"))
     POST_INTERVAL_SECONDS          = int(os.getenv("POST_INTERVAL_SECONDS", "18000"))
@@ -332,6 +341,7 @@ def reload_settings() -> None:
     WAN_VIDEO_STEPS                = int(os.getenv("WAN_VIDEO_STEPS", "10"))
     WAN_VIDEO_FRAMES               = int(os.getenv("WAN_VIDEO_FRAMES", "81"))
     WAN_VIDEO_HISTORY_FILE         = os.getenv("WAN_VIDEO_HISTORY_FILE", "data/wan_video_history.jsonl")
+    VIDEO_FPS                      = int(os.getenv("WAN_VIDEO_FPS", "16"))
     KTV_FONT_SIZE                  = _parse_ktv_font_size(os.getenv("KTV_FONT_SIZE"))
     ENABLE_SELF_IMPROVEMENT        = os.getenv("ENABLE_SELF_IMPROVEMENT", "false").lower().strip() == "true"
     IMPROVEMENT_INTERVAL_CYCLES    = int(os.getenv("IMPROVEMENT_INTERVAL_CYCLES", "5"))
@@ -353,14 +363,45 @@ def reload_settings() -> None:
 # "z-image-turbo" = Z-Image-Turbo FP8 AIO via local ComfyUI (requires COMFYUI_URL/COMFYUI_DIR)
 IMAGE_PROVIDER: str = os.getenv("IMAGE_PROVIDER", "midjourney").lower().strip()
 
-# Number of images to request per cycle when IMAGE_PROVIDER=grok.
-# If Grok Imagine ignores this and always returns a fixed count, all returned
-# images are still ranked and the best one is selected automatically.
-GROK_IMAGE_COUNT: int = int(os.getenv("GROK_IMAGE_COUNT", "1"))
+# Number of images to generate per cycle.
+# Grok: requested in a single API call. z-image-turbo: sequential runs with different seeds.
+# All candidates are ranked by ImageReward and the best one is picked.
+GENERATED_IMAGE_COUNT: int = int(os.getenv("GENERATED_IMAGE_COUNT", os.getenv("GROK_IMAGE_COUNT", "1")))
+
+# When True, the LLM is called once per image to generate a unique prompt variation for each.
+# Each image is scored against its own prompt; the best-scoring (prompt, image) pair wins.
+# When False (default), one prompt is generated and reused for all images.
+INDIVIDUAL_IMAGE_PROMPTS: bool = os.getenv("INDIVIDUAL_IMAGE_PROMPTS", "false").lower().strip() == "true"
 
 # Denoising steps for Z-Image-Turbo (IMAGE_PROVIDER=z-image-turbo).
 # Model card recommendation: 8–9. CFG/sampler/scheduler are locked in the service.
-Z_IMAGE_TURBO_STEPS: int = int(os.getenv("Z_IMAGE_TURBO_STEPS", "8"))
+Z_IMAGE_TURBO_STEPS: int  = int(os.getenv("Z_IMAGE_TURBO_STEPS",  "8"))
+# Output resolution — 832×480 matches Wan2.1 480p I2V input exactly.
+Z_IMAGE_TURBO_WIDTH: int  = int(os.getenv("Z_IMAGE_TURBO_WIDTH",  "832"))
+Z_IMAGE_TURBO_HEIGHT: int = int(os.getenv("Z_IMAGE_TURBO_HEIGHT", "480"))
+
+# Short quality suffix appended to every Z-Image-Turbo prompt after the LLM output.
+# Example: "sharp focus, cinematic lighting, rich colours, professional photography"
+# Leave empty to disable.
+Z_IMAGE_PROMPT_SUFFIX: str = os.getenv("Z_IMAGE_PROMPT_SUFFIX", "").strip()
+
+# When True, interpolate the generated video to VIDEO_UPLOAD_FPS with Practical-RIFE
+# before uploading. RIFE_DIR must point to a fully set-up Practical-RIFE clone.
+VIDEO_INTERPOLATION: bool = os.getenv("VIDEO_INTERPOLATION", "false").lower().strip() == "true"
+RIFE_DIR: str             = os.getenv("RIFE_DIR", os.path.join(os.path.expanduser("~"), "Programming", "Practical-RIFE"))
+# Python interpreter that runs inference_video.py — must have PyTorch with GPU support.
+RIFE_PYTHON: str          = os.getenv("RIFE_PYTHON", os.path.join(os.path.expanduser("~"), "Programming", "Practical-RIFE", "venv", "bin", "python"))
+# 32 = exact 2x from 16fps (cleanest). 30 = standard broadcast.
+VIDEO_UPLOAD_FPS: int     = int(os.getenv("VIDEO_UPLOAD_FPS", "32"))
+
+# ComfyUI server URL and installation directory (used by IMAGE_PROVIDER=z-image-turbo
+# and the ComfyUI-based video / test scripts).
+COMFYUI_URL: str          = os.getenv("COMFYUI_URL",   "http://127.0.0.1:8188").rstrip("/")
+COMFYUI_DIR: str          = os.getenv("COMFYUI_DIR",   os.path.join(os.path.expanduser("~"), "ComfyUI"))
+# CLI flags forwarded to ComfyUI main.py on auto-start (IMAGE_PROVIDER=z-image-turbo).
+COMFYUI_ARGS: str         = os.getenv("COMFYUI_ARGS",  "--normalvram --fp16-vae")
+# Seconds to wait for ComfyUI to become ready after auto-start.
+COMFYUI_START_TIMEOUT: int = int(os.getenv("COMFYUI_START_TIMEOUT", "120"))
 
 # ── Tweet constraints ────────────────────────────────────────────────────────
 # Maximum character length of a posted tweet. X's hard limit is 280 for free
@@ -439,8 +480,12 @@ WAN_VIDEO_DIR: str = os.getenv("WAN_VIDEO_DIR", str(os.path.join(os.path.expandu
 WAN_VIDEO_STEPS: int = int(os.getenv("WAN_VIDEO_STEPS", "10"))
 
 # Number of video frames (only used when ENABLE_VIDEO=WAN2.1).
-# 81 frames @ 16 fps ≈ 5 s. Must be 4k+1, e.g. 49, 65, 81, 97.
+# Must be 4k+1 (e.g. 49, 65, 81, 97, 121). At 16 fps: 81 ≈ 5s. At 24 fps: 121 ≈ 5s.
 WAN_VIDEO_FRAMES: int = int(os.getenv("WAN_VIDEO_FRAMES", "81"))
+
+# Frames per second for all video output — both Wan2.1 generation and MoviePy composition.
+# 16 = Wan2.1 native fps (no resampling). 24 = smoother (needs more frames for same duration).
+VIDEO_FPS: int = int(os.getenv("WAN_VIDEO_FPS", "16"))
 
 # Append-only JSONL file: generation params + video reward scores per Wan run.
 WAN_VIDEO_HISTORY_FILE: str = os.getenv("WAN_VIDEO_HISTORY_FILE", "data/wan_video_history.jsonl")

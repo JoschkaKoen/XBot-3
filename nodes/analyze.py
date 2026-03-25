@@ -321,7 +321,8 @@ def analyze_and_improve(state: dict) -> dict:
     stage_banner(2)
     logger.info("Node: analyze_and_improve")
 
-    # Skip if metrics were not refreshed this cycle — no new signal to learn from.
+    # Skip full strategy analysis if metrics were not refreshed this cycle,
+    # but always refresh avoid_words from post history regardless.
     if not state.get("metrics_refreshed", True):
         old_strategy = load_strategy()
         if not getattr(config, "STRATEGY_METRICS_UPDATES_ENABLED", True):
@@ -332,7 +333,18 @@ def analyze_and_improve(state: dict) -> dict:
         else:
             ui_info("Metrics not refreshed — skipping strategy analysis, reusing current strategy.")
         logger.info("Strategy analysis skipped (metrics_refreshed=False).")
-        return {**state, "strategy": old_strategy}
+
+        # Always keep avoid_words current from post history.
+        history = _load_history()
+        recent_words = [r.get("source_word", "") for r in history[-30:] if r.get("source_word")]
+        updated_strategy = {**old_strategy, "avoid_words": list(dict.fromkeys(recent_words))}
+        if updated_strategy["avoid_words"] != old_strategy.get("avoid_words", []):
+            _save_strategy(updated_strategy)
+            logger.info(
+                "avoid_words refreshed from history (%d words).",
+                len(updated_strategy["avoid_words"]),
+            )
+        return {**state, "strategy": updated_strategy}
 
     # Load the previous strategy to diff against
     old_strategy = load_strategy()

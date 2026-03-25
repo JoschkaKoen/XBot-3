@@ -33,11 +33,14 @@ KEN BURNS:
 ================================================================================
 """
 
+import io
+import math
 import os
 import logging
 from datetime import datetime
 from pydub import AudioSegment
 import numpy as np
+import requests
 from PIL import Image as _PILImage
 from moviepy import (
     AudioFileClip,
@@ -51,6 +54,7 @@ from moviepy import (
 
 import config
 from config import BACKGROUND_MUSIC_PATH, VOICES_MUSIC_DIR, VIDEOS_DIR, KTV_FONT
+from utils.retry import with_retry
 from utils.ui import stage_banner, ok, warn as ui_warn
 
 _FONT = KTV_FONT
@@ -59,6 +63,110 @@ logger = logging.getLogger("german_bot.create_video")
 
 os.makedirs(VOICES_MUSIC_DIR, exist_ok=True)
 os.makedirs(VIDEOS_DIR, exist_ok=True)
+
+
+# ── flag badge helpers (composited onto video frames) ────────────────────────
+
+_FLAGCDN_URL    = "https://flagcdn.com/w{w}/{code}.png"
+_FLAGCDN_WIDTHS = [20, 24, 28, 32, 40, 48, 56, 64, 80, 96, 112, 128, 160, 320]
+_flag_cache: dict = {}   # (code, fetch_w) → PIL Image, avoids re-downloading each cycle
+
+
+def _flag_emoji_to_country_code(emoji: str) -> str:
+    """Extract the ISO 3166-1 alpha-2 country code from a flag emoji (e.g. 🇩🇪 → 'de')."""
+    chars = [
+        chr(ord(c) - 0x1F1E6 + ord("A"))
+        for c in emoji
+        if 0x1F1E6 <= ord(c) <= 0x1F1FF
+    ]
+    return "".join(chars).lower()
+
+
+@with_retry(max_attempts=3, base_delay=0.1, backoff=1.0, label="fetch_flag")
+def _fetch_flag(code: str, desired_width: int) -> "_PILImage":
+    """Download a flag PNG from flagcdn.com at the nearest supported width (cached)."""
+    fetch_w = next((w for w in _FLAGCDN_WIDTHS if w >= desired_width), 320)
+    key = (code.lower(), fetch_w)
+    if key not in _flag_cache:
+        url = _FLAGCDN_URL.format(w=fetch_w, code=code.lower())
+        resp = requests.get(url, timeout=10)
+        resp.raise_for_status()
+        _flag_cache[key] = _PILImage.open(io.BytesIO(resp.content)).convert("RGBA")
+    return _flag_cache[key].copy()
+
+
+def _fit_flag(flag: "_PILImage", w: int, h: int) -> "_PILImage":
+    """Scale-to-fill: zoom until both dimensions are covered, then centre-crop."""
+    ratio = max(w / flag.width, h / flag.height)
+    new_w = int(flag.width  * ratio)
+    new_h = int(flag.height * ratio)
+    flag = flag.resize((new_w, new_h), _PILImage.LANCZOS)
+    x0 = (new_w - w) // 2
+    y0 = (new_h - h) // 2
+    return flag.crop((x0, y0, x0 + w, y0 + h))
+
+
+def _create_flag_badge(badge_w: int, badge_h: int) -> "_PILImage":
+    """
+    Gradient-blended badge: target flag (left) → source flag (right).
+    Cosine ease-in/out gradient for a seamless blend.
+    """
+    from PIL import ImageDraw
+    src_code = _flag_emoji_to_country_code(config.SOURCE_FLAG)
+    tgt_code = _flag_emoji_to_country_code(config.TARGET_FLAG)
+
+    src_img = _fit_flag(_fetch_flag(src_code, badge_w * 2), badge_w, badge_h).convert("RGB")
+    tgt_img = _fit_flag(_fetch_flag(tgt_code, badge_w * 2), badge_w, badge_h).convert("RGB")
+
+    gradient = bytes(
+        [int(128 + 127 * math.cos(math.pi * x / max(badge_w - 1, 1)))
+         for x in range(badge_w)] * badge_h
+    )
+    mask  = _PILImage.frombytes("L", (badge_w, badge_h), gradient)
+    badge = _PILImage.composite(tgt_img, src_img, mask)
+
+    radius = max(int(badge_h * 0.20), 4)
+    # White border drawn before rounding so it is clipped cleanly
+    ImageDraw.Draw(badge).rounded_rectangle(
+        [0, 0, badge_w - 1, badge_h - 1], radius=radius,
+        outline=(255, 255, 255), width=2,
+    )
+
+    # Rounded corners via alpha mask
+    badge = badge.convert("RGBA")
+    corner_mask = _PILImage.new("L", (badge_w, badge_h), 0)
+    ImageDraw.Draw(corner_mask).rounded_rectangle(
+        [0, 0, badge_w - 1, badge_h - 1], radius=radius, fill=255
+    )
+    badge.putalpha(corner_mask)
+
+    # 90 % opacity
+    r, g, b, a = badge.split()
+    a = a.point(lambda v: int(v * 0.90))
+    return _PILImage.merge("RGBA", (r, g, b, a))
+
+
+def _make_badge_clip(frame_w: int, frame_h: int, duration: float, fps: int) -> ImageClip:
+    """
+    Build a flag-badge ImageClip positioned in the top-right corner.
+
+    Badge metrics mirror the original _overlay_flags() sizing so the badge
+    looks identical to how it did when burned into the still image.
+    """
+    badge_w = max(int(frame_w * 0.10), 100)
+    badge_h = int(badge_w * 0.60)
+    padding = max(int(frame_w * 0.015), 12)
+
+    badge_img = _create_flag_badge(badge_w, badge_h)
+    x = frame_w - badge_w - padding
+    y = padding
+
+    return (
+        ImageClip(np.array(badge_img), is_mask=False)
+        .with_duration(duration)
+        .with_position((x, y))
+        .with_fps(fps)
+    )
 
 
 # ── combine_audio ─────────────────────────────────────────────────────────────
@@ -301,17 +409,28 @@ def create_simple_video(image_path: str, audio_path: str) -> str:
     video_path = os.path.join(VIDEOS_DIR, f"{ts}.mp4")
     logger.info("Creating simple video → %s", video_path)
 
+    fps = config.VIDEO_FPS
     audio = AudioFileClip(audio_path)
     if config.ENABLE_KEN_BURNS:
         base = _make_ken_burns_clip(image_path, audio.duration)
     else:
-        base = ImageClip(image_path).with_duration(audio.duration).with_fps(24)
-    video = base.with_audio(audio)
-    video.write_videofile(
+        base = ImageClip(image_path).with_duration(audio.duration).with_fps(fps)
+
+    if config.FLAG_OVERLAY:
+        try:
+            badge = _make_badge_clip(base.w, base.h, audio.duration, fps)
+            final = CompositeVideoClip([base, badge]).with_audio(audio)
+        except Exception as exc:
+            logger.warning("Flag badge skipped in simple video — could not fetch flag images: %s", exc)
+            final = base.with_audio(audio)
+    else:
+        final = base.with_audio(audio)
+
+    final.write_videofile(
         video_path,
         codec="libx264",
         audio_codec="aac",
-        fps=24,
+        fps=fps,
         bitrate="8000k",
         preset="medium",
         threads=4,
@@ -337,20 +456,29 @@ def create_ktv_video(
     output_path = os.path.join(VIDEOS_DIR, f"ktv_{ts}.mp4")
     logger.info("Creating KTV video (image base) → %s", output_path)
 
+    fps      = config.VIDEO_FPS
     audio    = AudioFileClip(audio_path)
     duration = audio.duration
     if config.ENABLE_KEN_BURNS:
         base = _make_ken_burns_clip(image_path, duration)
     else:
-        base = ImageClip(image_path).with_duration(duration).with_fps(24)
+        base = ImageClip(image_path).with_duration(duration).with_fps(fps)
 
+    if config.FLAG_OVERLAY:
+        try:
+            badge_layers = [_make_badge_clip(base.w, base.h, duration, fps)]
+        except Exception as exc:
+            logger.warning("Flag badge skipped in KTV video — could not fetch flag images: %s", exc)
+            badge_layers = []
+    else:
+        badge_layers = []
     overlays = _build_ktv_overlay_clips(base, duration, german_text, word_timings or [])
-    final = CompositeVideoClip([base] + overlays).with_audio(audio)
+    final = CompositeVideoClip([base] + badge_layers + overlays).with_audio(audio)
     final.write_videofile(
         output_path,
         codec="libx264",
         audio_codec="aac",
-        fps=24,
+        fps=fps,
         bitrate="8000k",
         preset="medium",
         threads=4,
@@ -384,16 +512,25 @@ def create_ktv_video_from_motion(
 
     # Use the longer of the two so neither track gets cut off.
     # with_duration() trims if audio_dur < video, or holds last frame if longer.
+    fps      = config.VIDEO_FPS
     duration = max(audio_dur, raw_video.duration)
-    base     = raw_video.with_duration(duration).with_fps(24)
+    base     = raw_video.with_duration(duration).with_fps(fps)
 
+    if config.FLAG_OVERLAY:
+        try:
+            badge_layers = [_make_badge_clip(base.w, base.h, duration, fps)]
+        except Exception as exc:
+            logger.warning("Flag badge skipped in KTV motion video — could not fetch flag images: %s", exc)
+            badge_layers = []
+    else:
+        badge_layers = []
     overlays = _build_ktv_overlay_clips(base, duration, german_text, word_timings or [])
-    final = CompositeVideoClip([base] + overlays).with_audio(audio)
+    final = CompositeVideoClip([base] + badge_layers + overlays).with_audio(audio)
     final.write_videofile(
         output_path,
         codec="libx264",
         audio_codec="aac",
-        fps=24,
+        fps=fps,
         bitrate="8000k",
         preset="medium",
         threads=4,
@@ -409,8 +546,16 @@ def create_video(state: dict) -> dict:
     stage_banner(6)
     logger.info("Node: create_video")
 
+    # If image generation was skipped (e.g. ComfyUI unavailable), there is
+    # nothing to animate.  Return early so the rest of the cycle (publish,
+    # score_and_store) can still run without a video.
+    image_path: str | None = state.get("image_path")
+    if not image_path:
+        ui_warn("No image available — skipping video generation for this cycle.")
+        logger.warning("create_video: image_path missing — video skipped.")
+        return {**state, "video_path": None}
+
     clean_audio: str  = state["clean_audio_path"]
-    image_path: str   = state["image_path"]
     german_text: str  = state["example_sentence_source"]
     word_timings: list = state.get("word_timings", [])
     style: str        = config.VIDEO_STYLE

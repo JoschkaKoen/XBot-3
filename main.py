@@ -189,6 +189,14 @@ def main():
 
     while not _shutdown:
         reload_settings()
+
+        # If IMAGE_PROVIDER=z-image-turbo, make sure ComfyUI is running.
+        # This spawns it in the background (non-blocking) so it has time to
+        # warm up before the image-generation step arrives later in the cycle.
+        if _config.IMAGE_PROVIDER == "z-image-turbo":
+            from services.zit_image import ensure_comfyui_running
+            ensure_comfyui_running()
+
         cycle += 1
         cycle_banner(cycle)
         logger.info("Starting cycle %d …", cycle)
