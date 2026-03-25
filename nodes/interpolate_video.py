@@ -2,7 +2,10 @@
 Node: interpolate_video
 
 Interpolates the generated video to VIDEO_UPLOAD_FPS using Practical-RIFE
-before it is uploaded to X. Runs only when VIDEO_INTERPOLATION=true.
+before it is uploaded to X.
+
+Only active when ENABLE_VIDEO=wan2.1 and VIDEO_INTERPOLATION=true.
+Grok videos are already at their native FPS and are passed through unchanged.
 
 On any failure (RIFE not set up, VRAM OOM, etc.) the node logs a warning
 and passes the original video path through unchanged — the tweet still goes out.
@@ -26,6 +29,10 @@ def interpolate_video(state: dict) -> dict:
 
     if not video_path:
         logger.info("interpolate_video: no video_path — skipping.")
+        return state
+
+    if config.ENABLE_VIDEO != "wan2.1":
+        logger.info("interpolate_video: ENABLE_VIDEO=%s (not wan2.1) — skipping.", config.ENABLE_VIDEO)
         return state
 
     if not config.VIDEO_INTERPOLATION:
