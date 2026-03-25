@@ -54,8 +54,10 @@ if _settings_env.exists():
                 os.environ.setdefault(_k.strip(), _v.strip())
 
 # ── Constants ─────────────────────────────────────────────────────────────────
-COMFYUI_URL   = os.getenv("COMFYUI_URL", "http://127.0.0.1:8188").rstrip("/")
-COMFYUI_DIR   = Path(os.getenv("COMFYUI_DIR", str(Path.home() / "ComfyUI")))
+COMFYUI_URL        = os.getenv("COMFYUI_URL", "http://127.0.0.1:8188").rstrip("/")
+COMFYUI_DIR        = Path(os.getenv("COMFYUI_DIR", str(Path.home() / "ComfyUI")))
+_default_output    = str(Path.home() / "ComfyUI" / "output")
+COMFYUI_OUTPUT_DIR = Path(os.getenv("COMFYUI_OUTPUT_DIR", _default_output))
 WAN_VIDEO_DIR = Path(os.getenv("WAN_VIDEO_DIR", str(Path.home() / "Programming" / "Wan2GP")))
 WORKFLOW_FILE = _PROJECT_DIR / "workflows" / "comfyui_wan2.2.json"
 OUTPUTS_DIR   = _PROJECT_DIR / "Videos"
@@ -183,10 +185,11 @@ def patch_workflow(
         if ct == "LoadImage":
             inp["image"] = image_name
 
-        # Text prompt — positive encoding nodes
+        # Text prompt — positive encoding nodes only (skip negative prompt nodes)
+        meta_title = node.get("_meta", {}).get("title", "").lower()
         if ct in ("CLIPTextEncode", "CLIPTextEncodeWan2", "WanTextEncode",
                   "CLIPTextEncodeWan", "TextEncode"):
-            if "text" in inp:
+            if "negative" not in meta_title and "text" in inp:
                 inp["text"] = prompt
 
         # Sampler: steps and seed
@@ -199,21 +202,21 @@ def patch_workflow(
                     if seed_key in inp:
                         inp[seed_key] = seed
 
-        # Frame / video length nodes
-        if ct in ("WanVideoLatent", "WanImageToVideoLatent",
-                  "EmptyHunyuanLatentVideo", "EmptyLatentVideo"):
+        # Frame / video length nodes (explicit class types)
+        if ct in ("WanVideoLatent", "WanImageToVideo", "WanImageToVideoLatent",
+                  "Wan22ImageToVideoLatent", "EmptyHunyuanLatentVideo", "EmptyLatentVideo"):
             for length_key in ("video_length", "length", "num_frames"):
                 if length_key in inp and isinstance(inp[length_key], int):
                     inp[length_key] = frames
 
-        # Patch bare "video_length" / "length" fields on any other node
+        # Also patch bare "video_length" / "length" on any non-image node
         if ct not in ("LoadImage",):
             for length_key in ("video_length", "length"):
                 if length_key in inp and isinstance(inp[length_key], int):
                     inp[length_key] = frames
 
-        # Output fps — VHS_VideoCombine and similar save/combine nodes
-        if ct in ("VHS_VideoCombine", "SaveVideo", "VideoLinearCFGGuidance",
+        # Output fps — CreateVideo, VHS_VideoCombine, and similar nodes
+        if ct in ("CreateVideo", "VHS_VideoCombine", "SaveVideo",
                   "SaveAnimatedWEBP", "SaveAnimatedPNG"):
             for fps_key in ("frame_rate", "fps"):
                 if fps_key in inp and isinstance(inp[fps_key], (int, float)):
@@ -278,7 +281,7 @@ def find_output_video(history_entry: dict) -> Path | None:
                     continue
                 if not filename.lower().endswith((".mp4", ".webm", ".gif")):
                     continue
-                candidate = COMFYUI_DIR / "output" / subfolder / filename
+                candidate = COMFYUI_OUTPUT_DIR / subfolder / filename
                 if candidate.exists():
                     return candidate
     return None
@@ -392,7 +395,7 @@ def main() -> None:
     if comfy_video is None:
         raise RuntimeError(
             "Generation completed but no MP4 found in ComfyUI output.\n"
-            f"Check ComfyUI output folder: {COMFYUI_DIR / 'output'}"
+            f"Check ComfyUI output folder: {COMFYUI_OUTPUT_DIR}"
         )
 
     ts = datetime.now().strftime("%Y%m%d_%H%M%S")
