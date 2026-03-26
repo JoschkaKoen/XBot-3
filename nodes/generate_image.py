@@ -663,6 +663,22 @@ def generate_image(state: dict) -> dict:
             "comfyui_unavailable": True,
         }
 
+    if (
+        config.IMAGE_PROVIDER == "z-image-turbo"
+        and config.ENABLE_INSTRUCTIR_ENHANCE
+        and prompt_image_pairs
+    ):
+        from services.instructir_enhance import enhance_image_path
+
+        n_ir = len(prompt_image_pairs)
+        print(f"  ⏳  Enhancing {n_ir} image(s) with InstructIR …", flush=True)
+        _ir_pairs: list[tuple[str, str]] = []
+        for i, (prompt, pth) in enumerate(prompt_image_pairs, start=1):
+            print(f"  ⏳  InstructIR {i}/{n_ir} → {os.path.basename(pth)} …", flush=True)
+            _ir_pairs.append((prompt, enhance_image_path(pth)))
+        prompt_image_pairs = _ir_pairs
+        ok(f"InstructIR: enhanced {n_ir} image(s).")
+
     image_paths = [p for _, p in prompt_image_pairs]
     if len(set(image_paths)) != len(image_paths):
         logger.error(

@@ -34,7 +34,7 @@ Every cycle the bot:
 1. **Picks a vocabulary word** — chosen by the LLM based on an evolving content strategy (CEFR level, theme, style).
 2. **Writes a short example sentence** in the source language and translates both the word and the sentence to the target language.
 3. **Determines CEFR level** (A1–C2) and looks up the grammatical article (der/die/das for German nouns).
-4. **Generates an image** — via Grok Imagine, Midjourney, or local **Z-Image-Turbo** (ComfyUI), matching the example sentence. Multiple images are scored and ranked automatically.
+4. **Generates an image** — via Grok Imagine, Midjourney, or local **Z-Image-Turbo** (ComfyUI), matching the example sentence. For Z-Image-Turbo you can generate several candidates (`GENERATED_IMAGE_COUNT`); optionally each PNG is passed through **[InstructIR](https://github.com/mv-lab/InstructIR)** for instruction-guided restoration **before** [ImageReward](https://github.com/THUDM/ImageReward) picks the best file. Resolution is unchanged (same width × height as ComfyUI output).
 5. **Animates the image** — optionally via Grok Imagine I2V or a local Wan2.1/2.2 model, producing a short MP4.
 6. **Generates TTS audio** — via ElevenLabs. Voice is selected per-tweet by the LLM based on the sentence mood.
 7. **Optionally mixes background music** onto the voice track (`ENABLE_BACKGROUND_MUSIC=on` in `settings.env`; default off).
@@ -81,6 +81,8 @@ source venv/bin/activate
 pip install -r requirements.txt
 ```
 
+That includes **CLIP** (for ImageReward), **PyTorch**, **transformers** (pinned for ImageReward), **PyYAML** and **huggingface-hub** (optional InstructIR / HF downloads). If you enable InstructIR, you still need the InstructIR repo on disk and its own dependency set as described above.
+
 ### 4. Install system dependencies
 
 ```bash
@@ -116,6 +118,20 @@ nano .env
 
 **Optional:** set `WAN_VIDEO_DIR` here if you use local Wan video (`ENABLE_VIDEO=WAN2.1`) and don’t want to edit `settings.env`. For Z-Image-Turbo images, set `COMFYUI_DIR` / `COMFYUI_URL` in `settings.env` if ComfyUI is not at the default path.
 
+### InstructIR (optional, Z-Image-Turbo only)
+
+When `IMAGE_PROVIDER=z-image-turbo` and `ENABLE_INSTRUCTIR_ENHANCE=true`, the bot runs [InstructIR](https://github.com/mv-lab/InstructIR) on **each** candidate image after ComfyUI saves it and **before** ImageReward ranking. Output is written back to the same file; width and height are preserved (if the model returns a different spatial size, the result is resized to match the original).
+
+**Console:** During a cycle you will see a summary line (`Enhancing N image(s) with InstructIR …`), one line per file (`InstructIR i/N → <filename>`), then a green confirmation when all passes finish. Detailed messages (pipeline ready, HF downloads, warnings) are also written to **`data/bot.log`** under the `german_bot.instructir_enhance` logger.
+
+**Setup:** clone the InstructIR repository and set **`INSTRUCTIR_DIR`** to the **repository root** (the folder that contains `configs/eval5d.yml`). Install that project’s dependencies (e.g. `pip install -r requirements_gradio.txt` in the same venv as XBot, or align versions manually). This repo already lists **`PyYAML`** and **`huggingface-hub`** in `requirements.txt` for config loading and optional weight download.
+
+**Weights:** place `im_instructir-7d.pt` and `lm_instructir-7d.pt` in **`INSTRUCTIR_DIR`** (same layout as upstream `app.py` — **not** a separate `./models/` folder for these two files). If they are missing and `huggingface-hub` is installed, they are downloaded from [Hugging Face](https://huggingface.co/marcosv/InstructIR) on first use.
+
+**Note:** Some older tutorials reference `predict.InstructIR` and `.restore()`; the current upstream repo uses a **`process_img`-style** stack (`create_model`, language model, LM head, `eval5d.yml`). XBot mirrors that stack in `services/instructir_enhance.py`.
+
+**VRAM:** ComfyUI runs in a separate process; the bot process still loads **ImageReward** for scoring. Adding InstructIR increases peak GPU memory in the bot. If you hit OOM, set `ENABLE_INSTRUCTIR_ENHANCE=false` or use a GPU with more headroom.
+
 ### Local runtime data & privacy
 
 Tweet history, strategy state, and voice cache live under `data/` as JSON files. Those files are **gitignored** in this repo so clones don’t inherit your posts or account-specific state. Empty templates are in `data/examples/` (see `data/examples/README.md`). The bot creates what it needs on first run; you usually don’t have to copy anything.
@@ -132,6 +148,9 @@ All non-secret settings live in `settings.env`. Key parameters:
 | `TARGET_LANGUAGE` | `English` | Language of the audience |
 | `AI_PROVIDER` | `grok` | `grok` or `scaleway` |
 | `IMAGE_PROVIDER` | `grok` | `grok`, `midjourney`, or `z-image-turbo` (local ComfyUI) |
+| `ENABLE_INSTRUCTIR_ENHANCE` | `false` | When `IMAGE_PROVIDER=z-image-turbo`, run [InstructIR](https://github.com/mv-lab/InstructIR) on each generated image before ImageReward (same pixel size; see below) |
+| `INSTRUCTIR_DIR` | _(empty)_ | Absolute path to an InstructIR clone (must contain `configs/eval5d.yml`). Weights auto-download on first use if `huggingface-hub` is installed |
+| `INSTRUCTIR_PROMPT` | _(built-in default)_ | Natural-language restoration instruction; leave unset to use the default enhancement phrase in `config.py` |
 | `IMAGE_STYLE` | `photographic` | `photographic`, `disney`, or comma-separated cycle |
 | `TWEET_STYLE` | `funny,normal` | `funny`, `normal`, or comma-separated cycle |
 | `VIDEO_STYLE` | `ktv` | `ktv` (karaoke highlights) or `simple` (static) |
@@ -176,7 +195,7 @@ source venv/bin/activate
 python main.py
 ```
 
-The bot logs to both the terminal and `data/bot.log`. Stop it with `Ctrl+C` — it finishes the current cycle cleanly before exiting.
+The bot prints stage banners and progress lines to the **terminal** (image generation, optional InstructIR passes, ImageReward ranking, video steps). The root logger **`lang_bot`** and the log file use the same coloured formatter for INFO and above; messages from other loggers (e.g. `german_bot.*`) still appear in **`data/bot.log`** at DEBUG/INFO. Stop the bot with `Ctrl+C` — it finishes the current cycle cleanly before exiting.
 
 ---
 
@@ -295,7 +314,7 @@ XBot 3/
 ├── .env.example                   # Template for .env
 ├── nodes/
 │   ├── generate_content.py        # Word selection, sentence, translation, tweet assembly
-│   ├── generate_image.py          # Image generation (Grok, Midjourney, or Z-Image-Turbo) + ranking
+│   ├── generate_image.py          # Image generation (Grok / Midjourney / Z-Image-Turbo), optional InstructIR, ImageReward ranking
 │   ├── generate_audio.py          # ElevenLabs TTS — voice selection + karaoke timings
 │   ├── create_video.py            # Audio mix, video animation, KTV overlay
 │   ├── publish.py                 # Post tweet with video to X
@@ -309,6 +328,7 @@ XBot 3/
 │   ├── grok_video.py              # Grok Imagine I2V service
 │   ├── wan_video.py               # Local Wan2.1/2.2 I2V service (via Wan2GP)
 │   ├── zit_image.py               # Z-Image-Turbo via ComfyUI (IMAGE_PROVIDER=z-image-turbo)
+│   ├── instructir_enhance.py      # Optional InstructIR pass after Z-Image-Turbo (ENABLE_INSTRUCTIR_ENHANCE)
 │   ├── image_ranker.py            # ImageReward scoring for image selection
 │   ├── voice_pool.py              # ElevenLabs voice management
 │   ├── language_config.py         # AI-derived language pair config + caching

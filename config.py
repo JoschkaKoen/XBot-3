@@ -28,6 +28,8 @@ Most settings are read from settings.env (git-tracked) and .env (gitignored, API
     IMAGE_PROVIDER        → "midjourney" (TTAPI), "grok" (xAI), or "z-image-turbo" (ComfyUI local)
     FLAG_OVERLAY          → true/false — show country flags on images
     Z_IMAGE_TURBO_STEPS   → denoising steps for Z-Image-Turbo (default: 8, range 8–9)
+    ENABLE_INSTRUCTIR_ENHANCE → true/false — after Z-Image-Turbo, run InstructIR on each candidate (optional; see README)
+    INSTRUCTIR_DIR        → path to InstructIR git clone; INSTRUCTIR_PROMPT overrides the enhancement instruction
 
   X/TWITTER
     USE_TRENDS         → true/false or comma cycle, e.g. true,false,false,false — trends every 4th tweet
@@ -309,6 +311,7 @@ def reload_settings() -> None:
     global IMAGE_STYLE_CYCLE, IMAGE_STYLE
     global TWEET_STYLE_CYCLE, TWEET_STYLE
     global IMAGE_PROVIDER, GENERATED_IMAGE_COUNT, INDIVIDUAL_IMAGE_PROMPTS, Z_IMAGE_TURBO_STEPS, Z_IMAGE_TURBO_WIDTH, Z_IMAGE_TURBO_HEIGHT, Z_IMAGE_PROMPT_SUFFIX
+    global ENABLE_INSTRUCTIR_ENHANCE, INSTRUCTIR_DIR, INSTRUCTIR_PROMPT
     global VIDEO_INTERPOLATION, RIFE_DIR, RIFE_PYTHON, VIDEO_UPLOAD_FPS
     global MAX_TWEET_LENGTH, MAX_EXAMPLE_WORDS, POST_INTERVAL_SECONDS, VIDEO_STYLE, ANALYZE_LAST_N
     global FLAG_OVERLAY
@@ -336,6 +339,10 @@ def reload_settings() -> None:
     Z_IMAGE_TURBO_WIDTH            = int(os.getenv("Z_IMAGE_TURBO_WIDTH",  "832"))
     Z_IMAGE_TURBO_HEIGHT           = int(os.getenv("Z_IMAGE_TURBO_HEIGHT", "480"))
     Z_IMAGE_PROMPT_SUFFIX          = os.getenv("Z_IMAGE_PROMPT_SUFFIX", "").strip()
+    ENABLE_INSTRUCTIR_ENHANCE      = _parse_on_off_env("ENABLE_INSTRUCTIR_ENHANCE", default=False)
+    INSTRUCTIR_DIR                 = os.getenv("INSTRUCTIR_DIR", "").strip()
+    _ir_prompt_raw                 = (os.getenv("INSTRUCTIR_PROMPT") or "").strip()
+    INSTRUCTIR_PROMPT              = _ir_prompt_raw or _DEFAULT_INSTRUCTIR_PROMPT
     VIDEO_INTERPOLATION            = os.getenv("VIDEO_INTERPOLATION", "false").lower().strip() == "true"
     RIFE_DIR                       = os.getenv("RIFE_DIR", os.path.join(os.path.expanduser("~"), "Programming", "Practical-RIFE"))
     RIFE_PYTHON                    = os.getenv("RIFE_PYTHON", os.path.join(os.path.expanduser("~"), "Programming", "Practical-RIFE", "venv", "bin", "python"))
@@ -402,6 +409,20 @@ Z_IMAGE_TURBO_HEIGHT: int = int(os.getenv("Z_IMAGE_TURBO_HEIGHT", "480"))
 # Example: "sharp focus, cinematic lighting, rich colours, professional photography"
 # Leave empty to disable.
 Z_IMAGE_PROMPT_SUFFIX: str = os.getenv("Z_IMAGE_PROMPT_SUFFIX", "").strip()
+
+# InstructIR post-pass (IMAGE_PROVIDER=z-image-turbo only): improve each candidate PNG
+# before ImageReward. Requires a clone of https://github.com/mv-lab/InstructIR and
+# PyYAML + InstructIR deps (see README). Increases peak GPU RAM in the bot process.
+_DEFAULT_INSTRUCTIR_PROMPT = (
+    "enhance overall appeal, boost contrast and saturation, "
+    "improve sharpness and vibrance, make it look more professional and vibrant"
+)
+ENABLE_INSTRUCTIR_ENHANCE: bool = _parse_on_off_env("ENABLE_INSTRUCTIR_ENHANCE", default=False)
+INSTRUCTIR_DIR: str = os.getenv("INSTRUCTIR_DIR", "").strip()
+_INSTRUCTIR_PROMPT_RAW: str | None = os.getenv("INSTRUCTIR_PROMPT")
+INSTRUCTIR_PROMPT: str = (
+    _INSTRUCTIR_PROMPT_RAW.strip() if _INSTRUCTIR_PROMPT_RAW and _INSTRUCTIR_PROMPT_RAW.strip() else _DEFAULT_INSTRUCTIR_PROMPT
+)
 
 # When True, interpolate the generated video to VIDEO_UPLOAD_FPS with Practical-RIFE
 # before uploading. RIFE_DIR must point to a fully set-up Practical-RIFE clone.

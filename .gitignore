@@ -1,3 +1,6 @@
+# Cursor / IDE (local)
+.cursor/
+
 # Secrets — never commit API keys
 .env
 api-keys.env
