@@ -1,6 +1,18 @@
 # XBot 3 — Language Learning X Bot
 
+![XBot 3 — vocabulary learning bot](Screenshots/Screenshot%202026-03-26%20at%2016.01.22.png)
+
 An autonomous X (Twitter) bot that teaches vocabulary from any source language to any target language. Posts every ~5 hours with AI-generated images, karaoke-style animated videos, and native-speaker TTS audio. Self-improving: the bot analyses its own engagement and updates its content strategy automatically.
+
+## Screenshots
+
+![XBot 3 — screenshot](Screenshots/Screenshot%202026-03-26%20at%2016.01.39.png)
+
+![XBot 3 — screenshot](Screenshots/Screenshot%202026-03-26%20at%2016.01.49.png)
+
+![XBot 3 — screenshot](Screenshots/Screenshot%202026-03-26%20at%2016.02.07.png)
+
+![XBot 3 — screenshot](Screenshots/Screenshot%202026-03-26%20at%2016.02.30.png)
 
 ---
 

@@ -42,3 +42,5 @@ data/new_bot_branch.txt
 .DS_Store
 Thumbs.db
 cursor switch model data
+# README screenshots (repo docs)
+!Screenshots/*.png
