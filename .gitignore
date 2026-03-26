@@ -46,6 +46,11 @@ data/*_history.jsonl
 !**/.gitkeep
 !"Background Music/*.mp3"
 !"Background Music/*.wav"
+# README screenshots (tracked PNGs only in Screenshots/)
+!Screenshots/*.png
+
+# macOS metadata beside Screenshots (never commit)
+Screenshots/._*
 
 # OS junk
 .DS_Store

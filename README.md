@@ -1,6 +1,17 @@
 # XBot 3 — Language Learning X Bot
 
+![Example: vocabulary post with image and KTV-style video on X](Screenshots/screenshot-01.png)
+
 An autonomous X (Twitter) bot that teaches vocabulary from any source language to any target language. Posts every ~5 hours with AI-generated images, karaoke-style animated videos, and native-speaker TTS audio. Self-improving: the bot analyses its own engagement and updates its content strategy automatically.
+
+---
+
+## Screenshots
+
+| | |
+|:--|:--|
+| ![Screenshot 2](Screenshots/screenshot-02.png) | ![Screenshot 3](Screenshots/screenshot-03.png) |
+| ![Screenshot 4](Screenshots/screenshot-04.png) | ![Screenshot 5](Screenshots/screenshot-05.png) |
 
 ---
 
@@ -286,6 +297,7 @@ XBot 3/
 │   ├── ui.py                      # Terminal banner and cycle output formatting
 │   └── retry.py                   # Exponential back-off decorator
 ├── data/                          # post_history.json, strategy.json, bot.log, checkpoints.sqlite
+├── Screenshots/                   # README images (tracked in git)
 ├── Background Music/              # Place music.mp3 here
 ├── Images/                        # Generated images saved here
 ├── Voices/                        # ElevenLabs audio saved here

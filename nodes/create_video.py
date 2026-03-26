@@ -6,7 +6,8 @@ Node: create_video
 ================================================================================
 
 This node creates the final MP4 video posted to X.  It combines:
-    1. Audio: voice recording (generate_audio) + background music
+    1. Audio: voice recording (generate_audio), optionally mixed with background music
+       (ENABLE_BACKGROUND_MUSIC in settings.env — on/off)
     2. Visual: generated image (generate_image) — possibly animated
 
 VIDEO ENGINE OPTIONS (set ENABLE_VIDEO in settings.env):
@@ -29,7 +30,7 @@ KEN BURNS:
   - nodes.generate_image: Provides image_path and midjourney_prompt
   - services.grok_video:  Grok Imagine I2V video generation
   - services.wan_video:   Wan2.1 local I2V video generation
-  - config:               KTV_FONT, VIDEO_STYLE, ENABLE_VIDEO, etc.
+  - config:               KTV_FONT, VIDEO_STYLE, ENABLE_VIDEO, ENABLE_BACKGROUND_MUSIC, etc.
 ================================================================================
 """
 
@@ -53,7 +54,13 @@ from moviepy import (
 )
 
 import config
-from config import BACKGROUND_MUSIC_PATH, VOICES_MUSIC_DIR, VIDEOS_DIR, KTV_FONT
+from config import (
+    BACKGROUND_MUSIC_PATH,
+    ENABLE_BACKGROUND_MUSIC,
+    VOICES_MUSIC_DIR,
+    VIDEOS_DIR,
+    KTV_FONT,
+)
 from utils.retry import with_retry
 from utils.ui import stage_banner, ok, warn as ui_warn
 
@@ -566,9 +573,12 @@ def create_video(state: dict) -> dict:
     word_timings: list = state.get("word_timings", [])
     style: str        = config.VIDEO_STYLE
 
-    # ── Step 1: Mix voice with background music ───────────────────────────────
-    if not os.path.exists(BACKGROUND_MUSIC_PATH):
-        ui_warn("Background music not found — using voice-only audio.")
+    # ── Step 1: Mix voice with background music (optional) ────────────────────
+    if not ENABLE_BACKGROUND_MUSIC:
+        mixed_audio = clean_audio
+        logger.info("Background music disabled — using voice-only audio for video.")
+    elif not os.path.exists(BACKGROUND_MUSIC_PATH):
+        ui_warn("Background music enabled but file not found — using voice-only audio.")
         logger.warning(
             "Background music not found at '%s'. Using voice-only audio.",
             BACKGROUND_MUSIC_PATH,
@@ -608,9 +618,12 @@ def create_video(state: dict) -> dict:
 
                 example_en: str = state.get("example_sentence_target", "")
                 mj_prompt: str  = state.get("midjourney_prompt", "")
+                _img_style: str = config.resolve_image_style(state.get("cycle", 0))
 
                 ui_info("  Step 1/3  Generating cinematic motion prompt …")
-                motion_prompt = _svc.build_motion_prompt(example_en, mj_prompt)
+                motion_prompt = _svc.build_motion_prompt(
+                    example_en, mj_prompt, image_style=_img_style
+                )
                 ui_info(f"  Motion prompt: {motion_prompt[:80]}{'…' if len(motion_prompt) > 80 else ''}")
 
                 ui_info(f"  Step 2/3  Generating animated video with {engine_label} …")

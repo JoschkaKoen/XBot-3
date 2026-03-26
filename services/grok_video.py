@@ -76,29 +76,100 @@ def advance_cycle() -> None:
 
 # ── motion prompt generation ──────────────────────────────────────────────────
 
-def build_motion_prompt(example_en: str, midjourney_prompt: str) -> str:
+_SYSTEM_PROMPT = (
+    "You are an expert cinematographer and AI video prompt engineer. "
+    "You write motion descriptions for image-to-video (I2V) diffusion models. "
+    "You understand that I2V models animate a single still frame — they cannot "
+    "add new objects, change the scene, or teleport the camera. "
+    "Your prompts describe ONLY physically plausible motion that grows "
+    "naturally from the existing image composition.\n\n"
+    "Output structure (3 layers, each one short clause):\n"
+    "  1. CAMERA — one slow, continuous move (dolly, truck, crane, push-in, or static)\n"
+    "  2. SUBJECT — the main figure's subtle living motion (breathing, blinking, shifting weight, gesture)\n"
+    "  3. ENVIRONMENT — ambient background motion (wind, water, light, particles, cloth)\n\n"
+    "Rules:\n"
+    "- Every element must be slow, gentle, and continuous — no sudden cuts, whip pans, or fast zooms\n"
+    "- Describe motion the model can infer from the still frame (e.g. hair blowing IF wind is visible)\n"
+    "- Never request new objects, scene changes, text overlays, or impossible physics\n"
+    "- Never mention 'camera' by brand or technical specs — just the movement type\n"
+    "- Use present tense, active voice\n"
+    "- Output ONLY the motion description — no preamble, labels, numbering, or quotes"
+)
+
+
+def build_motion_prompt(
+    example_en: str,
+    midjourney_prompt: str,
+    *,
+    engine: str = "grok",
+    image_style: str = "photographic",
+) -> str:
     """
-    Use the Grok text API to generate a concise cinematic motion prompt
-    suitable for image-to-video generation.
+    Use the LLM to generate a cinematic motion prompt for I2V generation.
+
+    The prompt is tailored to the video *engine* (grok vs wan2.1) and the
+    *image_style* (photographic vs disney) so the motion feels natural for
+    the source material and stays within each engine's strengths.
     """
     from services.ai_client import get_ai_response
 
+    # Engine-specific constraints
+    if engine == "wan2.1":
+        engine_note = (
+            "Target engine: Wan2.1 (local I2V diffusion, 480p, ~5 s clip).\n"
+            "Wan2.1 excels at: slow dolly/push-in, natural hair & cloth physics, "
+            "water ripples, flickering light, gentle parallax.\n"
+            "Wan2.1 struggles with: fast motion, large camera orbits, full-body walking, "
+            "complex hand gestures, multiple independently moving subjects.\n"
+            "Keep motion minimal and grounded — less is more."
+        )
+    else:
+        engine_note = (
+            "Target engine: Grok Imagine (API, 720p, 8 s clip).\n"
+            "Grok handles broader motion well: slow tracking shots, gentle subject "
+            "animation, atmospheric effects. Still avoid fast or erratic movement."
+        )
+
+    # Style-specific tone guidance
+    if image_style == "disney":
+        style_note = (
+            "The image is a 3D CGI / Pixar-Disney animated scene. "
+            "Motion should feel like a held frame from an animated feature: "
+            "slightly exaggerated but smooth character motion (a slow blink, "
+            "a gentle head tilt, a soft smile forming), with lush environmental "
+            "animation (leaves drifting, light rays shifting, dust motes floating). "
+            "Keep the storybook warmth — nothing jarring."
+        )
+    else:
+        style_note = (
+            "The image is photorealistic / editorial photography. "
+            "Motion should feel like a locked-off cinema camera that barely moves: "
+            "a very slow push-in or static shot with shallow depth-of-field rack. "
+            "Subject motion is restrained and lifelike (breathing, a micro-expression, "
+            "weight shift). Environmental motion is naturalistic (wind in foliage, "
+            "steam rising, light flicker through clouds)."
+        )
+
     user_msg = (
-        f"Image description: {midjourney_prompt}\n\n"
-        f"Scene context: {example_en}\n\n"
-        "Write a SHORT prompt (max 2 sentences) for animating this still "
-        "image into an 8-second cinematic video clip. "
-        "Camera motion MUST be slow, soft and smooth — no sudden cuts, no fast pans. "
-        "Focus on realistic, subtle motion that matches the beautiful scene: gentle camera movement, "
-        "soft subject animation, soft environmental motion (wind, light, steam, etc.). "
-        "Output ONLY the prompt — no preamble, no quotes."
+        f"IMAGE DESCRIPTION:\n{midjourney_prompt}\n\n"
+        f"SCENE CONTEXT (the sentence this image illustrates):\n{example_en}\n\n"
+        f"ENGINE:\n{engine_note}\n\n"
+        f"STYLE:\n{style_note}\n\n"
+        "Write the motion prompt now. Keep it to 2–3 short sentences covering "
+        "camera, subject, and environment motion — nothing else."
     )
-    system = (
-        "You are a cinematographer writing motion descriptions for AI video generation. "
-        "Be specific and concise. Describe camera movement and subject motion naturally."
-    )
-    prompt = get_ai_response(user_msg, system, max_tokens=120, temperature=0.7).strip()
-    logger.info("Motion prompt: %s", prompt)
+
+    prompt = get_ai_response(
+        user_msg, _SYSTEM_PROMPT, max_tokens=180, temperature=0.6
+    ).strip()
+
+    # Strip stray labels/quotes the LLM may have added despite instructions
+    for prefix in ("Camera:", "Subject:", "Environment:", "Motion:", "Prompt:"):
+        if prompt.startswith(prefix):
+            prompt = prompt[len(prefix):].strip()
+    prompt = prompt.strip('"\'')
+
+    logger.info("Motion prompt (%s/%s): %s", engine, image_style, prompt)
     return prompt
 
 

@@ -91,10 +91,16 @@ _score(sys.argv[1], sys.argv[2])
 
 # ── motion prompt (re-exported so callers need only one import) ───────────────
 
-def build_motion_prompt(example_en: str, midjourney_prompt: str) -> str:
-    """Delegate to grok_video.build_motion_prompt — identical logic for both engines."""
+def build_motion_prompt(
+    example_en: str,
+    midjourney_prompt: str,
+    *,
+    engine: str = "wan2.1",
+    image_style: str = "photographic",
+) -> str:
+    """Delegate to grok_video.build_motion_prompt with Wan2.1-specific defaults."""
     from services.grok_video import build_motion_prompt as _build
-    return _build(example_en, midjourney_prompt)
+    return _build(example_en, midjourney_prompt, engine=engine, image_style=image_style)
 
 
 # ── cycle-frequency gate (shared state with grok_video) ──────────────────────

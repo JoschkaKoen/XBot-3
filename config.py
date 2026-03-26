@@ -21,6 +21,7 @@ Most settings are read from settings.env (git-tracked) and .env (gitignored, API
     VIDEO_STYLE        → "ktv" (karaoke highlight) or "simple"
     KTV_FONT_SIZE      → base subtitle font size (px at ~480p frame height); bar scales with it
     ENABLE_KEN_BURNS   → true/false — slow zoom+pan on static videos
+    ENABLE_BACKGROUND_MUSIC → on/off (or true/false) — mix voice with BACKGROUND_MUSIC_PATH (default off)
     VIDEO_FREQUENCY    → generate video every N tweets (1 = every tweet)
 
   IMAGE GENERATION
@@ -126,6 +127,22 @@ def _parse_use_trends_cycle(raw: str | None) -> list[bool]:
             _LOG.warning("Invalid USE_TRENDS token %r — treating as false.", p)
             out.append(False)
     return out
+
+
+def _parse_on_off_env(key: str, default: bool = False) -> bool:
+    """
+    Parse a boolean env var as true/false, yes/no, on/off, or 1/0.
+    Unknown values fall back to *default*.
+    """
+    raw = os.getenv(key)
+    if raw is None or not str(raw).strip():
+        return default
+    s = str(raw).strip().lower()
+    if s in ("true", "1", "yes", "on"):
+        return True
+    if s in ("false", "0", "no", "off"):
+        return False
+    return default
 
 
 def _parse_ktv_font_size(raw: str | None) -> int:
@@ -295,7 +312,7 @@ def reload_settings() -> None:
     global VIDEO_INTERPOLATION, RIFE_DIR, RIFE_PYTHON, VIDEO_UPLOAD_FPS
     global MAX_TWEET_LENGTH, MAX_EXAMPLE_WORDS, POST_INTERVAL_SECONDS, VIDEO_STYLE, ANALYZE_LAST_N
     global FLAG_OVERLAY
-    global ENABLE_VIDEO, ENABLE_GROK_VIDEO, VIDEO_FREQUENCY, GROK_VIDEO_FREQUENCY, ENABLE_KEN_BURNS, WAN_VIDEO_DIR, WAN_VIDEO_STEPS, WAN_VIDEO_FRAMES, WAN_VIDEO_HISTORY_FILE, KTV_FONT_SIZE, VIDEO_FPS
+    global ENABLE_VIDEO, ENABLE_GROK_VIDEO, VIDEO_FREQUENCY, GROK_VIDEO_FREQUENCY, ENABLE_KEN_BURNS, ENABLE_BACKGROUND_MUSIC, WAN_VIDEO_DIR, WAN_VIDEO_STEPS, WAN_VIDEO_FRAMES, WAN_VIDEO_HISTORY_FILE, KTV_FONT_SIZE, VIDEO_FPS
     global ENABLE_SELF_IMPROVEMENT, IMPROVEMENT_INTERVAL_CYCLES, IMPROVEMENT_SCORE_THRESHOLD
     global STRATEGY_METRICS_UPDATES_ENABLED, STRATEGY_UPDATE_INTERVAL_HOURS
     global METRICS_FETCH_MAX_TWEETS
@@ -335,6 +352,7 @@ def reload_settings() -> None:
     ENABLE_VIDEO                   = os.getenv("ENABLE_VIDEO", "off").lower().strip()
     ENABLE_GROK_VIDEO              = ENABLE_VIDEO == "grok"
     ENABLE_KEN_BURNS               = os.getenv("ENABLE_KEN_BURNS", "false").lower().strip() == "true"
+    ENABLE_BACKGROUND_MUSIC        = _parse_on_off_env("ENABLE_BACKGROUND_MUSIC", default=False)
     VIDEO_FREQUENCY                = int(os.getenv("VIDEO_FREQUENCY", os.getenv("GROK_VIDEO_FREQUENCY", "1")))
     GROK_VIDEO_FREQUENCY           = VIDEO_FREQUENCY
     WAN_VIDEO_DIR                  = os.getenv("WAN_VIDEO_DIR", str(os.path.join(os.path.expanduser("~"), "Programming", "Wan2GP")))
@@ -461,6 +479,10 @@ ENABLE_GROK_VIDEO: bool = ENABLE_VIDEO == "grok"
 # on the static video path (i.e. when ENABLE_VIDEO=off or when the video gate
 # skips this cycle).
 ENABLE_KEN_BURNS: bool = os.getenv("ENABLE_KEN_BURNS", "false").lower().strip() == "true"
+
+# When True, mix TTS voice with BACKGROUND_MUSIC_PATH in create_video.
+# Accepts true/false or on/off. Default: off (voice-only on the video track).
+ENABLE_BACKGROUND_MUSIC: bool = _parse_on_off_env("ENABLE_BACKGROUND_MUSIC", default=False)
 
 # How often to generate a video: every Nth tweet.
 #   1 = every tweet  (default)
