@@ -1,17 +1,29 @@
 # XBot 3 — Language Learning X Bot
 
-![Example: vocabulary post with image and KTV-style video on X](Screenshots/screenshot-01.png)
+![Learning German on X — profile header and a post teaching *der Apfel* / *apple*, with AI video and KTV subtitle bar (“Mein Apfel fliegt zum Mond!”)](Screenshots/screenshot-01.png)
 
 An autonomous X (Twitter) bot that teaches vocabulary from any source language to any target language. Posts every ~5 hours with AI-generated images, karaoke-style animated videos, and native-speaker TTS audio. Self-improving: the bot analyses its own engagement and updates its content strategy automatically.
+
+The screenshots below are from **[Learning German](https://x.com/learningXGerman)** (@learningXGerman): bilingual vocabulary cards, CEFR levels, hashtags, optional language-pair flag badge on the media, and short clips with the German sentence overlaid at the bottom (KTV style).
 
 ---
 
 ## Screenshots
 
-| | |
-|:--|:--|
-| ![Screenshot 2](Screenshots/screenshot-02.png) | ![Screenshot 3](Screenshots/screenshot-03.png) |
-| ![Screenshot 4](Screenshots/screenshot-04.png) | ![Screenshot 5](Screenshots/screenshot-05.png) |
+**Pixar / Disney-style post — *die Gemütlichkeit* (B1)**  
+Cozy bedroom scene matching the joke about the alarm clock; karaoke-style German line at the bottom of the video.
+
+![Post: die Gemütlichkeit, 3D animated scene with KTV subtitles](Screenshots/screenshot-02.png)
+
+**Feed — “Word of the Day” (*das Buch*) and *essen***  
+Two posts: cat on a book, and ice cream in winter—each with matching generated video.
+
+![Feed: Word of the Day and essen posts](Screenshots/screenshot-03.png)
+
+**Feed — *das Haus* and *gehen* (A1)**  
+House with many windows and a *Zootopia*-style fox at the market—typical A1 vocabulary format.
+
+![Feed: das Haus and gehen vocabulary posts](Screenshots/screenshot-04.png)
 
 ---
 
@@ -22,10 +34,10 @@ Every cycle the bot:
 1. **Picks a vocabulary word** — chosen by the LLM based on an evolving content strategy (CEFR level, theme, style).
 2. **Writes a short example sentence** in the source language and translates both the word and the sentence to the target language.
 3. **Determines CEFR level** (A1–C2) and looks up the grammatical article (der/die/das for German nouns).
-4. **Generates an image** — via Grok Imagine or Midjourney, matching the example sentence. Multiple images are scored and ranked automatically.
+4. **Generates an image** — via Grok Imagine, Midjourney, or local **Z-Image-Turbo** (ComfyUI), matching the example sentence. Multiple images are scored and ranked automatically.
 5. **Animates the image** — optionally via Grok Imagine I2V or a local Wan2.1/2.2 model, producing a short MP4.
 6. **Generates TTS audio** — via ElevenLabs. Voice is selected per-tweet by the LLM based on the sentence mood.
-7. **Mixes background music** onto the voice track.
+7. **Optionally mixes background music** onto the voice track (`ENABLE_BACKGROUND_MUSIC=on` in `settings.env`; default off).
 8. **Renders a KTV video** — karaoke-style word-by-word highlighting synced to the audio, overlaid on the animated image.
 9. **Posts the tweet** with the video attached to X.
 10. **Waits**, then fetches engagement metrics (impressions, likes, reposts, replies, bookmarks).
@@ -102,7 +114,7 @@ nano .env
 | `SCW_SECRET_KEY` | Scaleway secret key (only if `AI_PROVIDER=scaleway`) |
 | `SCW_DEFAULT_PROJECT_ID` | Scaleway project ID (only if `AI_PROVIDER=scaleway`) |
 
-**Optional:** set `WAN_VIDEO_DIR` here if you use local Wan video (`ENABLE_VIDEO=wan`) and don’t want to edit `settings.env`.
+**Optional:** set `WAN_VIDEO_DIR` here if you use local Wan video (`ENABLE_VIDEO=WAN2.1`) and don’t want to edit `settings.env`. For Z-Image-Turbo images, set `COMFYUI_DIR` / `COMFYUI_URL` in `settings.env` if ComfyUI is not at the default path.
 
 ### Local runtime data & privacy
 
@@ -119,16 +131,17 @@ All non-secret settings live in `settings.env`. Key parameters:
 | `SOURCE_LANGUAGE` | `German` | Language being taught |
 | `TARGET_LANGUAGE` | `English` | Language of the audience |
 | `AI_PROVIDER` | `grok` | `grok` or `scaleway` |
-| `IMAGE_PROVIDER` | `grok` | `grok` or `midjourney` |
+| `IMAGE_PROVIDER` | `grok` | `grok`, `midjourney`, or `z-image-turbo` (local ComfyUI) |
 | `IMAGE_STYLE` | `photographic` | `photographic`, `disney`, or comma-separated cycle |
 | `TWEET_STYLE` | `funny,normal` | `funny`, `normal`, or comma-separated cycle |
 | `VIDEO_STYLE` | `ktv` | `ktv` (karaoke highlights) or `simple` (static) |
-| `ENABLE_VIDEO` | `grok` | `off`, `grok` (Grok I2V), or `wan` (local Wan2.1) |
+| `ENABLE_VIDEO` | `grok` | `off`, `grok` (Grok I2V), or `WAN2.1` (local Wan2.1 via Wan2GP; lowercased in code as `wan2.1`) |
 | `VIDEO_FREQUENCY` | `2` | Generate video every N tweets |
 | `WAN_VIDEO_STEPS` | `10` | Denoising steps for Wan video (higher = slower + better) |
 | `WAN_VIDEO_DIR` | `/path/to/Wan2GP` (template) | Path to Wan2GP installation — set your real path here or via `WAN_VIDEO_DIR` in `.env` |
 | `ENABLE_KEN_BURNS` | `false` | Apply Ken Burns zoom/pan when no animated video |
 | `FLAG_OVERLAY` | `true` | Add source→target language flag badge to images |
+| `ENABLE_BACKGROUND_MUSIC` | `off` | `on` / `off` (or `true` / `false`) — mix `Background Music/music.mp3` under the voice in the final video |
 | `POST_INTERVAL_SECONDS` | `18000` | Seconds between posts (18000 = 5 hours) |
 | `MAX_TWEET_LENGTH` | `500` | Max characters (280 for standard, up to 25000 for Premium) |
 | `USE_TRENDS` | `false` | `true` / `false`, or a comma cycle (e.g. `true,false,false,false`) — trends only on selected cycles; same index as `TWEET_STYLE` / `IMAGE_STYLE` |
@@ -138,7 +151,13 @@ All non-secret settings live in `settings.env`. Key parameters:
 | `AUTO_UPDATE` | `true` | Auto-pull from `origin/main` and restart between cycles |
 | `ENABLE_SELF_IMPROVEMENT` | `false` | Enable automatic code self-improvement |
 
-### 7. Add background music
+### 7. Background music (optional)
+
+By default the video uses **voice-only** audio. To mix in background music, set in `settings.env`:
+
+```
+ENABLE_BACKGROUND_MUSIC=on
+```
 
 Place a royalty-free loopable MP3 at:
 
@@ -146,7 +165,7 @@ Place a royalty-free loopable MP3 at:
 Background Music/music.mp3
 ```
 
-The voice audio is mixed with this track (music lowered by 7 dB, faded out at the end). If no file is found the bot uses voice-only audio and continues normally.
+When `ENABLE_BACKGROUND_MUSIC` is on, the voice is mixed with this track (music lowered by 7 dB, faded out at the end). If the flag is on but the file is missing, the bot uses voice-only audio and continues normally.
 
 ---
 
@@ -175,13 +194,13 @@ Set `ENABLE_VIDEO` to control what plays behind the KTV overlay:
 |---|---|---|
 | `off` | Static image (or Ken Burns pan if `ENABLE_KEN_BURNS=true`) | instant |
 | `grok` | Grok Imagine I2V — cloud API, 720p, ~15 s | ~15 s |
-| `wan` | Local Wan2.1/2.2 via Wan2GP — 480p, runs entirely on your GPU | ~7–40 min |
+| `WAN2.1` | Local Wan2.1/2.2 via Wan2GP — 480p, runs entirely on your GPU | ~7–40 min |
 
 `VIDEO_FREQUENCY=N` skips animation every N-1 out of N tweets to reduce cost or generation time.
 
 ### Local Wan2GP setup (optional)
 
-To use `ENABLE_VIDEO=wan` you need [Wan2GP](https://github.com/deepbeepmeep/Wan2GP) installed alongside this project and `run_i2v.py` present in the Wan2GP directory. Set `WAN_VIDEO_DIR` in `settings.env` to its path.
+To use `ENABLE_VIDEO=WAN2.1` you need [Wan2GP](https://github.com/deepbeepmeep/Wan2GP) installed alongside this project and `wgp.py` present in the Wan2GP directory. Set `WAN_VIDEO_DIR` in `settings.env` to its path.
 
 ---
 
@@ -276,7 +295,7 @@ XBot 3/
 ├── .env.example                   # Template for .env
 ├── nodes/
 │   ├── generate_content.py        # Word selection, sentence, translation, tweet assembly
-│   ├── generate_image.py          # Image generation (Grok Imagine or Midjourney) + ranking
+│   ├── generate_image.py          # Image generation (Grok, Midjourney, or Z-Image-Turbo) + ranking
 │   ├── generate_audio.py          # ElevenLabs TTS — voice selection + karaoke timings
 │   ├── create_video.py            # Audio mix, video animation, KTV overlay
 │   ├── publish.py                 # Post tweet with video to X
@@ -289,6 +308,7 @@ XBot 3/
 │   ├── scaleway_ai.py             # Scaleway Llama client
 │   ├── grok_video.py              # Grok Imagine I2V service
 │   ├── wan_video.py               # Local Wan2.1/2.2 I2V service (via Wan2GP)
+│   ├── zit_image.py               # Z-Image-Turbo via ComfyUI (IMAGE_PROVIDER=z-image-turbo)
 │   ├── image_ranker.py            # ImageReward scoring for image selection
 │   ├── voice_pool.py              # ElevenLabs voice management
 │   ├── language_config.py         # AI-derived language pair config + caching
