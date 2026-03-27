@@ -307,15 +307,17 @@ def reload_settings() -> None:
     load_dotenv(override=True)  # .env (API keys) always wins
 
     global AI_PROVIDER
-    global USE_TRENDS, USE_TRENDS_CYCLE, TREND_CANDIDATE_LIMIT
+    global USE_TRENDS, USE_TRENDS_CYCLE, TREND_CANDIDATE_LIMIT, CEFR_ROTATION, METRICS_FETCH_PER_CYCLE
     global IMAGE_STYLE_CYCLE, IMAGE_STYLE
     global TWEET_STYLE_CYCLE, TWEET_STYLE
     global IMAGE_PROVIDER, GENERATED_IMAGE_COUNT, INDIVIDUAL_IMAGE_PROMPTS, Z_IMAGE_TURBO_STEPS, Z_IMAGE_TURBO_WIDTH, Z_IMAGE_TURBO_HEIGHT, Z_IMAGE_PROMPT_SUFFIX
+    global Z_IMAGE_BASE_MODEL_ID, Z_IMAGE_BASE_STEPS, Z_IMAGE_BASE_GUIDANCE_SCALE, Z_IMAGE_BASE_WIDTH, Z_IMAGE_BASE_HEIGHT, Z_IMAGE_BASE_NEGATIVE_PROMPT
     global ENABLE_INSTRUCTIR_ENHANCE, INSTRUCTIR_DIR, INSTRUCTIR_PROMPT
     global VIDEO_INTERPOLATION, RIFE_DIR, RIFE_PYTHON, VIDEO_UPLOAD_FPS
     global MAX_TWEET_LENGTH, MAX_EXAMPLE_WORDS, POST_INTERVAL_SECONDS, VIDEO_STYLE, ANALYZE_LAST_N
     global FLAG_OVERLAY
     global ENABLE_VIDEO, ENABLE_GROK_VIDEO, VIDEO_FREQUENCY, GROK_VIDEO_FREQUENCY, ENABLE_KEN_BURNS, ENABLE_BACKGROUND_MUSIC, WAN_VIDEO_DIR, WAN_VIDEO_STEPS, WAN_VIDEO_FRAMES, WAN_VIDEO_HISTORY_FILE, KTV_FONT_SIZE, VIDEO_FPS
+    global ENABLE_REALESRGAN, REALESRGAN_DIR, REALESRGAN_MODEL, REALESRGAN_OUTSCALE, REALESRGAN_TILE
     global ENABLE_SELF_IMPROVEMENT, IMPROVEMENT_INTERVAL_CYCLES, IMPROVEMENT_SCORE_THRESHOLD
     global STRATEGY_METRICS_UPDATES_ENABLED, STRATEGY_UPDATE_INTERVAL_HOURS
     global METRICS_FETCH_MAX_TWEETS
@@ -326,6 +328,8 @@ def reload_settings() -> None:
     USE_TRENDS_CYCLE               = _parse_use_trends_cycle(os.getenv("USE_TRENDS"))
     USE_TRENDS                     = USE_TRENDS_CYCLE[0]
     TREND_CANDIDATE_LIMIT          = int(os.getenv("TREND_CANDIDATE_LIMIT", "5"))
+    CEFR_ROTATION                  = _parse_on_off_env("CEFR_ROTATION", default=False)
+    METRICS_FETCH_PER_CYCLE        = max(0, int(os.getenv("METRICS_FETCH_PER_CYCLE", "0")))
     _raw                           = os.getenv("IMAGE_STYLE", "photographic")
     IMAGE_STYLE_CYCLE              = [s.lower().strip() for s in _raw.split(",") if s.strip()] or ["photographic"]
     IMAGE_STYLE                    = IMAGE_STYLE_CYCLE[0]
@@ -339,6 +343,12 @@ def reload_settings() -> None:
     Z_IMAGE_TURBO_WIDTH            = int(os.getenv("Z_IMAGE_TURBO_WIDTH",  "832"))
     Z_IMAGE_TURBO_HEIGHT           = int(os.getenv("Z_IMAGE_TURBO_HEIGHT", "480"))
     Z_IMAGE_PROMPT_SUFFIX          = os.getenv("Z_IMAGE_PROMPT_SUFFIX", "").strip()
+    Z_IMAGE_BASE_MODEL_ID          = os.getenv("Z_IMAGE_BASE_MODEL_ID", "Tongyi-MAI/Z-Image").strip()
+    Z_IMAGE_BASE_STEPS             = int(os.getenv("Z_IMAGE_BASE_STEPS", "30"))
+    Z_IMAGE_BASE_GUIDANCE_SCALE    = float(os.getenv("Z_IMAGE_BASE_GUIDANCE_SCALE", "5.0"))
+    Z_IMAGE_BASE_WIDTH             = int(os.getenv("Z_IMAGE_BASE_WIDTH",  "832"))
+    Z_IMAGE_BASE_HEIGHT            = int(os.getenv("Z_IMAGE_BASE_HEIGHT", "480"))
+    Z_IMAGE_BASE_NEGATIVE_PROMPT   = os.getenv("Z_IMAGE_BASE_NEGATIVE_PROMPT", "").strip()
     ENABLE_INSTRUCTIR_ENHANCE      = _parse_on_off_env("ENABLE_INSTRUCTIR_ENHANCE", default=False)
     INSTRUCTIR_DIR                 = os.getenv("INSTRUCTIR_DIR", "").strip()
     _ir_prompt_raw                 = (os.getenv("INSTRUCTIR_PROMPT") or "").strip()
@@ -367,6 +377,11 @@ def reload_settings() -> None:
     WAN_VIDEO_FRAMES               = int(os.getenv("WAN_VIDEO_FRAMES", "81"))
     WAN_VIDEO_HISTORY_FILE         = os.getenv("WAN_VIDEO_HISTORY_FILE", "data/wan_video_history.jsonl")
     VIDEO_FPS                      = int(os.getenv("WAN_VIDEO_FPS", "16"))
+    ENABLE_REALESRGAN              = _parse_on_off_env("ENABLE_REALESRGAN", default=False)
+    REALESRGAN_DIR                 = os.getenv("REALESRGAN_DIR", os.path.join(os.path.expanduser("~"), "Programming", "Real-ESRGAN"))
+    REALESRGAN_MODEL               = os.getenv("REALESRGAN_MODEL", "RealESRGAN_x4plus")
+    REALESRGAN_OUTSCALE            = float(os.getenv("REALESRGAN_OUTSCALE", "1.5"))
+    REALESRGAN_TILE                = int(os.getenv("REALESRGAN_TILE", "256"))
     KTV_FONT_SIZE                  = _parse_ktv_font_size(os.getenv("KTV_FONT_SIZE"))
     ENABLE_SELF_IMPROVEMENT        = os.getenv("ENABLE_SELF_IMPROVEMENT", "false").lower().strip() == "true"
     IMPROVEMENT_INTERVAL_CYCLES    = int(os.getenv("IMPROVEMENT_INTERVAL_CYCLES", "5"))
@@ -383,9 +398,10 @@ def reload_settings() -> None:
     VOICE_PICKER_MODEL             = os.getenv("VOICE_PICKER_MODEL", "non-reasoning").lower().strip()
 
 # ── Image generation provider ────────────────────────────────────────────────
-# "midjourney" = Midjourney via TTAPI (default, requires TT_API_KEY)
-# "grok"       = xAI Grok Imagine API  (requires XAI_API_KEY)
+# "midjourney"    = Midjourney via TTAPI (default, requires TT_API_KEY)
+# "grok"          = xAI Grok Imagine API  (requires XAI_API_KEY)
 # "z-image-turbo" = Z-Image-Turbo FP8 AIO via local ComfyUI (requires COMFYUI_URL/COMFYUI_DIR)
+# "z-image-base"  = Z-Image base model via diffusers (local GPU, higher quality, no ComfyUI)
 IMAGE_PROVIDER: str = os.getenv("IMAGE_PROVIDER", "midjourney").lower().strip()
 
 # Number of images to generate per cycle.
@@ -405,10 +421,22 @@ Z_IMAGE_TURBO_STEPS: int  = int(os.getenv("Z_IMAGE_TURBO_STEPS",  "8"))
 Z_IMAGE_TURBO_WIDTH: int  = int(os.getenv("Z_IMAGE_TURBO_WIDTH",  "832"))
 Z_IMAGE_TURBO_HEIGHT: int = int(os.getenv("Z_IMAGE_TURBO_HEIGHT", "480"))
 
-# Short quality suffix appended to every Z-Image-Turbo prompt after the LLM output.
-# Example: "sharp focus, cinematic lighting, rich colours, professional photography"
-# Leave empty to disable.
+# Short quality suffix appended to every Z-Image prompt after the LLM output.
+# Applies to both z-image-turbo and z-image-base. Leave empty to disable.
 Z_IMAGE_PROMPT_SUFFIX: str = os.getenv("Z_IMAGE_PROMPT_SUFFIX", "").strip()
+
+# ── Z-Image Base (diffusers, IMAGE_PROVIDER=z-image-base) ────────────────────
+# HuggingFace model ID.  Change to a fine-tune if desired.
+Z_IMAGE_BASE_MODEL_ID: str  = os.getenv("Z_IMAGE_BASE_MODEL_ID", "Tongyi-MAI/Z-Image").strip()
+# Denoising steps (20–50 recommended; 30 is the sweet spot for quality/speed).
+Z_IMAGE_BASE_STEPS: int     = int(os.getenv("Z_IMAGE_BASE_STEPS", "30"))
+# CFG scale (classifier-free guidance).  3.5–7.0 works well; 5.0 is a safe default.
+Z_IMAGE_BASE_GUIDANCE_SCALE: float = float(os.getenv("Z_IMAGE_BASE_GUIDANCE_SCALE", "5.0"))
+# Output resolution — keep at 832×480 to match WAN2.1 480p I2V input exactly.
+Z_IMAGE_BASE_WIDTH: int     = int(os.getenv("Z_IMAGE_BASE_WIDTH",  "832"))
+Z_IMAGE_BASE_HEIGHT: int    = int(os.getenv("Z_IMAGE_BASE_HEIGHT", "480"))
+# Optional negative prompt (base model supports full CFG unlike turbo).
+Z_IMAGE_BASE_NEGATIVE_PROMPT: str = os.getenv("Z_IMAGE_BASE_NEGATIVE_PROMPT", "").strip()
 
 # InstructIR post-pass (IMAGE_PROVIDER=z-image-turbo only): improve each candidate PNG
 # before ImageReward. Requires a clone of https://github.com/mv-lab/InstructIR and
@@ -461,6 +489,12 @@ ANALYZE_LAST_N: int = int(os.getenv("ANALYZE_LAST_N", "10"))
 METRICS_FETCH_MAX_TWEETS: int = _parse_metrics_fetch_max(
     os.getenv("METRICS_FETCH_MAX_TWEETS"), ANALYZE_LAST_N
 )
+
+# Number of most-recent tweets to refresh metrics for at the start of every
+# cycle, independently of any strategy-update gate.  Deleted tweets are pruned
+# from history.  Set to 0 to disable.
+METRICS_FETCH_PER_CYCLE: int = max(0, int(os.getenv("METRICS_FETCH_PER_CYCLE", "0")))
+
 # Word selection: use X trending topics or free AI pick.
 # Single value true/false, or comma-separated cycle (same index as TWEET_STYLE / IMAGE_STYLE).
 #   "true,false,false,false" → trends only every 4th cycle (0, 4, 8, …).
@@ -473,6 +507,10 @@ USE_TRENDS: bool = USE_TRENDS_CYCLE[0]
 # pure AI word selection. Once the top N candidates are all already used, the bot gives
 # up on trends and lets the AI pick freely instead.
 TREND_CANDIDATE_LIMIT: int = int(os.getenv("TREND_CANDIDATE_LIMIT", "5"))
+
+# When True the bot cycles through CEFR levels (A1→A2→B1→B2→C1→C2→A1→…),
+# reading the last level used from post history and advancing by one each cycle.
+CEFR_ROTATION: bool = _parse_on_off_env("CEFR_ROTATION", default=False)
 
 # ── Self-Improvement Engine ────────────────────────────────────────────────────
 # When True, the improvement engine runs automatically after every
@@ -532,6 +570,21 @@ VIDEO_FPS: int = int(os.getenv("WAN_VIDEO_FPS", "16"))
 
 # Append-only JSONL file: generation params + video reward scores per Wan run.
 WAN_VIDEO_HISTORY_FILE: str = os.getenv("WAN_VIDEO_HISTORY_FILE", "data/wan_video_history.jsonl")
+
+# ── Real-ESRGAN video upscaling (ENABLE_VIDEO=WAN2.1 only) ───────────────────
+# When True, the WAN2.1 480p video is upscaled to 720p with Real-ESRGAN
+# before the KTV/badge overlay is composited.  Requires a Real-ESRGAN clone
+# and model weights (see services/realesrgan_upscale.py for setup instructions).
+ENABLE_REALESRGAN: bool  = _parse_on_off_env("ENABLE_REALESRGAN", default=False)
+# Path to the Real-ESRGAN repository root (must contain inference_realesrgan_video.py).
+REALESRGAN_DIR: str      = os.getenv("REALESRGAN_DIR", os.path.join(os.path.expanduser("~"), "Programming", "Real-ESRGAN"))
+# Model name (weights/<model>.pth must exist).  RealESRGAN_x4plus is the best
+# all-round model; realesr-general-x4v3 is slightly faster with similar quality.
+REALESRGAN_MODEL: str    = os.getenv("REALESRGAN_MODEL", "RealESRGAN_x4plus")
+# Scale factor: 1.5 → 480p × 1.5 = 720p (the exact target resolution).
+REALESRGAN_OUTSCALE: float = float(os.getenv("REALESRGAN_OUTSCALE", "1.5"))
+# Tile size for tiled inference — keeps VRAM under 4 GB even on longer clips.
+REALESRGAN_TILE: int     = int(os.getenv("REALESRGAN_TILE", "256"))
 
 # KTV overlay subtitle font size in px at 720p (standard HD reference).
 # E.g. KTV_FONT_SIZE=80 → ~80px on 720p Grok video, ~53px on 480p Wan video.

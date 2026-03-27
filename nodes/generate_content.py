@@ -203,8 +203,13 @@ def _build_tweet_prompt(
         funny_tone_section = (
             "## Tone\n"
             "The example sentence MUST be genuinely very funny — it should make the reader laugh and smirk. "
-            "The humor should be positive and uplifting, not negative and cynical."
-            # "A sentence that is merely pleasant or informative is not acceptable.\n\n"
+            "The humor should be positive and uplifting, not negative and cynical.\n\n"
+            "CRITICAL — the sentence must be REALISTIC and make logical sense. "
+            "The humor must come from a relatable everyday situation, ironic twist, or witty observation — "
+            "NOT from surreal nonsense. Objects and animals must behave normally (houses don't eat, "
+            "cars don't sing, shoes don't think). Every sentence must describe something that could "
+            "actually happen in real life. A native speaker should read it and think 'ha, that's so true' — "
+            "not 'that makes no sense'.\n\n"
         )
 
     cefr_rule = (
@@ -311,8 +316,11 @@ def _call_tweet_ai(
     if funny:
         system_prompt = (
             f"You are a {src} language teacher and comedy writer creating funny tweets for X (Twitter). "
-            "Every example sentence must be genuinely very funny — it must make the reader laugh."
-            "It should be positive and uplifting, not negative and cynical."
+            "Every example sentence must be genuinely very funny — it must make the reader laugh. "
+            "It should be positive and uplifting, not negative and cynical. "
+            "The humor MUST come from relatable real-life situations — never from surreal nonsense or "
+            "impossible scenarios. Every sentence must make logical sense and describe something that "
+            "could actually happen. "
             "You always respond with valid JSON only."
         )
     else:
@@ -639,6 +647,22 @@ def _pick_word_from_trends(avoid_words: list) -> Optional[tuple[str, str]]:
 
 
 _VALID_CEFR = {"A1", "A2", "B1", "B2", "C1", "C2"}
+_CEFR_SEQUENCE = ["A1", "A2", "B1", "B2", "C1", "C2"]
+
+
+def _next_cefr_rotation() -> str:
+    """Return the next CEFR level after the last one recorded in post history.
+
+    Walks post_history in reverse to find the most recent record with a valid
+    cefr_level, then advances one step in A1→A2→B1→B2→C1→C2→A1 order.
+    Falls back to A1 when history is empty or no level has been recorded yet.
+    """
+    from nodes.score import _load_history
+    for record in reversed(_load_history()):
+        last = (record.get("cefr_level") or "").strip().upper()
+        if last in _VALID_CEFR:
+            return _CEFR_SEQUENCE[(_CEFR_SEQUENCE.index(last) + 1) % len(_CEFR_SEQUENCE)]
+    return _CEFR_SEQUENCE[0]
 
 
 def _is_word_too_similar(word: str, avoid_words: list) -> tuple[bool, str]:
@@ -701,9 +725,18 @@ def generate_content(state: dict) -> dict:
 
     # ── 1. Pick a source-language word + determine its CEFR level ─────────────
     german_word: Optional[str] = None
-    word_cefr: str = ""
     avoid_words: list = []
     word_from_trends: bool = False
+
+    # CEFR rotation: determine the target level before word selection so both
+    # the word-pick prompt and the tweet prompt use the same forced level.
+    if config.CEFR_ROTATION:
+        word_cefr: str = _next_cefr_rotation()
+        strategy = {**strategy, "preferred_cefr": word_cefr}
+        info(f"CEFR rotation → targeting {word_cefr} this cycle")
+        logger.info("CEFR rotation: targeting %s", word_cefr)
+    else:
+        word_cefr: str = ""
 
     use_trends = config.resolve_use_trends(cycle)
     if use_trends:
@@ -717,8 +750,10 @@ def generate_content(state: dict) -> dict:
         logger.info("Avoiding %d previously used word(s) (e.g. %s)", len(avoid_words), avoid_preview)
         trend_result = _pick_word_from_trends(avoid_words)
         if trend_result:
-            german_word, word_cefr = trend_result
+            german_word, _trend_cefr = trend_result
             word_from_trends = True
+            if not config.CEFR_ROTATION:
+                word_cefr = _trend_cefr
 
     if not german_word:
         from nodes.score import _load_history
@@ -749,13 +784,15 @@ def generate_content(state: dict) -> dict:
                 lines = lines[:-1]
             word_data = json.loads("\n".join(lines))
             german_word = (word_data.get("word") or "").strip()
-            word_cefr = (word_data.get("cefr") or "").strip().upper()
-            if word_cefr not in _VALID_CEFR:
-                word_cefr = ""
+            if not config.CEFR_ROTATION:
+                word_cefr = (word_data.get("cefr") or "").strip().upper()
+                if word_cefr not in _VALID_CEFR:
+                    word_cefr = ""
         except (json.JSONDecodeError, AttributeError):
             # Fallback: treat the whole response as just a word (old behaviour)
             german_word = raw_word
-            word_cefr = ""
+            if not config.CEFR_ROTATION:
+                word_cefr = ""
 
     # ── 1b. Semantic similarity gate (catches deutsch/deutsche etc.) ──────────
     if not avoid_words:
@@ -806,12 +843,14 @@ def generate_content(state: dict) -> dict:
                 lines = lines[:-1]
             word_data = json.loads("\n".join(lines))
             german_word = (word_data.get("word") or "").strip()
-            word_cefr = (word_data.get("cefr") or "").strip().upper()
-            if word_cefr not in _VALID_CEFR:
-                word_cefr = ""
+            if not config.CEFR_ROTATION:
+                word_cefr = (word_data.get("cefr") or "").strip().upper()
+                if word_cefr not in _VALID_CEFR:
+                    word_cefr = ""
         except (json.JSONDecodeError, AttributeError):
             german_word = raw_word
-            word_cefr = ""
+            if not config.CEFR_ROTATION:
+                word_cefr = ""
 
     cefr_display = f" [{word_cefr}]" if word_cefr else ""
     ok(f"Word selected: {german_word}{cefr_display}")

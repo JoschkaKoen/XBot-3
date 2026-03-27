@@ -630,6 +630,26 @@ def create_video(state: dict) -> dict:
                 animated_video_path = _svc.generate_video(image_path, motion_prompt)
                 ok(f"  Step 2/3  Video ready → {os.path.basename(animated_video_path)}")
 
+                # ── Real-ESRGAN upscale (WAN2.1 only, before KTV compositing) ──
+                if config.ENABLE_VIDEO == "wan2.1" and config.ENABLE_REALESRGAN:
+                    from services.realesrgan_upscale import upscale_video
+                    ui_info(
+                        f"  ⬆   Real-ESRGAN: upscaling 480p → "
+                        f"{int(480 * config.REALESRGAN_OUTSCALE):.0f}p …"
+                    )
+                    try:
+                        animated_video_path = upscale_video(animated_video_path)
+                        ok(f"  ⬆   Upscaled → {os.path.basename(animated_video_path)}")
+                    except Exception as _upscale_exc:
+                        logger.warning(
+                            "Real-ESRGAN upscale failed (%s) — using original 480p video.",
+                            _upscale_exc,
+                        )
+                        ui_warn(
+                            f"Real-ESRGAN upscale failed ({_upscale_exc}) "
+                            "— continuing with original 480p video."
+                        )
+
                 ui_info("  Step 3/3  Applying KTV overlay on animated video …")
             except Exception as exc:
                 logger.warning("%s video generation failed (%s) — falling back to static.", engine_label, exc)

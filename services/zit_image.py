@@ -39,6 +39,74 @@ class ComfyUIUnavailableError(RuntimeError):
     """Raised when ComfyUI cannot be reached after auto-start and the 60-second grace period."""
 
 
+# Popen handle for a ComfyUI we spawned ourselves this session.
+# None if ComfyUI was already running when the bot started.
+_comfyui_proc: subprocess.Popen | None = None
+
+
+def _find_comfyui_pid_by_port(port: int) -> int | None:
+    """Return the PID listening on *port* using `ss` (standard on Ubuntu)."""
+    import re
+    try:
+        result = subprocess.run(
+            ["ss", "-tlnp", f"sport = :{port}"],
+            capture_output=True, text=True,
+        )
+        m = re.search(r"pid=(\d+)", result.stdout)
+        if m:
+            return int(m.group(1))
+    except Exception:
+        pass
+    return None
+
+
+def shutdown_comfyui() -> None:
+    """
+    Terminate ComfyUI to fully release its VRAM (CUDA context + model cache).
+
+    Tries the Popen handle we hold from auto-starting it first; falls back to
+    finding the process by port via `ss`.  After termination the next call to
+    ensure_comfyui_running() will restart it automatically.
+    """
+    global _comfyui_proc
+
+    import signal as _signal
+    from urllib.parse import urlparse
+
+    pid: int | None = None
+
+    if _comfyui_proc is not None and _comfyui_proc.poll() is None:
+        pid = _comfyui_proc.pid
+        _comfyui_proc = None
+
+    if pid is None:
+        parsed = urlparse(config.COMFYUI_URL)
+        port   = parsed.port or 8188
+        pid    = _find_comfyui_pid_by_port(port)
+
+    if pid is None:
+        logger.warning("shutdown_comfyui: could not find ComfyUI process — skipping.")
+        return
+
+    try:
+        os.kill(pid, _signal.SIGTERM)
+        # Wait up to 8 s for clean exit, then SIGKILL
+        for _ in range(16):
+            time.sleep(0.5)
+            try:
+                os.kill(pid, 0)   # still alive?
+            except ProcessLookupError:
+                break
+        else:
+            os.kill(pid, _signal.SIGKILL)
+        print("  ✔   ComfyUI shut down — VRAM released.", flush=True)
+        logger.info("ComfyUI (PID %d) terminated.", pid)
+    except ProcessLookupError:
+        logger.debug("ComfyUI PID %d already gone.", pid)
+    except Exception as exc:
+        logger.warning("shutdown_comfyui: failed to kill PID %d: %s", pid, exc)
+
+
 def ensure_comfyui_running() -> None:
     """
     Non-blocking check-and-spawn called at the top of each bot cycle.
@@ -70,11 +138,13 @@ def ensure_comfyui_running() -> None:
         )
         return
 
+    global _comfyui_proc
+
     extra_args = os.getenv("COMFYUI_ARGS", "--normalvram --fp16-vae").split()
     cmd = [str(venv_python), "main.py"] + extra_args
     log_path = comfyui / "comfyui_autostart.log"
     with open(log_path, "a") as log_fh:
-        subprocess.Popen(
+        _comfyui_proc = subprocess.Popen(
             cmd,
             cwd=str(comfyui),
             stdout=log_fh,

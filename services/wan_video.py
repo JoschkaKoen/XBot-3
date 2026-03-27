@@ -137,6 +137,45 @@ def _find_venv_python(wan_dir: Path) -> str:
 
 # ── main generator ────────────────────────────────────────────────────────────
 
+def _prepare_wan_image(src: Path, target_w: int, target_h: int) -> Path:
+    """
+    Return a path to an image that is exactly *target_w* × *target_h*.
+
+    If *src* is already the right size it is returned unchanged.
+    Otherwise a centre-crop + resize copy is saved next to the original with
+    a ``_wan{W}x{H}`` suffix and that path is returned.
+
+    Centre-crop preserves composition: scale so the short side fills the
+    frame, then crop the excess from the long side symmetrically.
+    """
+    from PIL import Image as _PIL
+
+    with _PIL.open(src) as im:
+        iw, ih = im.size
+
+    if iw == target_w and ih == target_h:
+        return src
+
+    # Scale so both dimensions are >= target, then centre-crop.
+    scale  = max(target_w / iw, target_h / ih)
+    new_w  = round(iw * scale)
+    new_h  = round(ih * scale)
+    left   = (new_w - target_w) // 2
+    top    = (new_h - target_h) // 2
+
+    with _PIL.open(src) as im:
+        resized  = im.convert("RGB").resize((new_w, new_h), _PIL.LANCZOS)
+        cropped  = resized.crop((left, top, left + target_w, top + target_h))
+
+    out = src.parent / f"{src.stem}_wan{target_w}x{target_h}{src.suffix}"
+    cropped.save(out, format="PNG")
+    logger.info(
+        "_prepare_wan_image: %s (%dx%d) → %s (%dx%d)",
+        src.name, iw, ih, out.name, target_w, target_h,
+    )
+    return out
+
+
 def generate_video(image_path: str, motion_prompt: str) -> str:
     """
     Animate *image_path* with Wan2.1 using *motion_prompt*.
@@ -190,15 +229,19 @@ def generate_video(image_path: str, motion_prompt: str) -> str:
         json.dumps(wgp_cfg, indent=2), encoding="utf-8"
     )
 
-    # ── Step 2: Write task JSON and run wgp.py ────────────────────────────────
-    image_abs  = Path(image_path).resolve()
+    # ── Step 2: Prepare input image at WAN2.1's exact resolution ─────────────
+    # Parse target resolution from the task config ("832x480" → 832, 480).
+    _wan_resolution = "832x480"
+    _wan_w, _wan_h  = (int(x) for x in _wan_resolution.split("x"))
+
+    image_abs = _prepare_wan_image(Path(image_path).resolve(), _wan_w, _wan_h)
     timestamp  = datetime.now().strftime("%Y%m%d_%H%M%S")
     started_at = datetime.now().isoformat(timespec="seconds")
 
     task = {
         "model_type":            "i2v",
         "model_filename":        "wan2.1_image2video_480p_14B_quanto_mbf16_int8.safetensors",
-        "resolution":            "832x480",
+        "resolution":            _wan_resolution,
         "video_length":          frames,
         "num_inference_steps":   steps,
         "image_start":           str(image_abs),

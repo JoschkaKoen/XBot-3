@@ -15,6 +15,7 @@ __pycache__/
 *.pyo
 venv
 venv/
+venv_zimage/
 env/
 .venv/
 

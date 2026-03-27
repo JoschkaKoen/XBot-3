@@ -106,6 +106,61 @@ def _fetch_one(client: tweepy.Client, tweet_id: str) -> dict:
     return response.data.get("public_metrics", {})
 
 
+# ── per-cycle lightweight refresh ─────────────────────────────────────────────
+
+def _fetch_cycle_metrics(n: int) -> None:
+    """
+    Refresh metrics for the *n* most-recent tweets in history every cycle.
+
+    Runs unconditionally — no throttle gate, no strategy trigger.
+    Deleted tweets are pruned from post_history.json.
+    Called at the start of fetch_all_metrics when METRICS_FETCH_PER_CYCLE > 0.
+    """
+    from config import METRICS_FETCH_PER_CYCLE  # re-read live value
+
+    history = _load_history()
+    if not history:
+        return
+
+    cap      = min(n, len(history))
+    skip     = len(history) - cap
+    client   = _client()
+    updated  = deleted = 0
+
+    ui_info(f"Per-cycle metrics refresh: last {cap} tweet(s) …")
+    logger.info("_fetch_cycle_metrics: refreshing %d most-recent tweet(s).", cap)
+
+    new_history = list(history[:skip])
+    for record in history[skip:]:
+        tweet_id = record.get("tweet_id", "")
+        if not tweet_id:
+            new_history.append(record)
+            continue
+        try:
+            metrics = _fetch_one(client, tweet_id)
+            score   = _compute_score(metrics)
+            new_history.append({**record, "metrics": metrics, "engagement_score": score})
+            updated += 1
+        except _TweetGoneError:
+            logger.info("Per-cycle refresh: tweet %s gone — removed from history.", tweet_id)
+            deleted += 1
+        except Exception as exc:
+            if _tweet_is_gone(exc):
+                logger.info("Per-cycle refresh: tweet %s gone (%s) — removed.", tweet_id, exc)
+                deleted += 1
+            else:
+                logger.warning("Per-cycle refresh: could not fetch %s (%s) — kept.", tweet_id, exc)
+                new_history.append(record)
+
+    _save_history(new_history)
+
+    parts = []
+    if updated: parts.append(f"{updated} updated")
+    if deleted: parts.append(f"{deleted} deleted")
+    ok(f"Per-cycle metrics: {',  '.join(parts) if parts else 'nothing changed'}  ({len(new_history)} records total)")
+    logger.info("_fetch_cycle_metrics done: %d updated, %d deleted.", updated, deleted)
+
+
 # ── node ──────────────────────────────────────────────────────────────────────
 
 def fetch_all_metrics(state: dict) -> dict:
@@ -118,6 +173,14 @@ def fetch_all_metrics(state: dict) -> dict:
     """
     stage_banner(1)
     logger.info("Node: fetch_all_metrics")
+
+    # Per-cycle lightweight refresh — runs every cycle regardless of strategy gates.
+    import config as _cfg
+    if _cfg.METRICS_FETCH_PER_CYCLE > 0:
+        try:
+            _fetch_cycle_metrics(_cfg.METRICS_FETCH_PER_CYCLE)
+        except Exception as exc:
+            logger.warning("Per-cycle metrics refresh failed (non-fatal): %s", exc)
 
     if not STRATEGY_METRICS_UPDATES_ENABLED:
         ui_info(

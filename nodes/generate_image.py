@@ -212,7 +212,7 @@ def _build_image_prompt(
     funny: bool,
 ) -> str:
     """Call the LLM once and return a single image generation prompt string."""
-    is_zit = config.IMAGE_PROVIDER == "z-image-turbo"
+    is_zit = config.IMAGE_PROVIDER in ("z-image-turbo", "z-image-base")
 
     _param_flag_rule = (
         "- Do NOT include any parameter flags (no --v, --q, --style, --ar, etc.) — they are added automatically\n"
@@ -227,11 +227,19 @@ def _build_image_prompt(
         "- Do NOT use quotation marks in the output\n"
         "- Any human or character faces must show a natural, positive expression "
         "(genuine smile, relaxed, engaged) — never shocked, disgusted, fearful, or negative\n"
+        "- The image must be VISUALLY CLEAN and aesthetically pleasing at all times — "
+        "no spills, stains, smears, mess, splatter, dirt, grime, or food/liquid on skin, "
+        "clothing, or surfaces. Everything in the frame should look polished, tidy, and "
+        "magazine-worthy. If the scene involves food, show it beautifully plated and "
+        "untouched — never messy eating, dripping, or smeared\n"
     )
 
     # Derive correct aspect ratio label from configured resolution
     if is_zit:
-        w, h = config.Z_IMAGE_TURBO_WIDTH, config.Z_IMAGE_TURBO_HEIGHT
+        if config.IMAGE_PROVIDER == "z-image-base":
+            w, h = config.Z_IMAGE_BASE_WIDTH, config.Z_IMAGE_BASE_HEIGHT
+        else:
+            w, h = config.Z_IMAGE_TURBO_WIDTH, config.Z_IMAGE_TURBO_HEIGHT
         if w > h:
             _aspect_hint = f"wide {w}×{h} landscape frame"
         elif h > w:
@@ -536,6 +544,9 @@ def _make_client():
     if config.IMAGE_PROVIDER == "z-image-turbo":
         from services.zit_image import ZITImageClient
         return ZITImageClient()
+    if config.IMAGE_PROVIDER == "z-image-base":
+        from services.zimage_base import ZImageBaseClient
+        return ZImageBaseClient()
     return MidjourneyClient()
 
 
@@ -625,6 +636,25 @@ def generate_image(state: dict) -> dict:
                     prompt_image_pairs.append((prompt, p))
             _image_client.unload_models()
 
+        elif config.IMAGE_PROVIDER == "z-image-base":
+            import random
+            seeds = [random.randint(0, 2**31 - 1) for _ in prompts]
+            print(
+                f"  ⏳  Generating {len(prompts)} image(s) via Z-Image Base "
+                f"({config.Z_IMAGE_BASE_STEPS} steps, cfg {config.Z_IMAGE_BASE_GUIDANCE_SCALE}) …",
+                flush=True,
+            )
+            all_paths = retry_call(
+                _image_client.generate_batch,
+                prompts,
+                seeds,
+                max_attempts=3,
+                base_delay=15.0,
+                label="z_image_base_batch",
+            )
+            for prompt, path in zip(prompts, all_paths):
+                prompt_image_pairs.append((prompt, path))
+
         else:  # midjourney
             if config.INDIVIDUAL_IMAGE_PROMPTS and n > 1:
                 for i, prompt in enumerate(prompts):
@@ -664,7 +694,7 @@ def generate_image(state: dict) -> dict:
         }
 
     if (
-        config.IMAGE_PROVIDER == "z-image-turbo"
+        config.IMAGE_PROVIDER in ("z-image-turbo", "z-image-base")
         and config.ENABLE_INSTRUCTIR_ENHANCE
         and prompt_image_pairs
     ):
@@ -678,6 +708,13 @@ def generate_image(state: dict) -> dict:
             _ir_pairs.append((prompt, enhance_image_path(pth)))
         prompt_image_pairs = _ir_pairs
         ok(f"InstructIR: enhanced {n_ir} image(s).")
+
+    # Shut down ComfyUI after all image work (generation + enhancement) so its
+    # CUDA context is fully released before WAN2.1 loads its 14B model.
+    # z-image-base runs in its own subprocess and releases VRAM automatically on exit.
+    if config.IMAGE_PROVIDER == "z-image-turbo":
+        from services.zit_image import shutdown_comfyui
+        shutdown_comfyui()
 
     image_paths = [p for _, p in prompt_image_pairs]
     if len(set(image_paths)) != len(image_paths):
