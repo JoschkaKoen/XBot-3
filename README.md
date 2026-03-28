@@ -296,6 +296,22 @@ LangGraph checkpoints state after every node using `SqliteSaver` (`data/checkpoi
 
 ---
 
+## Git push from the Cursor agent
+
+If HTTPS is configured with **`gh auth git-credential`** (common after `gh auth login`), Git reads your token from the **OS keyring**. Cursor’s agent terminal sometimes runs in a restricted environment that cannot access the keyring, which produces:
+
+`fatal: could not read Username for 'https://github.com': No such device or address`
+
+**Ways to fix it:**
+
+1. **Push in your own terminal** (always works): `git push origin main`
+2. **When Cursor asks**, allow **full / non-sandboxed** terminal access for that command so `gh` can reach the keyring.
+3. **Optional (dev machine, plain-text token):** `git config --global credential.helper store`, then run one successful `git push` in a normal terminal — Git will save credentials to `~/.git-credentials` and non-interactive pushes often work afterward. Treat that file as secret.
+
+A local-only reminder for the agent lives in `.cursor/rules/github-push.mdc` (the `.cursor/` folder is gitignored).
+
+---
+
 ## Project structure
 
 ```
