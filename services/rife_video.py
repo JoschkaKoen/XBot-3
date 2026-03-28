@@ -143,9 +143,13 @@ def interpolate(input_path: str) -> str:
         ])
 
         # ── Step 2: RIFE interpolation ────────────────────────────────────────
-        # --exp 1 = 2x multiplier (16→32fps exactly).
-        # If target_fps is not exactly 2x, fall back to --fps flag.
-        if target_fps == src_fps * 2:
+        # --exp N = 2^N multiplier (exact power-of-two, best quality).
+        #   exp 1 → 2x  (16 → 32 fps)
+        #   exp 2 → 4x  (16 → 64 fps)
+        # Fall back to --fps for non-power-of-two targets.
+        if target_fps == src_fps * 4:
+            rife_fps_args = ["--exp", "2"]
+        elif target_fps == src_fps * 2:
             rife_fps_args = ["--exp", "1"]
         else:
             rife_fps_args = ["--fps", str(target_fps)]

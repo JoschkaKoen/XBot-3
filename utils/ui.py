@@ -153,11 +153,24 @@ def err(msg: str):
     print(f"  {_RED}✖   {msg}{_R}", file=sys.stderr)
 
 
-def cycle_summary(cycle: int, tweet_url: str, score: float):
+def format_elapsed(seconds: float) -> str:
+    """Human-readable duration for cycle timing (wall clock)."""
+    if seconds < 60:
+        return f"{seconds:.1f}s"
+    m, s = divmod(int(round(seconds)), 60)
+    if m < 60:
+        return f"{m}m {s}s" if s else f"{m}m"
+    h, m = divmod(m, 60)
+    return f"{h}h {m}m {s}s" if s else f"{h}h {m}m"
+
+
+def cycle_summary(cycle: int, tweet_url: str, score: float, *, elapsed_sec: float | None = None):
     w = _w()
     print()
     print(f"{_GREEN}{_BOLD}{'═' * w}{_R}")
     print(f"{_GREEN}{_BOLD}  ✅  CYCLE {cycle} COMPLETE{_R}")
+    if elapsed_sec is not None:
+        print(f"{_GREEN}  ⏱   Cycle time: {format_elapsed(elapsed_sec)}{_R}")
     print(f"{_GREEN}  🔗  {tweet_url}{_R}")
     print(f"{_GREEN}  📈  Engagement score: {score:.2f}{_R}")
     print(f"{_GREEN}{_BOLD}{'═' * w}{_R}")

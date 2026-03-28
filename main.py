@@ -43,7 +43,14 @@ sys.stdout.reconfigure(line_buffering=True)
 
 import config as _config
 from config import setup_logging, reload_settings
-from utils.ui import startup_banner, cycle_banner, cycle_summary, err, warn
+from utils.ui import (
+    startup_banner,
+    cycle_banner,
+    cycle_summary,
+    err,
+    format_elapsed,
+    warn,
+)
 
 
 def _model_lines() -> list:
@@ -200,6 +207,7 @@ def main():
         cycle += 1
         cycle_banner(cycle)
         logger.info("Starting cycle %d …", cycle)
+        t_cycle = time.perf_counter()
 
         try:
             result = graph.invoke(state, config=config)
@@ -212,16 +220,27 @@ def main():
 
             tweet_url = result.get("tweet_url", "n/a")
             score     = result.get("engagement_score", 0.0)
-            cycle_summary(cycle, tweet_url, score)
-            logger.info("Cycle %d complete. url=%s score=%.2f", cycle, tweet_url, score)
+            elapsed = time.perf_counter() - t_cycle
+            cycle_summary(cycle, tweet_url, score, elapsed_sec=elapsed)
+            logger.info(
+                "Cycle %d complete in %s (%.1fs). url=%s score=%.2f",
+                cycle,
+                format_elapsed(elapsed),
+                elapsed,
+                tweet_url,
+                score,
+            )
 
         except KeyboardInterrupt:
             warn("Interrupted — stopping.")
             logger.info("KeyboardInterrupt — stopping.")
             break
         except Exception as exc:
-            err(f"Cycle {cycle} failed: {exc}")
-            logger.exception("Cycle %d failed: %s", cycle, exc)
+            elapsed = time.perf_counter() - t_cycle
+            err(f"Cycle {cycle} failed after {format_elapsed(elapsed)}: {exc}")
+            logger.exception(
+                "Cycle %d failed after %.1fs: %s", cycle, elapsed, exc
+            )
             warn("Waiting 60s before retrying …")
             time.sleep(60)
             state["error"] = str(exc)
