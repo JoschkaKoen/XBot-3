@@ -1,18 +1,29 @@
 # XBot 3 — Language Learning X Bot
 
-![XBot 3 — vocabulary learning bot](Screenshots/Screenshot%202026-03-26%20at%2016.01.22.png)
+![Learning German on X — profile header and a post teaching *der Apfel* / *apple*, with AI video and KTV subtitle bar (“Mein Apfel fliegt zum Mond!”)](Screenshots/screenshot-01.png)
 
 An autonomous X (Twitter) bot that teaches vocabulary from any source language to any target language. Posts every ~5 hours with AI-generated images, karaoke-style animated videos, and native-speaker TTS audio. Self-improving: the bot analyses its own engagement and updates its content strategy automatically.
 
+The screenshots below are from **[Learning German](https://x.com/learningXGerman)** (@learningXGerman): bilingual vocabulary cards, CEFR levels, hashtags, optional language-pair flag badge on the media, and short clips with the German sentence overlaid at the bottom (KTV style).
+
+---
+
 ## Screenshots
 
-![XBot 3 — screenshot](Screenshots/Screenshot%202026-03-26%20at%2016.01.39.png)
+**Pixar / Disney-style post — *die Gemütlichkeit* (B1)**  
+Cozy bedroom scene matching the joke about the alarm clock; karaoke-style German line at the bottom of the video.
 
-![XBot 3 — screenshot](Screenshots/Screenshot%202026-03-26%20at%2016.01.49.png)
+![Post: die Gemütlichkeit, 3D animated scene with KTV subtitles](Screenshots/screenshot-02.png)
 
-![XBot 3 — screenshot](Screenshots/Screenshot%202026-03-26%20at%2016.02.07.png)
+**Feed — “Word of the Day” (*das Buch*) and *essen***  
+Two posts: cat on a book, and ice cream in winter—each with matching generated video.
 
-![XBot 3 — screenshot](Screenshots/Screenshot%202026-03-26%20at%2016.02.30.png)
+![Feed: Word of the Day and essen posts](Screenshots/screenshot-03.png)
+
+**Feed — *das Haus* and *gehen* (A1)**  
+House with many windows and a *Zootopia*-style fox at the market—typical A1 vocabulary format.
+
+![Feed: das Haus and gehen vocabulary posts](Screenshots/screenshot-04.png)
 
 ---
 
@@ -23,10 +34,10 @@ Every cycle the bot:
 1. **Picks a vocabulary word** — chosen by the LLM based on an evolving content strategy (CEFR level, theme, style).
 2. **Writes a short example sentence** in the source language and translates both the word and the sentence to the target language.
 3. **Determines CEFR level** (A1–C2) and looks up the grammatical article (der/die/das for German nouns).
-4. **Generates an image** — via Grok Imagine or Midjourney, matching the example sentence. Multiple images are scored and ranked automatically.
+4. **Generates an image** — via Grok Imagine, Midjourney, or local **Z-Image-Turbo** (ComfyUI), matching the example sentence. For Z-Image-Turbo you can generate several candidates (`GENERATED_IMAGE_COUNT`); optionally each PNG is passed through **[InstructIR](https://github.com/mv-lab/InstructIR)** for instruction-guided restoration **before** [ImageReward](https://github.com/THUDM/ImageReward) picks the best file. Resolution is unchanged (same width × height as ComfyUI output).
 5. **Animates the image** — optionally via Grok Imagine I2V or a local Wan2.1/2.2 model, producing a short MP4.
 6. **Generates TTS audio** — via ElevenLabs. Voice is selected per-tweet by the LLM based on the sentence mood.
-7. **Mixes background music** onto the voice track.
+7. **Optionally mixes background music** onto the voice track (`ENABLE_BACKGROUND_MUSIC=on` in `settings.env`; default off).
 8. **Renders a KTV video** — karaoke-style word-by-word highlighting synced to the audio, overlaid on the animated image.
 9. **Posts the tweet** with the video attached to X.
 10. **Waits**, then fetches engagement metrics (impressions, likes, reposts, replies, bookmarks).
@@ -70,6 +81,8 @@ source venv/bin/activate
 pip install -r requirements.txt
 ```
 
+That includes **CLIP** (for ImageReward), **PyTorch**, **transformers** (pinned for ImageReward), **PyYAML** and **huggingface-hub** (optional InstructIR / HF downloads). If you enable InstructIR, you still need the InstructIR repo on disk and its own dependency set as described above.
+
 ### 4. Install system dependencies
 
 ```bash
@@ -103,6 +116,28 @@ nano .env
 | `SCW_SECRET_KEY` | Scaleway secret key (only if `AI_PROVIDER=scaleway`) |
 | `SCW_DEFAULT_PROJECT_ID` | Scaleway project ID (only if `AI_PROVIDER=scaleway`) |
 
+**Optional:** set `WAN_VIDEO_DIR` here if you use local Wan video (`ENABLE_VIDEO=WAN2.1`) and don’t want to edit `settings.env`. For Z-Image-Turbo images, set `COMFYUI_DIR` / `COMFYUI_URL` in `settings.env` if ComfyUI is not at the default path.
+
+### InstructIR (optional, Z-Image-Turbo only)
+
+When `IMAGE_PROVIDER=z-image-turbo` and `ENABLE_INSTRUCTIR_ENHANCE=true`, the bot runs [InstructIR](https://github.com/mv-lab/InstructIR) on **each** candidate image after ComfyUI saves it and **before** ImageReward ranking. Output is written back to the same file; width and height are preserved (if the model returns a different spatial size, the result is resized to match the original).
+
+**Console:** During a cycle you will see a summary line (`Enhancing N image(s) with InstructIR …`), one line per file (`InstructIR i/N → <filename>`), then a green confirmation when all passes finish. Detailed messages (pipeline ready, HF downloads, warnings) are also written to **`data/bot.log`** under the `german_bot.instructir_enhance` logger.
+
+**Setup:** clone the InstructIR repository and set **`INSTRUCTIR_DIR`** to the **repository root** (the folder that contains `configs/eval5d.yml`). Install that project’s dependencies (e.g. `pip install -r requirements_gradio.txt` in the same venv as XBot, or align versions manually). This repo already lists **`PyYAML`** and **`huggingface-hub`** in `requirements.txt` for config loading and optional weight download.
+
+**Weights:** place `im_instructir-7d.pt` and `lm_instructir-7d.pt` in **`INSTRUCTIR_DIR`** (same layout as upstream `app.py` — **not** a separate `./models/` folder for these two files). If they are missing and `huggingface-hub` is installed, they are downloaded from [Hugging Face](https://huggingface.co/marcosv/InstructIR) on first use.
+
+**Note:** Some older tutorials reference `predict.InstructIR` and `.restore()`; the current upstream repo uses a **`process_img`-style** stack (`create_model`, language model, LM head, `eval5d.yml`). XBot mirrors that stack in `services/instructir_enhance.py`.
+
+**VRAM:** ComfyUI runs in a separate process; the bot process still loads **ImageReward** for scoring. Adding InstructIR increases peak GPU memory in the bot. If you hit OOM, set `ENABLE_INSTRUCTIR_ENHANCE=false` or use a GPU with more headroom.
+
+### Local runtime data & privacy
+
+Tweet history, strategy state, and voice cache live under `data/` as JSON files. Those files are **gitignored** in this repo so clones don’t inherit your posts or account-specific state. Empty templates are in `data/examples/` (see `data/examples/README.md`). The bot creates what it needs on first run; you usually don’t have to copy anything.
+
+See **`SECURITY.md`** for secrets and safe publishing.
+
 ### 6. Configure bot behaviour (`settings.env`)
 
 All non-secret settings live in `settings.env`. Key parameters:
@@ -112,24 +147,36 @@ All non-secret settings live in `settings.env`. Key parameters:
 | `SOURCE_LANGUAGE` | `German` | Language being taught |
 | `TARGET_LANGUAGE` | `English` | Language of the audience |
 | `AI_PROVIDER` | `grok` | `grok` or `scaleway` |
-| `IMAGE_PROVIDER` | `grok` | `grok` or `midjourney` |
+| `IMAGE_PROVIDER` | `grok` | `grok`, `midjourney`, or `z-image-turbo` (local ComfyUI) |
+| `ENABLE_INSTRUCTIR_ENHANCE` | `false` | When `IMAGE_PROVIDER=z-image-turbo`, run [InstructIR](https://github.com/mv-lab/InstructIR) on each generated image before ImageReward (same pixel size; see below) |
+| `INSTRUCTIR_DIR` | _(empty)_ | Absolute path to an InstructIR clone (must contain `configs/eval5d.yml`). Weights auto-download on first use if `huggingface-hub` is installed |
+| `INSTRUCTIR_PROMPT` | _(built-in default)_ | Natural-language restoration instruction; leave unset to use the default enhancement phrase in `config.py` |
 | `IMAGE_STYLE` | `photographic` | `photographic`, `disney`, or comma-separated cycle |
 | `TWEET_STYLE` | `funny,normal` | `funny`, `normal`, or comma-separated cycle |
 | `VIDEO_STYLE` | `ktv` | `ktv` (karaoke highlights) or `simple` (static) |
-| `ENABLE_VIDEO` | `grok` | `off`, `grok` (Grok I2V), or `wan` (local Wan2.1) |
+| `ENABLE_VIDEO` | `grok` | `off`, `grok` (Grok I2V), or `WAN2.1` (local Wan2.1 via Wan2GP; lowercased in code as `wan2.1`) |
 | `VIDEO_FREQUENCY` | `2` | Generate video every N tweets |
 | `WAN_VIDEO_STEPS` | `10` | Denoising steps for Wan video (higher = slower + better) |
-| `WAN_VIDEO_DIR` | `~/Programming/Wan2GP` | Path to Wan2GP installation |
+| `WAN_VIDEO_DIR` | `/path/to/Wan2GP` (template) | Path to Wan2GP installation — set your real path here or via `WAN_VIDEO_DIR` in `.env` |
 | `ENABLE_KEN_BURNS` | `false` | Apply Ken Burns zoom/pan when no animated video |
 | `FLAG_OVERLAY` | `true` | Add source→target language flag badge to images |
+| `ENABLE_BACKGROUND_MUSIC` | `off` | `on` / `off` (or `true` / `false`) — mix `Background Music/music.mp3` under the voice in the final video |
 | `POST_INTERVAL_SECONDS` | `18000` | Seconds between posts (18000 = 5 hours) |
 | `MAX_TWEET_LENGTH` | `500` | Max characters (280 for standard, up to 25000 for Premium) |
-| `USE_TRENDS` | `false` | Use X trending topics for word selection |
-| `STRATEGY_UPDATE_INTERVAL_HOURS` | `24` | How often to refresh metrics and re-run strategy analysis |
+| `USE_TRENDS` | `false` | `true` / `false`, or a comma cycle (e.g. `true,false,false,false`) — trends only on selected cycles; same index as `TWEET_STYLE` / `IMAGE_STYLE` |
+| `ANALYZE_LAST_N` | `10` | How many recent posts the strategy LLM sees (engagement summary) |
+| `METRICS_FETCH_MAX_TWEETS` | _(see below)_ | Max `get_tweet` calls per metrics refresh. **Default if unset:** `max(ANALYZE_LAST_N, 30)` — only the **newest** N posts are refreshed; older rows keep stored scores. Set `0` or `all` for no cap (entire `post_history.json`). |
+| `STRATEGY_UPDATE_INTERVAL_HOURS` | `24` | Hours between X metrics refresh + strategy re-analysis. Use `false` / `off` / `never` / `disabled` to **disable both** (no metric API calls). Integers or expressions like `168` or `24*7` (weekly) are OK. |
 | `AUTO_UPDATE` | `true` | Auto-pull from `origin/main` and restart between cycles |
 | `ENABLE_SELF_IMPROVEMENT` | `false` | Enable automatic code self-improvement |
 
-### 7. Add background music
+### 7. Background music (optional)
+
+By default the video uses **voice-only** audio. To mix in background music, set in `settings.env`:
+
+```
+ENABLE_BACKGROUND_MUSIC=on
+```
 
 Place a royalty-free loopable MP3 at:
 
@@ -137,7 +184,7 @@ Place a royalty-free loopable MP3 at:
 Background Music/music.mp3
 ```
 
-The voice audio is mixed with this track (music lowered by 7 dB, faded out at the end). If no file is found the bot uses voice-only audio and continues normally.
+When `ENABLE_BACKGROUND_MUSIC` is on, the voice is mixed with this track (music lowered by 7 dB, faded out at the end). If the flag is on but the file is missing, the bot uses voice-only audio and continues normally.
 
 ---
 
@@ -148,7 +195,7 @@ source venv/bin/activate
 python main.py
 ```
 
-The bot logs to both the terminal and `data/bot.log`. Stop it with `Ctrl+C` — it finishes the current cycle cleanly before exiting.
+The bot prints stage banners and progress lines to the **terminal** (image generation, optional InstructIR passes, ImageReward ranking, video steps). The root logger **`lang_bot`** and the log file use the same coloured formatter for INFO and above; messages from other loggers (e.g. `german_bot.*`) still appear in **`data/bot.log`** at DEBUG/INFO. Stop the bot with `Ctrl+C` — it finishes the current cycle cleanly before exiting.
 
 ---
 
@@ -166,13 +213,13 @@ Set `ENABLE_VIDEO` to control what plays behind the KTV overlay:
 |---|---|---|
 | `off` | Static image (or Ken Burns pan if `ENABLE_KEN_BURNS=true`) | instant |
 | `grok` | Grok Imagine I2V — cloud API, 720p, ~15 s | ~15 s |
-| `wan` | Local Wan2.1/2.2 via Wan2GP — 480p, runs entirely on your GPU | ~7–40 min |
+| `WAN2.1` | Local Wan2.1/2.2 via Wan2GP — 480p, runs entirely on your GPU | ~7–40 min |
 
 `VIDEO_FREQUENCY=N` skips animation every N-1 out of N tweets to reduce cost or generation time.
 
 ### Local Wan2GP setup (optional)
 
-To use `ENABLE_VIDEO=wan` you need [Wan2GP](https://github.com/deepbeepmeep/Wan2GP) installed alongside this project and `run_i2v.py` present in the Wan2GP directory. Set `WAN_VIDEO_DIR` in `settings.env` to its path.
+To use `ENABLE_VIDEO=WAN2.1` you need [Wan2GP](https://github.com/deepbeepmeep/Wan2GP) installed alongside this project and `wgp.py` present in the Wan2GP directory. Set `WAN_VIDEO_DIR` in `settings.env` to its path.
 
 ---
 
@@ -249,6 +296,22 @@ LangGraph checkpoints state after every node using `SqliteSaver` (`data/checkpoi
 
 ---
 
+## Git push from the Cursor agent
+
+If HTTPS is configured with **`gh auth git-credential`** (common after `gh auth login`), Git reads your token from the **OS keyring**. Cursor’s agent terminal sometimes runs in a restricted environment that cannot access the keyring, which produces:
+
+`fatal: could not read Username for 'https://github.com': No such device or address`
+
+**Ways to fix it:**
+
+1. **Push in your own terminal** (always works): `git push origin main`
+2. **When Cursor asks**, allow **full / non-sandboxed** terminal access for that command so `gh` can reach the keyring.
+3. **Optional (dev machine, plain-text token):** `git config --global credential.helper store`, then run one successful `git push` in a normal terminal — Git will save credentials to `~/.git-credentials` and non-interactive pushes often work afterward. Treat that file as secret.
+
+A local-only reminder for the agent lives in `.cursor/rules/github-push.mdc` (the `.cursor/` folder is gitignored).
+
+---
+
 ## Project structure
 
 ```
@@ -267,7 +330,7 @@ XBot 3/
 ├── .env.example                   # Template for .env
 ├── nodes/
 │   ├── generate_content.py        # Word selection, sentence, translation, tweet assembly
-│   ├── generate_image.py          # Image generation (Grok Imagine or Midjourney) + ranking
+│   ├── generate_image.py          # Image generation (Grok / Midjourney / Z-Image-Turbo), optional InstructIR, ImageReward ranking
 │   ├── generate_audio.py          # ElevenLabs TTS — voice selection + karaoke timings
 │   ├── create_video.py            # Audio mix, video animation, KTV overlay
 │   ├── publish.py                 # Post tweet with video to X
@@ -280,6 +343,8 @@ XBot 3/
 │   ├── scaleway_ai.py             # Scaleway Llama client
 │   ├── grok_video.py              # Grok Imagine I2V service
 │   ├── wan_video.py               # Local Wan2.1/2.2 I2V service (via Wan2GP)
+│   ├── zit_image.py               # Z-Image-Turbo via ComfyUI (IMAGE_PROVIDER=z-image-turbo)
+│   ├── instructir_enhance.py      # Optional InstructIR pass after Z-Image-Turbo (ENABLE_INSTRUCTIR_ENHANCE)
 │   ├── image_ranker.py            # ImageReward scoring for image selection
 │   ├── voice_pool.py              # ElevenLabs voice management
 │   ├── language_config.py         # AI-derived language pair config + caching
@@ -288,6 +353,7 @@ XBot 3/
 │   ├── ui.py                      # Terminal banner and cycle output formatting
 │   └── retry.py                   # Exponential back-off decorator
 ├── data/                          # post_history.json, strategy.json, bot.log, checkpoints.sqlite
+├── Screenshots/                   # README images (tracked in git)
 ├── Background Music/              # Place music.mp3 here
 ├── Images/                        # Generated images saved here
 ├── Voices/                        # ElevenLabs audio saved here

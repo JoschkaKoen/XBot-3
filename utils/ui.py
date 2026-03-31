@@ -31,15 +31,16 @@ def _stages() -> dict:
         1: ("📊", "Refreshing metrics for all past tweets"),
         2: ("🧠", "Analysing & improving strategy"),
         3: ("✍️ ", f"Crafting {src} vocabulary content"),
-        4: ("🎨", "Generating Midjourney image"),
+        4: ("🎨", "Generating image"),
         5: ("🎙️ ", f"Generating {src} TTS audio"),
         6: ("🎬", "Rendering video"),
-        7: ("📤", "Posting to X"),
-        8: ("🏅", "Recording new post"),
-        9: ("⏳", "Waiting before next cycle"),
+        7: ("🎞️ ", "Frame interpolation (optional)"),
+        8: ("📤", "Posting to X"),
+        9: ("🏅", "Recording new post"),
+        10: ("⏳", "Waiting before next cycle"),
     }
 
-_TOTAL = 9
+_TOTAL = 10
 
 
 # ── Public helpers ─────────────────────────────────────────────────────────────
@@ -152,11 +153,24 @@ def err(msg: str):
     print(f"  {_RED}✖   {msg}{_R}", file=sys.stderr)
 
 
-def cycle_summary(cycle: int, tweet_url: str, score: float):
+def format_elapsed(seconds: float) -> str:
+    """Human-readable duration for cycle timing (wall clock)."""
+    if seconds < 60:
+        return f"{seconds:.1f}s"
+    m, s = divmod(int(round(seconds)), 60)
+    if m < 60:
+        return f"{m}m {s}s" if s else f"{m}m"
+    h, m = divmod(m, 60)
+    return f"{h}h {m}m {s}s" if s else f"{h}h {m}m"
+
+
+def cycle_summary(cycle: int, tweet_url: str, score: float, *, elapsed_sec: float | None = None):
     w = _w()
     print()
     print(f"{_GREEN}{_BOLD}{'═' * w}{_R}")
     print(f"{_GREEN}{_BOLD}  ✅  CYCLE {cycle} COMPLETE{_R}")
+    if elapsed_sec is not None:
+        print(f"{_GREEN}  ⏱   Cycle time: {format_elapsed(elapsed_sec)}{_R}")
     print(f"{_GREEN}  🔗  {tweet_url}{_R}")
     print(f"{_GREEN}  📈  Engagement score: {score:.2f}{_R}")
     print(f"{_GREEN}{_BOLD}{'═' * w}{_R}")

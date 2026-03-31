@@ -4,6 +4,7 @@ from .generate_content import generate_content
 from .generate_image import generate_image
 from .generate_audio import generate_audio
 from .create_video import create_video
+from .interpolate_video import interpolate_video
 from .publish import publish
 from .score import score_and_store
 
@@ -14,6 +15,7 @@ __all__ = [
     "generate_image",
     "generate_audio",
     "create_video",
+    "interpolate_video",
     "publish",
     "score_and_store",
 ]

@@ -22,11 +22,14 @@ or generate_source_audio() (simple mode, audio only).
   services/voice_pool.py — grows the pool automatically on each run up to
                             TARGET_POOL_SIZE voices for the configured language.
   The AI picks the best voice from the pool for each tweet based on the
-  tweet's mood, topic, and language.
+  tweet's mood, topic, and language. When the image prompt depicts a clearly
+  male or female subject, the pool is restricted to that gender first so TTS
+  matches the image.
 ================================================================================
 """
 
 import os
+import re
 import base64
 import logging
 from datetime import datetime
@@ -35,6 +38,7 @@ import config
 from config import VOICES_DIR, ELEVENLABS_API_KEY
 from utils.retry import with_retry, retry_call
 from utils.ui import stage_banner, ok, warn as ui_warn, info as ui_info
+from services.ai_client import get_ai_response
 
 from elevenlabs.client import ElevenLabs
 from elevenlabs import save
@@ -65,6 +69,79 @@ def _get_voice_picker_ai():
     return _model_to_ai_fn(config.VOICE_PICKER_MODEL)
 
 
+def _parse_subject_gender(raw: str) -> str:
+    """Normalize model output to male | female | neutral."""
+    if not raw or not raw.strip():
+        return "neutral"
+    m = re.search(r"\b(female|male|neutral)\b", raw.lower())
+    if m:
+        return m.group(1)
+    return "neutral"
+
+
+def _infer_subject_gender_from_prompt(image_prompt: str) -> str:
+    """
+    Infer whether the focal subject in the image prompt is male, female, or neutral
+    (no clear person / objects only), so TTS can match ElevenLabs voice gender.
+    """
+    if not image_prompt or not str(image_prompt).strip():
+        return "neutral"
+    user_msg = (
+        "Classify the primary depicted subject for voice casting (spoken audio should match "
+        "the apparent gender of the main character or person in the image).\n\n"
+        "Rules:\n"
+        "- One clear focal human or gendered character (man, woman, boy, girl, businessman, "
+        "grandmother, prince, etc.) → male or female.\n"
+        "- Several people: use the single clearest focal subject (usually foreground / center).\n"
+        "- No people, only objects, landscapes, food, or animals with no clear gender → neutral.\n"
+        "- If uncertain → neutral.\n\n"
+        f"Image generation prompt:\n{str(image_prompt)[:6000]}\n\n"
+        "Reply with exactly one word: male, female, or neutral."
+    )
+    system = "Reply with exactly one word: male, female, or neutral. No punctuation or explanation."
+    try:
+        raw = retry_call(
+            get_ai_response,
+            user_msg,
+            system,
+            max_attempts=3,
+            base_delay=1.5,
+            label="subject_gender",
+            max_tokens=15,
+            temperature=0.0,
+        ).strip()
+        g = _parse_subject_gender(raw)
+        logger.info("Image subject gender for TTS: %s (model raw: %r)", g, raw[:120])
+        return g
+    except Exception as exc:
+        logger.warning("Subject gender inference failed (%s) — using neutral.", exc)
+        ui_warn(f"Could not infer image subject gender ({exc}) — voice gender not filtered.")
+        return "neutral"
+
+
+def _filter_pool_for_subject_gender(pool: list, subject_gender: str) -> list:
+    """Restrict voice pool to male or female when the image subject is clearly gendered."""
+    g = (subject_gender or "neutral").lower().strip()
+    if g not in ("male", "female"):
+        return pool
+    filtered = [v for v in pool if (v.get("gender") or "").lower().strip() == g]
+    if not filtered:
+        logger.warning(
+            "No %s voices in pool (%d total) — using full pool for voice selection.",
+            g,
+            len(pool),
+        )
+        ui_warn(f"No {g} voices in pool — using full voice list.")
+        return pool
+    logger.info(
+        "Voice pool filtered to %s voices: %d of %d.",
+        g,
+        len(filtered),
+        len(pool),
+    )
+    return filtered
+
+
 def _pick_random_voice(pool: list) -> tuple:
     """Return a random (name, voice_id) from the pool."""
     import random
@@ -72,7 +149,7 @@ def _pick_random_voice(pool: list) -> tuple:
     return v["name"], v["voice_id"]
 
 
-def _pick_voice_by_ai(full_tweet: str, pool: list) -> tuple:
+def _pick_voice_by_ai(full_tweet: str, pool: list, subject_gender: str = "neutral") -> tuple:
     """
     Use AI to pick the most suitable voice for the given tweet.
     Returns (name, voice_id). Falls back to a random pool entry on any error.
@@ -82,10 +159,23 @@ def _pick_voice_by_ai(full_tweet: str, pool: list) -> tuple:
         f"{i + 1}. {v['name']} -- {v['description']}"
         for i, v in enumerate(pool)
     )
+    sg = (subject_gender or "neutral").lower().strip()
+    gender_line = ""
+    if sg == "male":
+        gender_line = (
+            "The image for this post depicts a male subject — only male voices are listed; "
+            "pick the best match for tweet mood among them.\n\n"
+        )
+    elif sg == "female":
+        gender_line = (
+            "The image for this post depicts a female subject — only female voices are listed; "
+            "pick the best match for tweet mood among them.\n\n"
+        )
     prompt = (
         f"You are selecting the best {config.SOURCE_LANGUAGE} text-to-speech voice for a tweet in a "
         "language-learning context.\n\n"
-        f"Tweet:\n{full_tweet}\n\n"
+        + gender_line
+        + f"Tweet:\n{full_tweet}\n\n"
         f"Available voices:\n{voice_list}\n\n"
         "Each voice entry shows: name -- gender, age, accent, use-case, and tone description.\n"
         "Choose the voice whose gender, age, accent, use-case, and overall character best fit "
@@ -267,11 +357,16 @@ def generate_audio(state: dict) -> dict:
             "Check ELEVENLABS_API_KEY and network connectivity."
         )
 
+    image_prompt = state.get("midjourney_prompt", "") or ""
+    subject_gender = _infer_subject_gender_from_prompt(image_prompt)
+    ui_info(f"Image subject gender (voice match): {subject_gender}")
+    pool_for_voice = _filter_pool_for_subject_gender(pool, subject_gender)
+
     if full_tweet:
         ui_info("Selecting voice with AI ...")
-        voice_name, voice_id = _pick_voice_by_ai(full_tweet, pool)
+        voice_name, voice_id = _pick_voice_by_ai(full_tweet, pool_for_voice, subject_gender)
     else:
-        voice_name, voice_id = _pick_random_voice(pool)
+        voice_name, voice_id = _pick_random_voice(pool_for_voice)
         ui_info(f"Voice: {voice_name}")
     logger.info("Selected voice: %s (%s)", voice_name, voice_id)
 
@@ -279,11 +374,21 @@ def generate_audio(state: dict) -> dict:
         if style == "ktv":
             audio_path, word_timings = generate_source_audio_with_timings(text, voice_id=voice_id)
             ok(f"Audio + {len(word_timings)} word timings -> {os.path.basename(audio_path)}")
-            return {**state, "clean_audio_path": audio_path, "word_timings": word_timings}
+            return {
+                **state,
+                "clean_audio_path": audio_path,
+                "word_timings": word_timings,
+                "image_subject_gender": subject_gender,
+            }
         else:
             audio_path = generate_source_audio(text, voice_id=voice_id)
             ok(f"Audio -> {os.path.basename(audio_path)}")
-            return {**state, "clean_audio_path": audio_path, "word_timings": []}
+            return {
+                **state,
+                "clean_audio_path": audio_path,
+                "word_timings": [],
+                "image_subject_gender": subject_gender,
+            }
 
     except Exception as exc:
         logger.warning("ElevenLabs failed (%s) — no fallback audio used; re-raising.", exc)

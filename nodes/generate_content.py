@@ -16,6 +16,15 @@ MAX_EXAMPLE_WORDS and MAX_TWEET_LENGTH.
 
 Strategy (topic, style, avoid_words) comes from data/strategy.json and is
 updated by the analyze node after each cycle.
+
+================================================================================
+ RELATED MODULES
+================================================================================
+  - nodes.analyze:     Provides strategy via load_strategy()
+  - nodes.score:       Provides _load_history() for avoid_words
+  - services.x_trends: Provides get_trends() for trend-based word selection
+  - services.grok_ai:  AI functions for different model tiers
+  - scaffolds:         Provides next_scaffold() for tweet format templates
 ================================================================================
 """
 
@@ -87,15 +96,29 @@ logger = logging.getLogger("german_bot.generate_content")
 # ── helpers ───────────────────────────────────────────────────────────────────
 
 def _truncate_emoji_pairs(tweet: str) -> str:
-    """Replace doubled trailing emoji pairs (🚗🚗 → 🚗) to shorten the tweet."""
+    """
+    Replace doubled trailing emoji pairs (🚗🚗 → 🚗) to shorten the tweet.
+    
+    This is a post-processing step when tweets exceed MAX_TWEET_LENGTH.
+    The AI sometimes adds duplicate emoji pairs for emphasis, which can be
+    safely reduced without changing the meaning.
+    
+    Args:
+        tweet: The full tweet text, possibly with doubled emoji pairs.
+    
+    Returns:
+        The tweet with any doubled trailing emoji pairs collapsed to single.
+    """
     lines = tweet.split("\n")
     result = []
     for line in lines:
+        # Only process lines that have a double-space separator (tweet format)
         if "  " in line:
             idx = line.rfind("  ")
             prefix = line[: idx + 2]
             suffix = line[idx + 2 :].strip()
             n = len(suffix)
+            # Check if suffix is an even-length doubled string (e.g., "🚗🚗")
             if n % 2 == 0 and n > 0 and suffix[: n // 2] == suffix[n // 2 :]:
                 line = prefix + suffix[: n // 2]
         result.append(line)
@@ -103,8 +126,9 @@ def _truncate_emoji_pairs(tweet: str) -> str:
 
 
 def _build_word_prompt(strategy: dict) -> str:
-    style = strategy.get("style", "")
-    next_topic = strategy.get("next_topic", "")
+    _strategy_updates_on = getattr(config, "STRATEGY_METRICS_UPDATES_ENABLED", True)
+    style      = strategy.get("style", "")      if _strategy_updates_on else ""
+    next_topic = strategy.get("next_topic", "") if _strategy_updates_on else ""
     cefr_hint = strategy.get("preferred_cefr", "A1, A2, B1, B2, C1, C2")
     avoid = strategy.get("avoid_words", [])
     avoid_str = ", ".join(avoid[-20:]) if avoid else "none"
@@ -158,11 +182,13 @@ def _build_tweet_prompt(
     funny: bool = True,
 ) -> str:
     preferred_cefr = strategy.get("preferred_cefr", "A1, A2, B1, B2, C1, C2")
-    # next_topic and style only make sense when the word was chosen freely (not from trends).
-    # When word_from_trends=True the topic is already fixed by the trend; injecting a
-    # separate next_topic would contradict the chosen word.
-    next_topic = "" if word_from_trends else strategy.get("next_topic", "")
-    style      = "" if word_from_trends else strategy.get("style", "")
+    # next_topic and style only make sense when:
+    #   (a) the word was chosen freely (not from trends — trend already sets topic), and
+    #   (b) strategy updates are enabled (STRATEGY_UPDATE_INTERVAL_HOURS != false).
+    #       When updates are disabled the style/topic are stale and should not be used.
+    _strategy_updates_on = getattr(config, "STRATEGY_METRICS_UPDATES_ENABLED", True)
+    next_topic = "" if (word_from_trends or not _strategy_updates_on) else strategy.get("next_topic", "")
+    style      = "" if (word_from_trends or not _strategy_updates_on) else strategy.get("style", "")
 
     examples_section = ""
     for i, tweet in enumerate(top_tweets[:3], 1):
@@ -177,8 +203,13 @@ def _build_tweet_prompt(
         funny_tone_section = (
             "## Tone\n"
             "The example sentence MUST be genuinely very funny — it should make the reader laugh and smirk. "
-            "The humor should be positive and uplifting, not negative and cynical."
-            # "A sentence that is merely pleasant or informative is not acceptable.\n\n"
+            "The humor should be positive and uplifting, not negative and cynical.\n\n"
+            "CRITICAL — the sentence must be REALISTIC and make logical sense. "
+            "The humor must come from a relatable everyday situation, ironic twist, or witty observation — "
+            "NOT from surreal nonsense. Objects and animals must behave normally (houses don't eat, "
+            "cars don't sing, shoes don't think). Every sentence must describe something that could "
+            "actually happen in real life. A native speaker should read it and think 'ha, that's so true' — "
+            "not 'that makes no sense'.\n\n"
         )
 
     cefr_rule = (
@@ -253,7 +284,29 @@ def _call_tweet_ai(
     word_from_trends: bool = False,
     funny: bool = True,
 ) -> list:
-    """Fire 3 parallel API calls, each generating one tweet candidate. Returns list of dicts."""
+    """
+    Fire 3 parallel API calls, each generating one tweet candidate.
+    
+    Uses ThreadPoolExecutor to generate candidates concurrently, reducing
+    total latency from ~15s (sequential) to ~5s (parallel). Each candidate
+    is printed to the terminal as soon as it arrives for real-time feedback.
+    
+    Args:
+        trending_word: The source-language word to build the tweet around.
+        scaffold: The tweet format template with placeholders.
+        strategy: Current strategy dict (topic, style, avoid_words).
+        top_tweets: Past successful tweets for in-context learning (currently disabled).
+        tweet_ai: The AI function to call (flagship/reasoning/default).
+        cefr_level: Pre-determined CEFR level for the word, or empty.
+        extra_instruction: Additional constraint to append to the prompt.
+        word_from_trends: If True, skip topic/style from strategy (trend already sets topic).
+        funny: If True, use humorous tone; otherwise neutral/educational.
+    
+    Returns:
+        List of candidate dicts (may be fewer than 3 if some failed).
+        Each dict contains: tweet, source_word, article, cefr_level,
+        example_sentence_source, example_sentence_target.
+    """
     import threading
     from concurrent.futures import ThreadPoolExecutor, as_completed
 
@@ -263,8 +316,11 @@ def _call_tweet_ai(
     if funny:
         system_prompt = (
             f"You are a {src} language teacher and comedy writer creating funny tweets for X (Twitter). "
-            "Every example sentence must be genuinely very funny — it must make the reader laugh."
-            "It should be positive and uplifting, not negative and cynical."
+            "Every example sentence must be genuinely very funny — it must make the reader laugh. "
+            "It should be positive and uplifting, not negative and cynical. "
+            "The humor MUST come from relatable real-life situations — never from surreal nonsense or "
+            "impossible scenarios. Every sentence must make logical sense and describe something that "
+            "could actually happen. "
             "You always respond with valid JSON only."
         )
     else:
@@ -437,8 +493,19 @@ def _pick_word_from_trends(avoid_words: list) -> Optional[tuple[str, str]]:
     Fetch German trends, log them, and ask the AI to choose the best one
     that works as a German vocabulary word.
 
-    Returns (word, cefr_level) tuple, or None if no suitable trend found
-    or if trend fetching fails (caller should fall back to AI-free selection).
+    The AI ranks trend-extracted words by learning value, NOT by trend relevance.
+    This ensures learners get everyday vocabulary rather than news-specific jargon.
+    
+    A candidate window (TREND_CANDIDATE_LIMIT) controls how many top-ranked words
+    are considered. If all words in the window are already used, the function
+    falls back to AI-free word selection instead of picking a lower-ranked word.
+
+    Args:
+        avoid_words: List of words that should not be repeated (from history + strategy).
+    
+    Returns:
+        (word, cefr_level) tuple if a suitable trend word was found.
+        None if no suitable trend found or if fetching failed (caller should fall back).
     """
     trends = get_trends(max_trends=20)
 
@@ -580,6 +647,22 @@ def _pick_word_from_trends(avoid_words: list) -> Optional[tuple[str, str]]:
 
 
 _VALID_CEFR = {"A1", "A2", "B1", "B2", "C1", "C2"}
+_CEFR_SEQUENCE = ["A1", "A2", "B1", "B2", "C1", "C2"]
+
+
+def _next_cefr_rotation() -> str:
+    """Return the next CEFR level after the last one recorded in post history.
+
+    Walks post_history in reverse to find the most recent record with a valid
+    cefr_level, then advances one step in A1→A2→B1→B2→C1→C2→A1 order.
+    Falls back to A1 when history is empty or no level has been recorded yet.
+    """
+    from nodes.score import _load_history
+    for record in reversed(_load_history()):
+        last = (record.get("cefr_level") or "").strip().upper()
+        if last in _VALID_CEFR:
+            return _CEFR_SEQUENCE[(_CEFR_SEQUENCE.index(last) + 1) % len(_CEFR_SEQUENCE)]
+    return _CEFR_SEQUENCE[0]
 
 
 def _is_word_too_similar(word: str, avoid_words: list) -> tuple[bool, str]:
@@ -642,12 +725,22 @@ def generate_content(state: dict) -> dict:
 
     # ── 1. Pick a source-language word + determine its CEFR level ─────────────
     german_word: Optional[str] = None
-    word_cefr: str = ""
     avoid_words: list = []
     word_from_trends: bool = False
 
-    if config.USE_TRENDS:
-        info(f"USE_TRENDS=true — fetching trends ({config.TRENDS_COUNTRY}) …")
+    # CEFR rotation: determine the target level before word selection so both
+    # the word-pick prompt and the tweet prompt use the same forced level.
+    if config.CEFR_ROTATION:
+        word_cefr: str = _next_cefr_rotation()
+        strategy = {**strategy, "preferred_cefr": word_cefr}
+        info(f"CEFR rotation → targeting {word_cefr} this cycle")
+        logger.info("CEFR rotation: targeting %s", word_cefr)
+    else:
+        word_cefr: str = ""
+
+    use_trends = config.resolve_use_trends(cycle)
+    if use_trends:
+        info(f"USE_TRENDS on this cycle — fetching trends ({config.TRENDS_COUNTRY}) …")
         from nodes.score import _load_history
         history_words = [r.get("source_word", "") for r in _load_history() if r.get("source_word")]
         strategy_words = strategy.get("avoid_words", [])
@@ -657,8 +750,10 @@ def generate_content(state: dict) -> dict:
         logger.info("Avoiding %d previously used word(s) (e.g. %s)", len(avoid_words), avoid_preview)
         trend_result = _pick_word_from_trends(avoid_words)
         if trend_result:
-            german_word, word_cefr = trend_result
+            german_word, _trend_cefr = trend_result
             word_from_trends = True
+            if not config.CEFR_ROTATION:
+                word_cefr = _trend_cefr
 
     if not german_word:
         from nodes.score import _load_history
@@ -689,13 +784,15 @@ def generate_content(state: dict) -> dict:
                 lines = lines[:-1]
             word_data = json.loads("\n".join(lines))
             german_word = (word_data.get("word") or "").strip()
-            word_cefr = (word_data.get("cefr") or "").strip().upper()
-            if word_cefr not in _VALID_CEFR:
-                word_cefr = ""
+            if not config.CEFR_ROTATION:
+                word_cefr = (word_data.get("cefr") or "").strip().upper()
+                if word_cefr not in _VALID_CEFR:
+                    word_cefr = ""
         except (json.JSONDecodeError, AttributeError):
             # Fallback: treat the whole response as just a word (old behaviour)
             german_word = raw_word
-            word_cefr = ""
+            if not config.CEFR_ROTATION:
+                word_cefr = ""
 
     # ── 1b. Semantic similarity gate (catches deutsch/deutsche etc.) ──────────
     if not avoid_words:
@@ -746,12 +843,14 @@ def generate_content(state: dict) -> dict:
                 lines = lines[:-1]
             word_data = json.loads("\n".join(lines))
             german_word = (word_data.get("word") or "").strip()
-            word_cefr = (word_data.get("cefr") or "").strip().upper()
-            if word_cefr not in _VALID_CEFR:
-                word_cefr = ""
+            if not config.CEFR_ROTATION:
+                word_cefr = (word_data.get("cefr") or "").strip().upper()
+                if word_cefr not in _VALID_CEFR:
+                    word_cefr = ""
         except (json.JSONDecodeError, AttributeError):
             german_word = raw_word
-            word_cefr = ""
+            if not config.CEFR_ROTATION:
+                word_cefr = ""
 
     cefr_display = f" [{word_cefr}]" if word_cefr else ""
     ok(f"Word selected: {german_word}{cefr_display}")

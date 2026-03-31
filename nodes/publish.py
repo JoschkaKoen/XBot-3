@@ -96,7 +96,7 @@ def post_tweet_with_video(text: str, video_path: str) -> tuple:
 # ── node ──────────────────────────────────────────────────────────────────────
 
 def publish(state: dict) -> dict:
-    stage_banner(7)
+    stage_banner(8)
     logger.info("Node: publish")
 
     text: str = state["full_tweet"]

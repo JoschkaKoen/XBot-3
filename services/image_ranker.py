@@ -71,6 +71,25 @@ def _get_model():
 
 # ── Public API ─────────────────────────────────────────────────────────────────
 
+def score_image(prompt: str, path: str) -> float:
+    """
+    Score a single image against *prompt* using ImageReward.
+    Returns the reward score (higher = better), or 0.0 on any error.
+    """
+    model = _get_model()
+    if model is None:
+        return 0.0
+    try:
+        from PIL import Image as PILImage
+        img = PILImage.open(path).convert("RGB")
+        score: float = model.score(prompt, img)
+        logger.debug("ImageReward score %.4f → %s", score, path)
+        return score
+    except Exception as exc:
+        logger.warning("Could not score image %s (%s) — returning 0.0.", path, exc)
+        return 0.0
+
+
 def pick_best_image(prompt: str, image_paths: list[str]) -> str:
     """
     Score each image in *image_paths* against *prompt* using ImageReward

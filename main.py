@@ -8,6 +8,8 @@ XBot-3 Language Learning Bot — Main Entry Point
     source venv/bin/activate
     python main.py
 
+    source venv/bin/activate && python main.py
+
 Run one cycle only (for testing or improvement engine):
     python main.py --single-cycle
 
@@ -41,7 +43,14 @@ sys.stdout.reconfigure(line_buffering=True)
 
 import config as _config
 from config import setup_logging, reload_settings
-from utils.ui import startup_banner, cycle_banner, cycle_summary, err, warn
+from utils.ui import (
+    startup_banner,
+    cycle_banner,
+    cycle_summary,
+    err,
+    format_elapsed,
+    warn,
+)
 
 
 def _model_lines() -> list:
@@ -90,9 +99,17 @@ def _model_lines() -> list:
         # ── AI models ──────────────────────────────────────────────────────────
         ("Tweet generation:",  tweet_model),
         ("Strategy analysis:", strategy_model),
-        ("Word selection:",    trend_model if _config.USE_TRENDS else word_model),
     ]
-    if _config.USE_TRENDS:
+    _any_trends = any(_config.USE_TRENDS_CYCLE)
+    _all_trends = all(_config.USE_TRENDS_CYCLE)
+    if _all_trends:
+        _word_sel = trend_model
+    elif not _any_trends:
+        _word_sel = word_model
+    else:
+        _word_sel = f"{word_model}  /  {trend_model}  (by cycle)"
+    lines.append(("Word selection:", _word_sel))
+    if _any_trends:
         lines.append(("  (trend filtering):", trend_model))
 
     from collections import Counter
@@ -110,13 +127,14 @@ def _model_lines() -> list:
     tweet_style_label = _cycle_label(_config.TWEET_STYLE_CYCLE)
 
     lines.append(("─" * 22, "─" * 30))   # visual separator
-    lines.append(("Use trends:",          "ON" if _config.USE_TRENDS else "off"))
-    if _config.USE_TRENDS:
+    use_trends_label = _cycle_label(["on" if x else "off" for x in _config.USE_TRENDS_CYCLE])
+    lines.append(("Use trends:", use_trends_label))
+    if _any_trends:
         lines.append(("  Candidate limit:", f"{_config.TREND_CANDIDATE_LIMIT}  (top-{_config.TREND_CANDIDATE_LIMIT}, then AI fallback)"))
     lines.append(("Image style:",         image_style_label))
     lines.append(("Tweet style:",         tweet_style_label))
     _engine = _config.ENABLE_VIDEO
-    if _engine in ("grok", "wan"):
+    if _engine in ("grok", "wan2.1"):
         freq_label = "every tweet" if _config.VIDEO_FREQUENCY <= 1 else f"every {_config.VIDEO_FREQUENCY} tweets"
         engine_display = "Grok Imagine" if _engine == "grok" else "Wan2.1 (local)"
         lines.append(("Video (I2V):", f"ON  ({freq_label} via {engine_display})"))
@@ -178,9 +196,18 @@ def main():
 
     while not _shutdown:
         reload_settings()
+
+        # If IMAGE_PROVIDER=z-image-turbo, make sure ComfyUI is running.
+        # This spawns it in the background (non-blocking) so it has time to
+        # warm up before the image-generation step arrives later in the cycle.
+        if _config.IMAGE_PROVIDER == "z-image-turbo":
+            from services.zit_image import ensure_comfyui_running
+            ensure_comfyui_running()
+
         cycle += 1
         cycle_banner(cycle)
         logger.info("Starting cycle %d …", cycle)
+        t_cycle = time.perf_counter()
 
         try:
             result = graph.invoke(state, config=config)
@@ -193,16 +220,27 @@ def main():
 
             tweet_url = result.get("tweet_url", "n/a")
             score     = result.get("engagement_score", 0.0)
-            cycle_summary(cycle, tweet_url, score)
-            logger.info("Cycle %d complete. url=%s score=%.2f", cycle, tweet_url, score)
+            elapsed = time.perf_counter() - t_cycle
+            cycle_summary(cycle, tweet_url, score, elapsed_sec=elapsed)
+            logger.info(
+                "Cycle %d complete in %s (%.1fs). url=%s score=%.2f",
+                cycle,
+                format_elapsed(elapsed),
+                elapsed,
+                tweet_url,
+                score,
+            )
 
         except KeyboardInterrupt:
             warn("Interrupted — stopping.")
             logger.info("KeyboardInterrupt — stopping.")
             break
         except Exception as exc:
-            err(f"Cycle {cycle} failed: {exc}")
-            logger.exception("Cycle %d failed: %s", cycle, exc)
+            elapsed = time.perf_counter() - t_cycle
+            err(f"Cycle {cycle} failed after {format_elapsed(elapsed)}: {exc}")
+            logger.exception(
+                "Cycle %d failed after %.1fs: %s", cycle, elapsed, exc
+            )
             warn("Waiting 60s before retrying …")
             time.sleep(60)
             state["error"] = str(exc)

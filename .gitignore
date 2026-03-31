@@ -1,3 +1,6 @@
+# Cursor / IDE (local)
+.cursor/
+
 # Secrets — never commit API keys
 .env
 api-keys.env
@@ -12,6 +15,7 @@ __pycache__/
 *.pyo
 venv
 venv/
+venv_zimage/
 env/
 .venv/
 
@@ -22,7 +26,16 @@ data/checkpoints.sqlite*
 data/test_cycle_output.json
 data/test_cycle_terminal.txt
 data/new_bot_branch.txt
-# post_history.json IS tracked — it contains tweet history and engagement data
+
+# Private / machine-specific runtime JSON (tweet URLs, strategy, voice cache — not for public repo)
+data/post_history.json
+data/strategy.json
+data/strategy_history.json
+data/metrics_refresh.json
+data/video_state.json
+data/voice_pool.json
+data/scaffold_state.json
+data/*_history.jsonl
 
 # Big media — images, video, audio
 *.mp4
@@ -37,6 +50,11 @@ data/new_bot_branch.txt
 !**/.gitkeep
 !"Background Music/*.mp3"
 !"Background Music/*.wav"
+# README screenshots (tracked PNGs only in Screenshots/)
+!Screenshots/*.png
+
+# macOS metadata beside Screenshots (never commit)
+Screenshots/._*
 
 # OS junk
 .DS_Store
