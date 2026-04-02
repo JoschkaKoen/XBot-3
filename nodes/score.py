@@ -115,6 +115,8 @@ def score_and_store(state: dict) -> dict:
         "cefr_level": state.get("cefr_level", ""),
         "example_sentence_source": state.get("example_sentence_source", ""),
         "example_sentence_target": state.get("example_sentence_target", ""),
+        "used_trend": state.get("used_trend", ""),
+        "pool_theme": state.get("pool_theme", ""),
         "metrics": metrics,
         "engagement_score": score,
         "cycle": state.get("cycle", 0),

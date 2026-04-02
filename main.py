@@ -100,8 +100,8 @@ def _model_lines() -> list:
         ("Tweet generation:",  tweet_model),
         ("Strategy analysis:", strategy_model),
     ]
-    _any_trends = any(_config.USE_TRENDS_CYCLE)
-    _all_trends = all(_config.USE_TRENDS_CYCLE)
+    _any_trends = any(m == "trends" for m in _config.USE_TRENDS_MODE_CYCLE)
+    _all_trends = all(m == "trends" for m in _config.USE_TRENDS_MODE_CYCLE)
     if _all_trends:
         _word_sel = trend_model
     elif not _any_trends:
@@ -127,8 +127,11 @@ def _model_lines() -> list:
     tweet_style_label = _cycle_label(_config.TWEET_STYLE_CYCLE)
 
     lines.append(("─" * 22, "─" * 30))   # visual separator
-    use_trends_label = _cycle_label(["on" if x else "off" for x in _config.USE_TRENDS_CYCLE])
-    lines.append(("Use trends:", use_trends_label))
+    def _word_source_label(m: str) -> str:
+        return {"trends": "trends", "pool": "pool", "strategy": "off"}.get(m, m)
+
+    use_trends_label = _cycle_label([_word_source_label(m) for m in _config.USE_TRENDS_MODE_CYCLE])
+    lines.append(("Word source:", use_trends_label))
     if _any_trends:
         lines.append(("  Candidate limit:", f"{_config.TREND_CANDIDATE_LIMIT}  (top-{_config.TREND_CANDIDATE_LIMIT}, then AI fallback)"))
     lines.append(("Image style:",         image_style_label))

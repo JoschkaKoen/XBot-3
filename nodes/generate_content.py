@@ -92,6 +92,25 @@ def _load_strategy_from_file() -> dict:
 
 logger = logging.getLogger("german_bot.generate_content")
 
+_EPHEMERAL_TOPIC_KEY = "_ephemeral_next_topic"
+
+
+def _effective_next_topic(strategy: dict) -> str:
+    """Runtime pool theme wins; else strategy next_topic if metrics updates are on."""
+    ep = (strategy.get(_EPHEMERAL_TOPIC_KEY) or "").strip()
+    if ep:
+        return ep
+    if not getattr(config, "STRATEGY_METRICS_UPDATES_ENABLED", True):
+        return ""
+    return (strategy.get("next_topic") or "").strip()
+
+
+def _pool_themes_enabled() -> bool:
+    """Curated theme bank is defined for German → English learners."""
+    sl = (config.SOURCE_LANGUAGE or "").strip().lower()
+    tl = (config.TARGET_LANGUAGE or "").strip().lower()
+    return sl == "german" and tl == "english"
+
 
 # ── helpers ───────────────────────────────────────────────────────────────────
 
@@ -127,8 +146,8 @@ def _truncate_emoji_pairs(tweet: str) -> str:
 
 def _build_word_prompt(strategy: dict) -> str:
     _strategy_updates_on = getattr(config, "STRATEGY_METRICS_UPDATES_ENABLED", True)
-    style      = strategy.get("style", "")      if _strategy_updates_on else ""
-    next_topic = strategy.get("next_topic", "") if _strategy_updates_on else ""
+    style      = strategy.get("style", "") if _strategy_updates_on else ""
+    next_topic = _effective_next_topic(strategy)
     cefr_hint = strategy.get("preferred_cefr", "A1, A2, B1, B2, C1, C2")
     avoid = strategy.get("avoid_words", [])
     avoid_str = ", ".join(avoid[-20:]) if avoid else "none"
@@ -187,8 +206,12 @@ def _build_tweet_prompt(
     #   (b) strategy updates are enabled (STRATEGY_UPDATE_INTERVAL_HOURS != false).
     #       When updates are disabled the style/topic are stale and should not be used.
     _strategy_updates_on = getattr(config, "STRATEGY_METRICS_UPDATES_ENABLED", True)
-    next_topic = "" if (word_from_trends or not _strategy_updates_on) else strategy.get("next_topic", "")
-    style      = "" if (word_from_trends or not _strategy_updates_on) else strategy.get("style", "")
+    if word_from_trends:
+        next_topic = ""
+        style = ""
+    else:
+        next_topic = _effective_next_topic(strategy)
+        style = strategy.get("style", "") if _strategy_updates_on else ""
 
     examples_section = ""
     for i, tweet in enumerate(top_tweets[:3], 1):
@@ -488,7 +511,27 @@ def _select_best_tweet(candidates: list, source_word: str, cefr_level: str, funn
 
 # ── trend-based word selection ─────────────────────────────────────────────────
 
-def _pick_word_from_trends(avoid_words: list) -> Optional[tuple[str, str]]:
+def _resolve_source_trend(raw: str, trend_names: list[str]) -> str:
+    """Map LLM source_trend to an exact trend line; fuzzy match if not verbatim."""
+    s = (raw or "").strip()
+    if not s or not trend_names:
+        return ""
+    if s in trend_names:
+        return s
+    slow = s.lower()
+    for t in trend_names:
+        if t.lower() == slow:
+            return t
+    for t in trend_names:
+        tl = t.lower()
+        if slow in tl or tl in slow:
+            logger.info("source_trend fuzzy-matched: %r → %r", s, t)
+            return t
+    logger.warning("source_trend not matched to any trend line: %r", s)
+    return ""
+
+
+def _pick_word_from_trends(avoid_words: list) -> Optional[tuple[str, str, str]]:
     """
     Fetch German trends, log them, and ask the AI to choose the best one
     that works as a German vocabulary word.
@@ -504,7 +547,7 @@ def _pick_word_from_trends(avoid_words: list) -> Optional[tuple[str, str]]:
         avoid_words: List of words that should not be repeated (from history + strategy).
     
     Returns:
-        (word, cefr_level) tuple if a suitable trend word was found.
+        (word, cefr_level, used_trend) if a suitable trend word was found; used_trend may be "".
         None if no suitable trend found or if fetching failed (caller should fall back).
     """
     trends = get_trends(max_trends=20)
@@ -543,8 +586,11 @@ def _pick_word_from_trends(avoid_words: list) -> Optional[tuple[str, str]]:
         "- Rare or archaic words that hardly appear in real everyday life\n"
         "- Political jargon that only appears in news contexts\n"
         "- Strip any leading # or @ from each word\n\n"
+        "For EACH object you MUST include source_trend: copy the trending topic line EXACTLY as written "
+        "in the numbered list above (same spelling and punctuation) — the line the word was taken from.\n\n"
         "Reply with ONLY a valid JSON array, nothing else:\n"
-        '[{"word": "<source language word>", "cefr": "<A1|A2|B1|B2|C1|C2>"}, ...]\n'
+        '[{"word": "<source language word>", "cefr": "<A1|A2|B1|B2|C1|C2>", '
+        '"source_trend": "<exact line from the list above>"}, ...]\n'
         "If no trend yields a suitable word, reply with an empty array: []"
     )
 
@@ -580,6 +626,7 @@ def _pick_word_from_trends(avoid_words: list) -> Optional[tuple[str, str]]:
 
         chosen_word = None
         chosen_cefr = ""
+        chosen_used_trend = ""
         free_count  = 0
 
         _VALID_CEFR = {"A1", "A2", "B1", "B2", "C1", "C2"}
@@ -596,18 +643,21 @@ def _pick_word_from_trends(avoid_words: list) -> Optional[tuple[str, str]]:
             cefr = (entry.get("cefr") or "").strip().upper()
             if cefr not in _VALID_CEFR:
                 cefr = "?"
+            raw_st = entry.get("source_trend") or entry.get("sourceTrend") or ""
+            resolved_trend = _resolve_source_trend(str(raw_st), trend_names)
             word_tokens = set(word.lower().split())
             used = word.lower() in avoid_set or bool(word_tokens & avoid_set)
             in_window = len(clean_entries) < _candidate_limit
-            clean_entries.append((word, cefr, used))
+            clean_entries.append((word, cefr, used, resolved_trend))
             if in_window and not used:
                 free_count += 1
                 if chosen_word is None:
                     chosen_word = word
                     chosen_cefr = cefr
+                    chosen_used_trend = resolved_trend
 
         print(f"\n  {_CYAN}{_BOLD}🏆  Trend word shortlist  ({free_count} free, top {_candidate_limit} considered):{_R}", flush=True)
-        for i, (word, cefr, used) in enumerate(clean_entries, 1):
+        for i, (word, cefr, used, _st) in enumerate(clean_entries, 1):
             cefr_fmt = f"{_CYAN}{cefr:<3}{_R}"
             in_window = i <= _candidate_limit
             if not in_window:
@@ -627,9 +677,12 @@ def _pick_word_from_trends(avoid_words: list) -> Optional[tuple[str, str]]:
         print(flush=True)
 
         if chosen_word:
-            logger.info("Trend word chosen: '%s' (CEFR: %s)", chosen_word, chosen_cefr)
+            logger.info(
+                "Trend word chosen: '%s' (CEFR: %s) used_trend=%r",
+                chosen_word, chosen_cefr, chosen_used_trend,
+            )
             ok(f"Trend word: '{chosen_word}' [{chosen_cefr}]")
-            return chosen_word, chosen_cefr
+            return chosen_word, chosen_cefr, chosen_used_trend
 
         logger.warning(
             "All top-%d trend candidates already used — falling back to AI word selection.",
@@ -719,9 +772,30 @@ def generate_content(state: dict) -> dict:
     stage_banner(3)
     logger.info("Node: generate_content")
 
-    strategy: dict = state.get("strategy") or _load_strategy_from_file()
+    strategy_base: dict = state.get("strategy") or _load_strategy_from_file()
     cycle: int = state.get("cycle", 0)
     tweet_style: str = config.resolve_tweet_style(cycle)
+    word_source_mode: str = config.resolve_word_source_mode(cycle)
+    used_trend: str = ""
+    pool_theme: str = ""
+
+    # Working strategy copy — never persist _ephemeral_next_topic to strategy.json
+    strategy: dict = {k: v for k, v in strategy_base.items() if k != _EPHEMERAL_TOPIC_KEY}
+
+    if word_source_mode == "pool" and _pool_themes_enabled():
+        from services.theme_random import pick_theme as _pick_pool_theme
+        _pt = _pick_pool_theme()
+        if _pt:
+            strategy = {**strategy, _EPHEMERAL_TOPIC_KEY: _pt}
+            pool_theme = _pt
+            info(f"Word source: pool — theme: {_pt[:70]}{'…' if len(_pt) > 70 else ''}")
+        else:
+            logger.warning("Pool mode: empty theme bank — falling back to strategy topic only.")
+    elif word_source_mode == "pool":
+        logger.warning(
+            "USE_TRENDS=pool requires SOURCE_LANGUAGE=German and TARGET_LANGUAGE=English — "
+            "using strategy topic only this cycle."
+        )
 
     # ── 1. Pick a source-language word + determine its CEFR level ─────────────
     german_word: Optional[str] = None
@@ -738,9 +812,8 @@ def generate_content(state: dict) -> dict:
     else:
         word_cefr: str = ""
 
-    use_trends = config.resolve_use_trends(cycle)
-    if use_trends:
-        info(f"USE_TRENDS on this cycle — fetching trends ({config.TRENDS_COUNTRY}) …")
+    if word_source_mode == "trends":
+        info(f"Word source: trends — fetching trends ({config.TRENDS_COUNTRY}) …")
         from nodes.score import _load_history
         history_words = [r.get("source_word", "") for r in _load_history() if r.get("source_word")]
         strategy_words = strategy.get("avoid_words", [])
@@ -750,7 +823,7 @@ def generate_content(state: dict) -> dict:
         logger.info("Avoiding %d previously used word(s) (e.g. %s)", len(avoid_words), avoid_preview)
         trend_result = _pick_word_from_trends(avoid_words)
         if trend_result:
-            german_word, _trend_cefr = trend_result
+            german_word, _trend_cefr, used_trend = trend_result
             word_from_trends = True
             if not config.CEFR_ROTATION:
                 word_cefr = _trend_cefr
@@ -933,5 +1006,7 @@ def generate_content(state: dict) -> dict:
         "example_sentence_target": result.get("example_sentence_target", ""),
         "full_tweet":              full_tweet,
         "cycle":                   cycle,
+        "used_trend":              used_trend,
+        "pool_theme":              pool_theme,
         "error":                   None,
     }

@@ -1,1 +1,25 @@
-[]
+[
+  {
+    "timestamp": "2026-01-01T12:00:00+00:00",
+    "tweet_id": "",
+    "tweet_url": "",
+    "full_tweet": "",
+    "source_word": "Beispiel",
+    "article": "das",
+    "cefr_level": "A1",
+    "example_sentence_source": "",
+    "example_sentence_target": "",
+    "used_trend": "",
+    "pool_theme": "Ordering coffee and cake at a café",
+    "metrics": {
+      "retweet_count": 0,
+      "reply_count": 0,
+      "like_count": 0,
+      "quote_count": 0,
+      "bookmark_count": 0,
+      "impression_count": 0
+    },
+    "engagement_score": 0.0,
+    "cycle": 0
+  }
+]

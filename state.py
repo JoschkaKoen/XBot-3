@@ -45,6 +45,8 @@ class BotState(TypedDict, total=False):
     strategy: dict                    # LLM-updated strategy fed into generate_content
     metrics_refreshed: bool           # True if metrics were fetched this cycle; False if throttled
     cycle: int                        # how many full cycles completed
+    used_trend: str                   # trend headline when word came from trends path (else "")
+    pool_theme: str                   # curated theme string when USE_TRENDS cycle was pool (else "")
 
     # ── Error handling ────────────────────────────────────────────────────────
     error: Optional[str]              # last error message (if any)

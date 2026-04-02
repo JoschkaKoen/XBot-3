@@ -32,7 +32,9 @@ Most settings are read from settings.env (git-tracked) and .env (gitignored, API
     INSTRUCTIR_DIR        → path to InstructIR git clone; INSTRUCTIR_PROMPT overrides the enhancement instruction
 
   X/TWITTER
-    USE_TRENDS         → true/false or comma cycle, e.g. true,false,false,false — trends every 4th tweet
+    USE_TRENDS         → comma cycle: trends | pool | false (or true/false aliases).
+                         trends = word from X trends; pool = AI word + random curated theme (German→English);
+                         false/off = AI word + strategy topic. Example: trends,trends,pool,pool,trends
     MAX_TWEET_LENGTH   → character limit (280 standard, up to 25000 premium)
 
   BOT BEHAVIOUR
@@ -105,29 +107,37 @@ def _parse_metrics_fetch_max(raw: str | None, analyze_last_n: int) -> int:
     return max(1, int(s))
 
 
-def _parse_use_trends_cycle(raw: str | None) -> list[bool]:
+def _parse_use_trends_mode_cycle(raw: str | None) -> list[str]:
     """
-    Parse USE_TRENDS: a single true/false or a comma-separated cycle.
+    Parse USE_TRENDS into a cycle of word-source modes.
+
+    Tokens (case-insensitive):
+      trends, true, 1, yes, on  → pick word from X trending topics
+      pool                       → AI word pick + ephemeral random theme (German→English bank)
+      false, 0, no, off, strategy → AI word pick + strategy next_topic / style
 
     Examples:
-      "true"                    → [True]  (always use trends)
-      "false"                   → [False]
-      "true,false,false,false"  → trends on cycle indices 0, 4, 8, … only
+      "false"                         → ["strategy"]
+      "true"                          → ["trends"]
+      "trends,trends,pool,pool,trends" → five-step cycle
+      "true,false,false,false"        → trends then three strategy steps (backward compatible)
     """
     if raw is None or not str(raw).strip():
-        return [False]
+        return ["strategy"]
     parts = [p.strip().lower() for p in str(raw).split(",") if p.strip()]
     if not parts:
-        return [False]
-    out: list[bool] = []
+        return ["strategy"]
+    out: list[str] = []
     for p in parts:
-        if p in ("true", "1", "yes", "on"):
-            out.append(True)
-        elif p in ("false", "0", "no", "off"):
-            out.append(False)
+        if p in ("trends", "true", "1", "yes", "on"):
+            out.append("trends")
+        elif p == "pool":
+            out.append("pool")
+        elif p in ("false", "0", "no", "off", "strategy"):
+            out.append("strategy")
         else:
-            _LOG.warning("Invalid USE_TRENDS token %r — treating as false.", p)
-            out.append(False)
+            _LOG.warning("Invalid USE_TRENDS token %r — treating as strategy.", p)
+            out.append("strategy")
     return out
 
 
@@ -289,9 +299,15 @@ def resolve_tweet_style(cycle: int) -> str:
     return TWEET_STYLE_CYCLE[cycle % len(TWEET_STYLE_CYCLE)]
 
 
+def resolve_word_source_mode(cycle: int) -> str:
+    """Return 'trends' | 'pool' | 'strategy' for this cycle index."""
+    modes = USE_TRENDS_MODE_CYCLE
+    return modes[cycle % len(modes)]
+
+
 def resolve_use_trends(cycle: int) -> bool:
-    """Return whether to use X trending topics for word pick at this cycle index."""
-    return USE_TRENDS_CYCLE[cycle % len(USE_TRENDS_CYCLE)]
+    """True iff this cycle uses X trending topics for word pick."""
+    return resolve_word_source_mode(cycle) == "trends"
 
 
 def reload_settings() -> None:
@@ -307,7 +323,7 @@ def reload_settings() -> None:
     load_dotenv(override=True)  # .env (API keys) always wins
 
     global AI_PROVIDER
-    global USE_TRENDS, USE_TRENDS_CYCLE, TREND_CANDIDATE_LIMIT, CEFR_ROTATION, METRICS_FETCH_PER_CYCLE
+    global USE_TRENDS, USE_TRENDS_CYCLE, USE_TRENDS_MODE_CYCLE, TREND_CANDIDATE_LIMIT, CEFR_ROTATION, METRICS_FETCH_PER_CYCLE
     global IMAGE_STYLE_CYCLE, IMAGE_STYLE
     global TWEET_STYLE_CYCLE, TWEET_STYLE
     global IMAGE_PROVIDER, GENERATED_IMAGE_COUNT, INDIVIDUAL_IMAGE_PROMPTS, Z_IMAGE_TURBO_STEPS, Z_IMAGE_TURBO_WIDTH, Z_IMAGE_TURBO_HEIGHT, Z_IMAGE_PROMPT_SUFFIX
@@ -325,7 +341,8 @@ def reload_settings() -> None:
     global TREND_FILTER_MODEL, WORD_PICK_MODEL, SIMILARITY_MODEL, VOICE_PICKER_MODEL
 
     AI_PROVIDER                    = os.getenv("AI_PROVIDER", "grok").lower().strip()
-    USE_TRENDS_CYCLE               = _parse_use_trends_cycle(os.getenv("USE_TRENDS"))
+    USE_TRENDS_MODE_CYCLE          = _parse_use_trends_mode_cycle(os.getenv("USE_TRENDS"))
+    USE_TRENDS_CYCLE               = [m == "trends" for m in USE_TRENDS_MODE_CYCLE]
     USE_TRENDS                     = USE_TRENDS_CYCLE[0]
     TREND_CANDIDATE_LIMIT          = int(os.getenv("TREND_CANDIDATE_LIMIT", "5"))
     CEFR_ROTATION                  = _parse_on_off_env("CEFR_ROTATION", default=False)
@@ -495,12 +512,13 @@ METRICS_FETCH_MAX_TWEETS: int = _parse_metrics_fetch_max(
 # from history.  Set to 0 to disable.
 METRICS_FETCH_PER_CYCLE: int = max(0, int(os.getenv("METRICS_FETCH_PER_CYCLE", "0")))
 
-# Word selection: use X trending topics or free AI pick.
-# Single value true/false, or comma-separated cycle (same index as TWEET_STYLE / IMAGE_STYLE).
-#   "true,false,false,false" → trends only every 4th cycle (0, 4, 8, …).
+# Word selection: trends (X topics), pool (AI + random theme bank), or strategy (AI + strategy topic).
+# Comma-separated cycle (same index as TWEET_STYLE / IMAGE_STYLE).
+#   "true,false,false,false" → same as trends,strategy,strategy,strategy
+#   "trends,trends,pool,pool,trends" → mixed cycle
 _USE_TRENDS_RAW: str = os.getenv("USE_TRENDS", "false")
-USE_TRENDS_CYCLE: list[bool] = _parse_use_trends_cycle(_USE_TRENDS_RAW)
-# Convenience alias: first step of the cycle (backward compatible).
+USE_TRENDS_MODE_CYCLE: list[str] = _parse_use_trends_mode_cycle(_USE_TRENDS_RAW)
+USE_TRENDS_CYCLE: list[bool] = [m == "trends" for m in USE_TRENDS_MODE_CYCLE]
 USE_TRENDS: bool = USE_TRENDS_CYCLE[0]
 
 # How many of the AI's top-ranked trend word candidates to try before falling back to
