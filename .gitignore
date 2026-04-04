@@ -36,6 +36,7 @@ data/video_state.json
 data/voice_pool.json
 data/scaffold_state.json
 data/theme_recent.json
+data/.comfyui_launch_args
 data/*_history.jsonl
 
 # Big media — images, video, audio

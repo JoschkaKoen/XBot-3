@@ -337,6 +337,7 @@ def reload_settings() -> None:
     global ENABLE_SELF_IMPROVEMENT, IMPROVEMENT_INTERVAL_CYCLES, IMPROVEMENT_SCORE_THRESHOLD
     global STRATEGY_METRICS_UPDATES_ENABLED, STRATEGY_UPDATE_INTERVAL_HOURS
     global METRICS_FETCH_MAX_TWEETS
+    global COMFYUI_ARGS
     global TWEET_MODEL, TWEET_PICKER_MODEL, STRATEGY_MODEL
     global TREND_FILTER_MODEL, WORD_PICK_MODEL, SIMILARITY_MODEL, VOICE_PICKER_MODEL
 
@@ -413,6 +414,7 @@ def reload_settings() -> None:
     WORD_PICK_MODEL                = os.getenv("WORD_PICK_MODEL", "non-reasoning").lower().strip()
     SIMILARITY_MODEL               = os.getenv("SIMILARITY_MODEL", "non-reasoning").lower().strip()
     VOICE_PICKER_MODEL             = os.getenv("VOICE_PICKER_MODEL", "non-reasoning").lower().strip()
+    COMFYUI_ARGS                   = os.getenv("COMFYUI_ARGS", "--normalvram --fp16-vae").strip()
 
 # ── Image generation provider ────────────────────────────────────────────────
 # "midjourney"    = Midjourney via TTAPI (default, requires TT_API_KEY)
@@ -434,11 +436,11 @@ INDIVIDUAL_IMAGE_PROMPTS: bool = os.getenv("INDIVIDUAL_IMAGE_PROMPTS", "false").
 # Denoising steps for Z-Image-Turbo (IMAGE_PROVIDER=z-image-turbo).
 # Model card recommendation: 8–9. CFG/sampler/scheduler are locked in the service.
 Z_IMAGE_TURBO_STEPS: int  = int(os.getenv("Z_IMAGE_TURBO_STEPS",  "8"))
-# Output resolution — 832×480 matches Wan2.1 480p I2V input exactly.
+# Output resolution (defaults match Wan2.1 I2V; override e.g. 3840×2160 for 4K image-only).
 Z_IMAGE_TURBO_WIDTH: int  = int(os.getenv("Z_IMAGE_TURBO_WIDTH",  "832"))
 Z_IMAGE_TURBO_HEIGHT: int = int(os.getenv("Z_IMAGE_TURBO_HEIGHT", "480"))
 
-# Short quality suffix appended to every Z-Image prompt after the LLM output.
+# Quality / anatomy suffix appended to every Z-Image prompt after the LLM output.
 # Applies to both z-image-turbo and z-image-base. Leave empty to disable.
 Z_IMAGE_PROMPT_SUFFIX: str = os.getenv("Z_IMAGE_PROMPT_SUFFIX", "").strip()
 

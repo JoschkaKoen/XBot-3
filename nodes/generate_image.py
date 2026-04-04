@@ -233,6 +233,14 @@ def _build_image_prompt(
         "magazine-worthy. If the scene involves food, show it beautifully plated and "
         "untouched — never messy eating, dripping, or smeared\n"
     )
+    if is_zit:
+        _RULES += (
+            "- When people or human-like characters appear: describe anatomy unambiguously — "
+            "each person has two arms and two hands; say what each visible hand is doing or that a hand is out of frame\n"
+            "- Unless essential to the tweet, avoid mirrors, dense overlapping crowds, or many raised arms in one cluster; "
+            "prefer one main subject or clearly separated figures\n"
+            "- Prefer simple relaxed hand poses over intricate interlocking or ambiguous gestures\n"
+        )
 
     # Derive correct aspect ratio label from configured resolution
     if is_zit:
@@ -620,6 +628,7 @@ def generate_image(state: dict) -> dict:
         elif config.IMAGE_PROVIDER == "z-image-turbo":
             import random
             _image_client.ensure_ready()
+            _image_client.purge_vram_before_batch()
             for i, prompt in enumerate(prompts):
                 seed = random.randint(0, 2**31 - 1)
                 label = f"z_image_turbo_{i + 1}/{n}"

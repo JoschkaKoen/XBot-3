@@ -31,8 +31,12 @@ from pathlib import Path
 from typing import List
 
 import config
+from utils.ui import err, info, ok, warn
 
 logger = logging.getLogger("german_bot.zit_image")
+
+# Clear to end of line after \r so shorter updates don't leave stale characters.
+_CLR_EOL = "\033[K"
 
 
 class ComfyUIUnavailableError(RuntimeError):
@@ -42,6 +46,44 @@ class ComfyUIUnavailableError(RuntimeError):
 # Popen handle for a ComfyUI we spawned ourselves this session.
 # None if ComfyUI was already running when the bot started.
 _comfyui_proc: subprocess.Popen | None = None
+
+# Records the COMFYUI_ARGS string last used when we spawned ComfyUI so we can
+# restart if settings.env changes (see ensure_comfyui_running).
+_LAUNCH_ARGS_FILE = Path(__file__).resolve().parent.parent / "data" / ".comfyui_launch_args"
+
+
+def _normalized_comfy_args() -> str:
+    return " ".join(config.COMFYUI_ARGS.split())
+
+
+def _read_recorded_comfy_args() -> str | None:
+    try:
+        t = _LAUNCH_ARGS_FILE.read_text(encoding="utf-8").strip()
+        return t if t else None
+    except OSError:
+        return None
+
+
+def _write_recorded_comfy_args(s: str) -> None:
+    _LAUNCH_ARGS_FILE.parent.mkdir(parents=True, exist_ok=True)
+    _LAUNCH_ARGS_FILE.write_text(s, encoding="utf-8")
+
+
+def _comfy_url_reachable(url: str) -> bool:
+    try:
+        urllib.request.urlopen(f"{url}/system_stats", timeout=5)
+        return True
+    except Exception:
+        return False
+
+
+def _wait_until_comfy_down(u: str, max_wait: float = 35.0) -> None:
+    deadline = time.time() + max_wait
+    while time.time() < deadline:
+        if not _comfy_url_reachable(u):
+            return
+        time.sleep(0.5)
+    logger.warning("ComfyUI still reachable at %s after shutdown (%.1fs).", u, max_wait)
 
 
 def _find_comfyui_pid_by_port(port: int) -> int | None:
@@ -99,7 +141,7 @@ def shutdown_comfyui() -> None:
                 break
         else:
             os.kill(pid, _signal.SIGKILL)
-        print("  ✔   ComfyUI shut down — VRAM released.", flush=True)
+        ok("ComfyUI shut down — VRAM released.")
         logger.info("ComfyUI (PID %d) terminated.", pid)
     except ProcessLookupError:
         logger.debug("ComfyUI PID %d already gone.", pid)
@@ -111,28 +153,42 @@ def ensure_comfyui_running() -> None:
     """
     Non-blocking check-and-spawn called at the top of each bot cycle.
 
-    If ComfyUI is already responding at COMFYUI_URL the function returns
-    immediately.  Otherwise it spawns ComfyUI in a detached background
-    process and returns without waiting — later, when the image node
-    actually needs the server, ZITImageClient.generate() will wait up to
-    60 seconds for it to become ready.
+    If ComfyUI is already responding at COMFYUI_URL with the same
+    ``COMFYUI_ARGS`` as last time (see ``data/.comfyui_launch_args``), returns
+    immediately.  If ``settings.env`` changed ``COMFYUI_ARGS``, shuts down the
+    old process and spawns a new one so flags like ``--lowvram`` take effect.
+
+    If nothing is listening, spawns ComfyUI in a detached background process.
+    ZITImageClient.generate() waits up to 60 seconds for readiness.
     """
     url = config.COMFYUI_URL.rstrip("/")
-    try:
-        urllib.request.urlopen(f"{url}/system_stats", timeout=5)
-        logger.debug("ensure_comfyui_running: already up at %s.", url)
-        return
-    except Exception:
-        pass
+    current_args = _normalized_comfy_args()
+    recorded = _read_recorded_comfy_args()
+
+    if _comfy_url_reachable(url):
+        if recorded == current_args:
+            logger.debug("ensure_comfyui_running: already up at %s (args match).", url)
+            return
+        info("COMFYUI_ARGS changed — restarting ComfyUI for new flags …")
+        logger.info(
+            "ensure_comfyui_running: COMFYUI_ARGS changed (%r -> %r) — restarting ComfyUI.",
+            recorded,
+            current_args,
+        )
+        shutdown_comfyui()
+        _wait_until_comfy_down(url)
+        if _comfy_url_reachable(url):
+            logger.warning(
+                "ensure_comfyui_running: ComfyUI still up; new COMFYUI_ARGS may not apply."
+            )
+            return
 
     comfyui = Path(config.COMFYUI_DIR)
     venv_python = comfyui / "venv" / "bin" / "python"
     if not venv_python.exists():
-        print(
-            f"  ⚠   ComfyUI venv not found at {venv_python} — cannot auto-start.\n"
-            f"      Check COMFYUI_DIR in settings.env.",
-            flush=True,
-        )
+        warn("ComfyUI venv not found — cannot auto-start.")
+        info(f"Expected: {venv_python}")
+        info("Check COMFYUI_DIR in settings.env.")
         logger.warning(
             "ensure_comfyui_running: venv not found at %s — cannot auto-start.", venv_python
         )
@@ -140,7 +196,12 @@ def ensure_comfyui_running() -> None:
 
     global _comfyui_proc
 
-    extra_args = os.getenv("COMFYUI_ARGS", "--normalvram --fp16-vae").split()
+    if _comfy_url_reachable(url):
+        logger.debug("ensure_comfyui_running: external ComfyUI already at %s.", url)
+        _write_recorded_comfy_args(current_args)
+        return
+
+    extra_args = current_args.split()
     cmd = [str(venv_python), "main.py"] + extra_args
     log_path = comfyui / "comfyui_autostart.log"
     with open(log_path, "a") as log_fh:
@@ -151,10 +212,11 @@ def ensure_comfyui_running() -> None:
             stderr=log_fh,
             start_new_session=True,
         )
-    print(f"  ⏳  ComfyUI not running — spawning in background …", flush=True)
-    print(f"      cmd : {' '.join(cmd)}", flush=True)
-    print(f"      log : {log_path}", flush=True)
+    info("ComfyUI not running — spawning in background …")
+    info(f"cmd: {' '.join(cmd)}")
+    info(f"log: {log_path}")
     logger.info("ComfyUI spawned in background (cmd=%s).", " ".join(cmd))
+    _write_recorded_comfy_args(current_args)
 
 # ── Locked generation settings (model card requirements) ──────────────────────
 _FIXED_CFG       = 1.0
@@ -427,7 +489,11 @@ def _poll_until_done(prompt_id: str, comfyui_url: str, poll_interval: int = 5) -
                 )
 
         dots += 1
-        print(f"\r  ⏳  Generating image{'.' * (dots % 4):<4}", end="", flush=True)
+        print(
+            f"\r  ⏳  Generating image{'.' * (dots % 4):<4}{_CLR_EOL}",
+            end="",
+            flush=True,
+        )
 
 
 def _find_output_image(history_entry: dict, comfyui_dir: Path) -> Path | None:
@@ -491,26 +557,59 @@ class ZITImageClient:
         interval = 5
         elapsed  = 0
         dots     = 0
-        print(f"  ⏳  Waiting for ComfyUI to become ready (up to {grace}s) …", flush=True)
+        info(f"Waiting for ComfyUI to become ready (up to {grace}s) …")
         while elapsed < grace:
             time.sleep(interval)
             elapsed += interval
             dots    += 1
             print(
-                f"\r  ⏳  Waiting for ComfyUI{'.' * (dots % 4):<4} ({elapsed}s/{grace}s)",
-                end="", flush=True,
+                f"\r  ⏳  Waiting for ComfyUI{'.' * (dots % 4):<4} ({elapsed}s/{grace}s){_CLR_EOL}",
+                end="",
+                flush=True,
             )
             if self._is_server_up():
-                print(f"\n  ✔   ComfyUI ready at {self._url}", flush=True)
+                print()
+                ok(f"ComfyUI ready at {self._url}")
                 logger.info("ComfyUI ready after %ds.", elapsed)
                 return
 
-        print(f"\n  ✖   ComfyUI not ready after {grace}s — skipping image+video this cycle.", flush=True)
+        print()
+        err(f"ComfyUI not ready after {grace}s — skipping image+video this cycle.")
         logger.warning("ComfyUI not ready after %ds.", grace)
         raise ComfyUIUnavailableError(
             f"ComfyUI not reachable at {self._url} after {grace}s. "
             f"Check log: {self._comfyui / 'comfyui_autostart.log'}"
         )
+
+    def _post_comfy_free(self) -> bool:
+        """POST ComfyUI /free (unload_models + free_memory). Best-effort; never raises."""
+        try:
+            data = b'{"unload_models": true, "free_memory": true}'
+            req = urllib.request.Request(
+                f"{self._url}/free",
+                data=data,
+                headers={"Content-Type": "application/json"},
+                method="POST",
+            )
+            urllib.request.urlopen(req, timeout=10)
+            return True
+        except Exception as exc:
+            logger.warning("ComfyUI /free failed (non-fatal): %s", exc)
+            return False
+
+    def purge_vram_before_batch(self) -> None:
+        """
+        Ask ComfyUI to unload any loaded models and clear its GPU cache before
+        we submit a Z-Image workflow.
+
+        This only affects the **ComfyUI process** (not other apps or the bot's
+        Python process). It helps after manual Comfy sessions or fragmentation;
+        it does **not** reduce peak VRAM enough to run resolutions the GPU cannot
+        physically fit.
+        """
+        if self._post_comfy_free():
+            ok("ComfyUI VRAM purged before Z-Image batch.")
+            logger.info("ComfyUI /free before Z-Image batch.")
 
     def unload_models(self) -> None:
         """
@@ -520,19 +619,9 @@ class ZITImageClient:
         stage (e.g. Wan2.1 video generation) has the full GPU budget available.
         Failures are logged but never raised — freeing VRAM is best-effort.
         """
-        try:
-            data = b'{"unload_models": true, "free_memory": true}'
-            req  = urllib.request.Request(
-                f"{self._url}/free",
-                data=data,
-                headers={"Content-Type": "application/json"},
-                method="POST",
-            )
-            urllib.request.urlopen(req, timeout=10)
-            print("  ✔   ComfyUI models unloaded from VRAM.", flush=True)
+        if self._post_comfy_free():
+            ok("ComfyUI models unloaded from VRAM.")
             logger.info("ComfyUI models unloaded from VRAM.")
-        except Exception as exc:
-            logger.warning("ComfyUI /free failed (non-fatal): %s", exc)
 
     def ensure_ready(self) -> None:
         """
@@ -579,7 +668,7 @@ class ZITImageClient:
         workflow = _patch_workflow(workflow, prompt, steps, seed, width, height)
 
         # 2. Submit
-        print(f"      submitting to ComfyUI …", flush=True)
+        info("submitting to ComfyUI …")
         prompt_id = _submit_prompt(workflow, self._url)
         logger.info("ZIT prompt_id: %s", prompt_id)
 

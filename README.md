@@ -118,6 +118,10 @@ nano .env
 
 **Optional:** set `WAN_VIDEO_DIR` here if you use local Wan video (`ENABLE_VIDEO=WAN2.1`) and don’t want to edit `settings.env`. For Z-Image-Turbo images, set `COMFYUI_DIR` / `COMFYUI_URL` in `settings.env` if ComfyUI is not at the default path.
 
+### ComfyUI memory (`COMFYUI_ARGS`)
+
+ComfyUI still runs the diffusion math on the **GPU**; you cannot move the whole pipeline to RAM and keep normal speed. You can **reduce VRAM** by passing ComfyUI `main.py` flags in **`COMFYUI_ARGS`** in `settings.env` (for example `--lowvram`, optionally with `--fp16-vae`), which tends to **use more system RAM** and run **slower**. Check available flags with `python main.py --help` in your ComfyUI directory. **Restart ComfyUI** after changing `COMFYUI_ARGS`. This does not guarantee very large output resolutions on a small GPU—peak memory during sampling can still exceed free VRAM.
+
 ### InstructIR (optional, Z-Image-Turbo only)
 
 When `IMAGE_PROVIDER=z-image-turbo` and `ENABLE_INSTRUCTIR_ENHANCE=true`, the bot runs [InstructIR](https://github.com/mv-lab/InstructIR) on **each** candidate image after ComfyUI saves it and **before** ImageReward ranking. Output is written back to the same file; width and height are preserved (if the model returns a different spatial size, the result is resized to match the original).
@@ -148,6 +152,7 @@ All non-secret settings live in `settings.env`. Key parameters:
 | `TARGET_LANGUAGE` | `English` | Language of the audience |
 | `AI_PROVIDER` | `grok` | `grok` or `scaleway` |
 | `IMAGE_PROVIDER` | `grok` | `grok`, `midjourney`, or `z-image-turbo` (local ComfyUI) |
+| `COMFYUI_ARGS` | `--normalvram --fp16-vae` | Flags for ComfyUI `main.py` when the bot auto-starts it; `--normalvram` is faster if you have enough VRAM (see **ComfyUI memory** under Setup) |
 | `ENABLE_INSTRUCTIR_ENHANCE` | `false` | When `IMAGE_PROVIDER=z-image-turbo`, run [InstructIR](https://github.com/mv-lab/InstructIR) on each generated image before ImageReward (same pixel size; see below) |
 | `INSTRUCTIR_DIR` | _(empty)_ | Absolute path to an InstructIR clone (must contain `configs/eval5d.yml`). Weights auto-download on first use if `huggingface-hub` is installed |
 | `INSTRUCTIR_PROMPT` | _(built-in default)_ | Natural-language restoration instruction; leave unset to use the default enhancement phrase in `config.py` |
