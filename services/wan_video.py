@@ -35,7 +35,7 @@ from pathlib import Path
 
 import config
 
-logger = logging.getLogger("german_bot.wan_video")
+logger = logging.getLogger("xbot.wan_video")
 
 # ── Video reward scorer ───────────────────────────────────────────────────────
 # Executed inside Wan2GP's venv (which has torch, av, open_clip installed).

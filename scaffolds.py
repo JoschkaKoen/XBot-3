@@ -28,7 +28,7 @@ import json
 import logging
 import os
 
-logger = logging.getLogger("lang_bot.scaffolds")
+logger = logging.getLogger("xbot.scaffolds")
 
 _SCAFFOLDS_FILE = "data/scaffolds.json"
 _STATE_FILE     = "data/scaffold_state.json"

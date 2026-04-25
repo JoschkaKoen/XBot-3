@@ -18,7 +18,7 @@ import config
 from services.rife_video import RIFENotConfiguredError, interpolate
 from utils.ui import stage_banner, info, ok, warn as ui_warn
 
-logger = logging.getLogger("german_bot.interpolate_video")
+logger = logging.getLogger("xbot.interpolate_video")
 
 
 def interpolate_video(state: dict) -> dict:

@@ -44,7 +44,7 @@ from elevenlabs.client import ElevenLabs
 from elevenlabs import save
 from elevenlabs.types import VoiceSettings
 
-logger = logging.getLogger("german_bot.generate_audio")
+logger = logging.getLogger("xbot.generate_audio")
 
 _DEFAULT_SPEED = 0.70   # 0.70 = 30 % slower — deliberate pacing for language learners
 

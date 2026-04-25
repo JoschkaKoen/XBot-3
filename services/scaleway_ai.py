@@ -5,7 +5,7 @@ from typing import List, Dict
 from dotenv import load_dotenv
 
 load_dotenv()
-logger = logging.getLogger("german_bot.scaleway")
+logger = logging.getLogger("xbot.scaleway")
 
 
 class ScalewayAI:

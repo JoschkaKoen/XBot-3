@@ -21,7 +21,7 @@ updated by the analyze node after each cycle.
  RELATED MODULES
 ================================================================================
   - nodes.analyze:     Provides strategy via load_strategy()
-  - nodes.score:       Provides _load_history() for avoid_words
+  - nodes.score:       Provides load_history() for avoid_words
   - services.x_trends: Provides get_trends() for trend-based word selection
   - services.grok_ai:  AI functions for different model tiers
   - scaffolds:         Provides next_scaffold() for tweet format templates
@@ -90,7 +90,7 @@ def _load_strategy_from_file() -> dict:
     return load_strategy()
 
 
-logger = logging.getLogger("german_bot.generate_content")
+logger = logging.getLogger("xbot.generate_content")
 
 _EPHEMERAL_TOPIC_KEY = "_ephemeral_next_topic"
 
@@ -710,8 +710,8 @@ def _next_cefr_rotation() -> str:
     cefr_level, then advances one step in A1→A2→B1→B2→C1→C2→A1 order.
     Falls back to A1 when history is empty or no level has been recorded yet.
     """
-    from nodes.score import _load_history
-    for record in reversed(_load_history()):
+    from nodes.score import load_history
+    for record in reversed(load_history()):
         last = (record.get("cefr_level") or "").strip().upper()
         if last in _VALID_CEFR:
             return _CEFR_SEQUENCE[(_CEFR_SEQUENCE.index(last) + 1) % len(_CEFR_SEQUENCE)]
@@ -814,8 +814,8 @@ def generate_content(state: dict) -> dict:
 
     if word_source_mode == "trends":
         info(f"Word source: trends — fetching trends ({config.TRENDS_COUNTRY}) …")
-        from nodes.score import _load_history
-        history_words = [r.get("source_word", "") for r in _load_history() if r.get("source_word")]
+        from nodes.score import load_history
+        history_words = [r.get("source_word", "") for r in load_history() if r.get("source_word")]
         strategy_words = strategy.get("avoid_words", [])
         avoid_words = list(dict.fromkeys(history_words + strategy_words))
         avoid_preview = ", ".join(avoid_words[-5:]) if avoid_words else "none"
@@ -829,8 +829,8 @@ def generate_content(state: dict) -> dict:
                 word_cefr = _trend_cefr
 
     if not german_word:
-        from nodes.score import _load_history
-        history_words = [r.get("source_word", "") for r in _load_history() if r.get("source_word")]
+        from nodes.score import load_history
+        history_words = [r.get("source_word", "") for r in load_history() if r.get("source_word")]
         # Enrich avoid_words with full history before building the word prompt.
         avoid_words = list(dict.fromkeys(history_words + strategy.get("avoid_words", [])))
         strategy = {**strategy, "avoid_words": avoid_words}
@@ -930,7 +930,7 @@ def generate_content(state: dict) -> dict:
     logger.info("Picked word: %s  CEFR: %s", german_word, word_cefr or "unknown")
 
     # ── 2. Gather context for the single AI call ───────────────────────────────
-    from nodes.score import _load_history
+    from nodes.score import load_history
     from scaffolds import next_scaffold
     scaffold_name, scaffold = next_scaffold()
     info(f"Scaffold: {scaffold_name}")

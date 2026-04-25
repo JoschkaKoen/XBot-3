@@ -43,7 +43,7 @@ _CYAN  = "\033[96m"
 _GRAY  = "\033[90m"
 
 # ── File-only logger ───────────────────────────────────────────────────────────
-_file_logger = logging.getLogger("german_bot.improve")
+_file_logger = logging.getLogger("xbot.improve")
 _file_logger.setLevel(logging.DEBUG)
 _log_path = PROJECT_DIR / "data" / "improvement.log"
 _log_path.parent.mkdir(parents=True, exist_ok=True)
@@ -99,11 +99,11 @@ def _delete_tweet(tweet_id: str) -> None:
 
 
 def _remove_from_history(tweet_id: str) -> None:
-    from nodes.score import _load_history, _save_history
-    history = _load_history()
+    from nodes.score import load_history, save_history
+    history = load_history()
     before = len(history)
     history = [r for r in history if r.get("tweet_id") != tweet_id]
-    _save_history(history)
+    save_history(history)
     log_both(f"{_GRAY}🗑️  Removed tweet {tweet_id} from history ({before} → {len(history)} records){_R}")
 
 
@@ -478,8 +478,8 @@ def phase_1_improve_code(original_branch: str) -> "str | None":
     log_both(f"{_GREEN}✅  Created branch: {branch_name}{_R}")
 
     # Load history for the prompt
-    from nodes.score import _load_history
-    history = _load_history()
+    from nodes.score import load_history
+    history = load_history()
     log_both(f"{_GRAY}📊  History: {len(history)} records{_R}")
 
     prompt = _build_phase1_prompt(history, branch_name)

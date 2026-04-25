@@ -3,7 +3,7 @@ import logging
 from dotenv import load_dotenv
 
 load_dotenv()
-logger = logging.getLogger("german_bot.grok")
+logger = logging.getLogger("xbot.grok")
 
 _client = None
 

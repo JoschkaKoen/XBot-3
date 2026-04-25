@@ -36,7 +36,7 @@ from utils.errors import FatalProviderError
 from utils.retry import retry_call, with_retry
 from utils.ui import stage_banner, ok, info, warn as ui_warn
 
-logger = logging.getLogger("german_bot.generate_image")
+logger = logging.getLogger("xbot.generate_image")
 
 
 # ── Midjourney client (copied from midjourney.py) ─────────────────────────────

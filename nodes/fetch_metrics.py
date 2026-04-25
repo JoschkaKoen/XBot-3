@@ -35,18 +35,17 @@ from config import (
     STRATEGY_METRICS_UPDATES_ENABLED,
     STRATEGY_UPDATE_INTERVAL_HOURS,
     METRICS_FETCH_MAX_TWEETS,
+    METRICS_REFRESH_FILE,
 )
-from nodes.score import _load_history, _save_history, _compute_score
+from nodes.score import load_history, save_history, compute_score
 from utils.retry import with_retry
 from utils.ui import stage_banner, ok, info as ui_info, warn as ui_warn
 
-logger = logging.getLogger("german_bot.fetch_metrics")
+logger = logging.getLogger("xbot.fetch_metrics")
 
 _NOT_FOUND_CODES = {144, 34}
 
-_REFRESH_STATE_PATH = os.path.join(
-    os.path.dirname(__file__), "..", "data", "metrics_refresh.json"
-)
+_REFRESH_STATE_PATH = METRICS_REFRESH_FILE
 
 
 def _last_refresh_hours_ago() -> float:
@@ -118,7 +117,7 @@ def _fetch_cycle_metrics(n: int) -> None:
     """
     from config import METRICS_FETCH_PER_CYCLE  # re-read live value
 
-    history = _load_history()
+    history = load_history()
     if not history:
         return
 
@@ -138,7 +137,7 @@ def _fetch_cycle_metrics(n: int) -> None:
             continue
         try:
             metrics = _fetch_one(client, tweet_id)
-            score   = _compute_score(metrics)
+            score   = compute_score(metrics)
             new_history.append({**record, "metrics": metrics, "engagement_score": score})
             updated += 1
         except _TweetGoneError:
@@ -152,7 +151,7 @@ def _fetch_cycle_metrics(n: int) -> None:
                 logger.warning("Per-cycle refresh: could not fetch %s (%s) — kept.", tweet_id, exc)
                 new_history.append(record)
 
-    _save_history(new_history)
+    save_history(new_history)
 
     parts = []
     if updated: parts.append(f"{updated} updated")
@@ -206,7 +205,7 @@ def fetch_all_metrics(state: dict) -> dict:
         )
         return {**state, "metrics_refreshed": False}
 
-    history = _load_history()
+    history = load_history()
     if not history:
         ui_info("No posts in history yet — skipping metrics refresh.")
         logger.info("No post history found — nothing to refresh.")
@@ -268,7 +267,7 @@ def fetch_all_metrics(state: dict) -> dict:
 
         try:
             metrics = _fetch_one(client, tweet_id)
-            score   = _compute_score(metrics)
+            score   = compute_score(metrics)
             new_history.append({**record, "metrics": metrics, "engagement_score": score})
             updated += 1
             logger.debug(
@@ -291,7 +290,7 @@ def fetch_all_metrics(state: dict) -> dict:
                 new_history.append(record)
                 kept_unchanged += 1
 
-    _save_history(new_history)
+    save_history(new_history)
     _record_refresh_timestamp()
 
     parts = []

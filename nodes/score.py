@@ -5,7 +5,7 @@ Computes a weighted engagement score and appends the full record
 (tweet text, word, metrics, score, timestamps) to data/post_history.json.
 
 ================================================================================
- ENGAGEMENT SCORE FORMULA  (edit _compute_score to change weights)
+ ENGAGEMENT SCORE FORMULA  (edit compute_score to change weights)
 ================================================================================
   score = likes + 3×reposts + 5×replies + 2×quotes + impressions/100
 
@@ -30,7 +30,7 @@ from config import HISTORY_FILE
 from utils.ui import stage_banner, ok
 from utils.io import atomic_json_write
 
-logger = logging.getLogger("german_bot.score")
+logger = logging.getLogger("xbot.score")
 
 _MIN_AGE_HOURS = 6   # avoid extreme inflation for very fresh tweets
 
@@ -66,7 +66,7 @@ def get_top_tweets(history: list, n: int = 3) -> list:
     return qualifying[:n]
 
 
-def _compute_score(metrics: dict) -> float:
+def compute_score(metrics: dict) -> float:
     """
     Weighted engagement score:
         likes + 3×reposts + 5×replies + 2×quotes + impressions/100
@@ -81,7 +81,7 @@ def _compute_score(metrics: dict) -> float:
     return round(score, 2)
 
 
-def _load_history() -> list:
+def load_history() -> list:
     if not os.path.exists(HISTORY_FILE):
         return []
     try:
@@ -92,7 +92,7 @@ def _load_history() -> list:
         return []
 
 
-def _save_history(history: list) -> None:
+def save_history(history: list) -> None:
     atomic_json_write(HISTORY_FILE, history, ensure_ascii=False, indent=2)
 
 
@@ -100,10 +100,10 @@ def _save_history(history: list) -> None:
 
 def score_and_store(state: dict) -> dict:
     stage_banner(9)
-    logger.info("Node: record_post")
+    logger.info("Node: score_and_store")
 
     metrics: dict = state.get("metrics", {})
-    score: float = _compute_score(metrics)
+    score: float = compute_score(metrics)
 
     record = {
         "timestamp": datetime.now(timezone.utc).isoformat(),
@@ -122,9 +122,9 @@ def score_and_store(state: dict) -> dict:
         "cycle": state.get("cycle", 0),
     }
 
-    history = _load_history()
+    history = load_history()
     history.append(record)
-    _save_history(history)
+    save_history(history)
     ok(f"Saved to history ({len(history)} records total)")
     logger.info("History saved (%d records total).", len(history))
 

@@ -10,7 +10,7 @@ BRANCH="$(git branch --show-current)"
 
 echo ""
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-echo "  🤖  XBot 2 — starting on branch: $BRANCH"
+echo "  🤖  XBot 3 — starting on branch: $BRANCH"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo ""
 

@@ -18,7 +18,7 @@ updated strategy dict fed into generate_content.
 ================================================================================
  RELATED MODULES
 ================================================================================
-  - nodes.score:        Provides _load_history() and tweet performance metrics
+  - nodes.score:        Provides load_history() and tweet performance metrics
   - nodes.generate_content: Consumes strategy for word/tweet generation
   - services.ai_client: AI response handling
   - config:             ANALYZE_LAST_N, STRATEGY_MODEL settings
@@ -33,8 +33,10 @@ from datetime import datetime, timezone
 import config
 from config import HISTORY_FILE, STRATEGY_FILE, STRATEGY_HISTORY_FILE
 from services.ai_client import get_ai_response
-from nodes.score import _load_history
+from nodes.score import load_history
 from utils.io import atomic_json_write
+from utils.retry import retry_call
+from utils.ui import stage_banner, ok, info as ui_info, warn as ui_warn
 
 
 def _get_strategy_ai() -> callable:
@@ -43,10 +45,9 @@ def _get_strategy_ai() -> callable:
         from services.grok_ai import get_grok_reasoning_response
         return get_grok_reasoning_response
     return get_ai_response
-from utils.retry import retry_call
-from utils.ui import stage_banner, ok, info as ui_info, warn as ui_warn
 
-logger = logging.getLogger("german_bot.analyze")
+
+logger = logging.getLogger("xbot.analyze")
 
 
 def _system_prompt() -> str:
@@ -335,7 +336,7 @@ def analyze_and_improve(state: dict) -> dict:
         logger.info("Strategy analysis skipped (metrics_refreshed=False).")
 
         # Always keep avoid_words current from post history.
-        history = _load_history()
+        history = load_history()
         recent_words = [r.get("source_word", "") for r in history[-30:] if r.get("source_word")]
         updated_strategy = {**old_strategy, "avoid_words": list(dict.fromkeys(recent_words))}
         if updated_strategy["avoid_words"] != old_strategy.get("avoid_words", []):
@@ -349,7 +350,7 @@ def analyze_and_improve(state: dict) -> dict:
     # Load the previous strategy to diff against
     old_strategy = load_strategy()
 
-    history = _load_history()
+    history = load_history()
     if len(history) < 2:
         ui_info(f"Not enough history yet ({len(history)} record(s)) — keeping current strategy.")
         logger.info("Not enough history (%d records) — using current strategy.", len(history))

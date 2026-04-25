@@ -503,6 +503,7 @@ MAX_EXAMPLE_WORDS: int = int(os.getenv("MAX_EXAMPLE_WORDS", "13"))
 # ── Bot behaviour ─────────────────────────────────────────────────────────────
 POST_INTERVAL_SECONDS: int = int(os.getenv("POST_INTERVAL_SECONDS", "18000"))
 HISTORY_FILE: str = os.getenv("HISTORY_FILE", "data/post_history.json")
+METRICS_REFRESH_FILE: str = "data/metrics_refresh.json"
 LOG_FILE: str = os.getenv("LOG_FILE", "data/bot.log")
 VIDEO_STYLE: str = os.getenv("VIDEO_STYLE", "ktv").lower().strip()
 ANALYZE_LAST_N: int = int(os.getenv("ANALYZE_LAST_N", "10"))
@@ -748,7 +749,7 @@ class _ConsoleFormatter(logging.Formatter):
 
 
 def setup_logging() -> logging.Logger:
-    logger = logging.getLogger("lang_bot")
+    logger = logging.getLogger("xbot")
     if logger.handlers:
         return logger
 

@@ -33,7 +33,7 @@ from typing import List
 import config
 from utils.ui import err, info, ok, warn
 
-logger = logging.getLogger("german_bot.zit_image")
+logger = logging.getLogger("xbot.zit_image")
 
 # Clear to end of line after \r so shorter updates don't leave stale characters.
 _CLR_EOL = "\033[K"
@@ -73,7 +73,8 @@ def _comfy_url_reachable(url: str) -> bool:
     try:
         urllib.request.urlopen(f"{url}/system_stats", timeout=5)
         return True
-    except Exception:
+    except (urllib.error.URLError, OSError) as exc:
+        logger.debug("ComfyUI not reachable at %s: %s", url, exc)
         return False
 
 
@@ -97,8 +98,8 @@ def _find_comfyui_pid_by_port(port: int) -> int | None:
         m = re.search(r"pid=(\d+)", result.stdout)
         if m:
             return int(m.group(1))
-    except Exception:
-        pass
+    except (subprocess.SubprocessError, OSError) as exc:
+        logger.debug("ss lookup for ComfyUI PID failed: %s", exc)
     return None
 
 
@@ -289,8 +290,8 @@ def _gui_to_api(gui_wf: dict, comfyui_url: str, comfyui_dir: Path) -> dict:
                 data = json.loads(resp.read())
             if ntype in data:
                 node_info[ntype] = data[ntype]
-        except Exception:
-            pass
+        except (urllib.error.URLError, json.JSONDecodeError, OSError) as exc:
+            logger.warning("Could not fetch /object_info for %s: %s", ntype, exc)
 
     def _lora_file_exists(lora_name: str) -> bool:
         normalized = lora_name.replace("\\", os.sep).replace("/", os.sep)
@@ -537,7 +538,8 @@ class ZITImageClient:
         try:
             urllib.request.urlopen(f"{self._url}/system_stats", timeout=5)
             return True
-        except Exception:
+        except (urllib.error.URLError, OSError) as exc:
+            logger.debug("ComfyUI server check failed at %s: %s", self._url, exc)
             return False
 
     def _check_server(self) -> None:

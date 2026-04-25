@@ -17,7 +17,7 @@ from pathlib import Path
 
 from utils.io import atomic_json_write
 
-logger = logging.getLogger("lang_bot.theme_random")
+logger = logging.getLogger("xbot.theme_random")
 
 _THEMES_FILE = Path(__file__).resolve().parent.parent / "data" / "themes_german_for_english_learners.json"
 _RECENT_FILE = Path(__file__).resolve().parent.parent / "data" / "theme_recent.json"

@@ -147,7 +147,7 @@ def _model_lines() -> list:
     return lines
 
 setup_logging()
-logger = logging.getLogger("lang_bot.main")
+logger = logging.getLogger("xbot.main")
 
 _shutdown = False
 

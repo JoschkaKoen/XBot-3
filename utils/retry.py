@@ -18,7 +18,7 @@ import functools
 import logging
 from typing import Callable, Type, Tuple
 
-logger = logging.getLogger("german_bot.retry")
+logger = logging.getLogger("xbot.retry")
 
 
 def with_retry(

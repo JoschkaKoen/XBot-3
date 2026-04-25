@@ -55,7 +55,7 @@ from pathlib import Path
 
 import config
 
-logger = logging.getLogger("german_bot.realesrgan_upscale")
+logger = logging.getLogger("xbot.realesrgan_upscale")
 
 
 def _find_python(realesrgan_dir: Path) -> str:

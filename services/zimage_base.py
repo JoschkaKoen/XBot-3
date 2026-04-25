@@ -32,7 +32,7 @@ from typing import List
 
 import config
 
-logger = logging.getLogger("german_bot.zimage_base")
+logger = logging.getLogger("xbot.zimage_base")
 
 # Overlay venv that contains only transformers 5.x.
 # The subprocess still uses the shared venv's Python (torch / diffusers live

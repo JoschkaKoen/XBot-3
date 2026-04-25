@@ -25,7 +25,7 @@ from subprocess import CalledProcessError
 
 import config
 
-logger = logging.getLogger("german_bot.rife_video")
+logger = logging.getLogger("xbot.rife_video")
 
 
 class RIFENotConfiguredError(RuntimeError):

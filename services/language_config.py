@@ -12,7 +12,7 @@ import json
 import logging
 import os
 
-logger = logging.getLogger("lang_bot.language_config")
+logger = logging.getLogger("xbot.language_config")
 
 _CACHE_FILE = "data/language_config.json"
 _GROK_MODEL = "grok-4-1-fast-non-reasoning"

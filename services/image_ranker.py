@@ -21,7 +21,7 @@ returned so the pipeline always continues without crashing.
 import logging
 import threading
 
-logger = logging.getLogger("german_bot.image_ranker")
+logger = logging.getLogger("xbot.image_ranker")
 
 # ── Singleton state ────────────────────────────────────────────────────────────
 _model = None

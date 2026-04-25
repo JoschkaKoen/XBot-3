@@ -19,7 +19,7 @@ from pathlib import Path
 
 import requests
 
-logger = logging.getLogger("german_bot.grok_video")
+logger = logging.getLogger("xbot.grok_video")
 
 _XAI_API_KEY: str = os.getenv("XAI_API_KEY", "")
 _BASE_URL = "https://api.x.ai/v1"

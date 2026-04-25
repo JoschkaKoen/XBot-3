@@ -18,7 +18,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-logger = logging.getLogger("german_bot.instructir_enhance")
+logger = logging.getLogger("xbot.instructir_enhance")
 
 LM_MODEL = "lm_instructir-7d.pt"
 MODEL_NAME = "im_instructir-7d.pt"
@@ -49,7 +49,8 @@ def _torch_load(path):
         return torch.load(p, map_location="cpu", weights_only=True)
     except TypeError:
         return torch.load(p, map_location="cpu")
-    except Exception:
+    except (RuntimeError, OSError) as exc:
+        logger.warning("torch.load(weights_only=True) failed for %s (%s) — retrying with weights_only=False", p, exc)
         return torch.load(p, map_location="cpu", weights_only=False)
 
 image_path  = sys.argv[1]

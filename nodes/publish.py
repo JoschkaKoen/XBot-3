@@ -33,7 +33,7 @@ from config import (
 from utils.retry import with_retry
 from utils.ui import stage_banner, ok
 
-logger = logging.getLogger("german_bot.publish")
+logger = logging.getLogger("xbot.publish")
 
 
 def _build_clients():

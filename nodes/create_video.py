@@ -66,7 +66,7 @@ from utils.ui import stage_banner, ok, warn as ui_warn
 
 _FONT = KTV_FONT
 
-logger = logging.getLogger("german_bot.create_video")
+logger = logging.getLogger("xbot.create_video")
 
 os.makedirs(VOICES_MUSIC_DIR, exist_ok=True)
 os.makedirs(VIDEOS_DIR, exist_ok=True)
@@ -280,7 +280,8 @@ def _count_wrapped_lines(text: str, font_path: str, font_size: int, max_width: i
         if current_line:
             lines += 1
         return max(lines, 1)
-    except Exception:
+    except (OSError, ValueError) as exc:
+        logger.warning("PIL textbbox measurement failed (%s) — using char-width fallback.", exc)
         # Rough fallback: avg ~0.55× font_size per character
         chars_per_line = max(1, int(max_width / (font_size * 0.55)))
         import textwrap

@@ -31,7 +31,7 @@ import requests
 from config import ELEVENLABS_API_KEY
 from utils.io import atomic_json_write
 
-logger = logging.getLogger("german_bot.voice_pool")
+logger = logging.getLogger("xbot.voice_pool")
 
 _POOL_FILE      = "data/voice_pool.json"
 _EL_BASE        = "https://api.elevenlabs.io/v1"

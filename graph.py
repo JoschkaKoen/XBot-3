@@ -37,7 +37,7 @@ from nodes import (
     score_and_store,
 )
 
-logger = logging.getLogger("german_bot.graph")
+logger = logging.getLogger("xbot.graph")
 
 _PROJECT_DIR = Path(__file__).parent.resolve()
 
@@ -108,7 +108,7 @@ def _check_for_update() -> None:
         os.execv(sys.executable, [sys.executable] + sys.argv)
         # os.execv replaces the process — code below is unreachable
 
-    except Exception as exc:
+    except (subprocess.SubprocessError, OSError) as exc:
         logger.warning("Auto-update check failed: %s — continuing.", exc)
 
 
@@ -153,7 +153,7 @@ def wait_node(state: dict) -> dict:
                 logger.info("Self-improvement run completed in %ds.", improvement_duration)
             except subprocess.TimeoutExpired:
                 logger.warning("Self-improvement timed out after 3600s — continuing.")
-            except Exception as exc:
+            except (subprocess.SubprocessError, OSError, RuntimeError) as exc:
                 logger.warning("Self-improvement failed: %s", exc)
 
     remaining = max(config.POST_INTERVAL_SECONDS - improvement_duration, 60)

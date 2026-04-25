@@ -12,7 +12,7 @@ from typing import List, Dict
 
 import config
 
-logger = logging.getLogger("lang_bot.x_trends")
+logger = logging.getLogger("xbot.x_trends")
 
 
 def get_trends(max_trends: int = 20) -> List[Dict]:

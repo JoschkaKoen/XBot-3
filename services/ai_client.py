@@ -16,7 +16,7 @@ import logging
 from dotenv import load_dotenv
 
 load_dotenv()
-logger = logging.getLogger("german_bot.ai_client")
+logger = logging.getLogger("xbot.ai_client")
 
 _PROVIDER = os.getenv("AI_PROVIDER", "grok").lower().strip()
 

@@ -22,6 +22,9 @@ def atomic_json_write(path: str, data, **json_kwargs) -> None:
             json.dump(data, f, **json_kwargs)
         os.replace(tmp, path)
     except Exception:
+        # Bare-except is intentional here: we re-raise immediately, and the
+        # only purpose of this block is to clean up the temp file. We must
+        # not swallow whatever exception triggered the cleanup.
         try:
             os.unlink(tmp)
         except OSError:
