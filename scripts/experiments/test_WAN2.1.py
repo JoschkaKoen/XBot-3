@@ -1,38 +1,27 @@
 #!/usr/bin/env python3
 """
-test_WAN2.2_14B.py — Wan2.2 I2V-14B Image-to-Video  (480p, 16 fps, 20 steps, ~5 s)
-
-Dual-stage model: wgp loads both the high-noise and low-noise transformers
-automatically; only the high (primary) filename is passed in the task JSON.
+test_WAN2.1.py — Wan2.1 Image-to-Video  (480p, 8 GB VRAM)
 
 Run from the XBot 3 project root.  Reads WAN_VIDEO_DIR from settings.env
 (or the environment) to locate the Wan2GP installation, then drives wgp.py
 directly with the standard 480p 14B int8 parameters.
 
 Usage:
-    <WAN_VENV>/python test_WAN2.2_14B.py <image_path> "<prompt>" [options]
+    <WAN_VENV>/python test_WAN2.1.py <image_path> "<prompt>" [options]
 
 Examples:
-    /home/y/Programming/Wan2GP/venv/bin/python test_WAN2.2_14B.py Images/photo.png "waves on the beach"
-    /home/y/Programming/Wan2GP/venv/bin/python test_WAN2.2_14B.py Images/photo.png "subtle motion" --steps 20 --seed 42
-    /home/y/Programming/Wan2GP/venv/bin/python test_WAN2.2_14B.py Images/photo.png "subtle motion" --steps 20 --frames 80
+    /home/y/Programming/Wan2GP/venv/bin/python test_WAN2.1.py Images/photo.png "waves on the beach"
+    /home/y/Programming/Wan2GP/venv/bin/python test_WAN2.1.py Images/photo.png "subtle motion" --steps 20 --seed 42
+    /home/y/Programming/Wan2GP/venv/bin/python test_WAN2.1.py Images/photo.png "subtle motion" --steps 20 --frames 81
 
 Requirements:
     WAN_VIDEO_DIR must point to a Wan2GP installation that contains:
       - wgp.py
       - venv/  (with torch, av, open_clip installed)
-      - wan2.2_image2video_14B_high_quanto_mbf16_int8.safetensors
-      - wan2.2_image2video_14B_low_quanto_mbf16_int8.safetensors
+      - the wan2.1_image2video_480p_14B_quanto_mbf16_int8.safetensors model
 
     Set WAN_VIDEO_DIR in settings.env (auto-loaded) or export it as an
     environment variable.  No edits to this script are needed.
-
-Model download (one-time if not yet present):
-    cd /home/y/Programming/Wan2GP
-    source venv/bin/activate
-    huggingface-cli download DeepBeepMeep/Wan2.2 \\
-        wan2.2_image2video_14B_high_quanto_mbf16_int8.safetensors \\
-        wan2.2_image2video_14B_low_quanto_mbf16_int8.safetensors --local-dir ckpts
 """
 
 import argparse
@@ -45,7 +34,7 @@ from pathlib import Path
 
 # ── Load settings.env so WAN_VIDEO_DIR is available without manual export ─────
 # Uses only stdlib — python-dotenv is not installed in Wan2GP's venv.
-_PROJECT_DIR = Path(__file__).parent.resolve()
+_PROJECT_DIR = Path(__file__).resolve().parent.parent.parent
 _settings_env = _PROJECT_DIR / "settings.env"
 if _settings_env.exists():
     with open(_settings_env, encoding="utf-8") as _f:
@@ -71,16 +60,14 @@ if not WAN_DIR.exists():
     sys.exit(1)
 
 # ── Paths ─────────────────────────────────────────────────────────────────────
-OUTPUTS_DIR      = _PROJECT_DIR / "Videos"
-CONFIG_DIR       = WAN_DIR      / "_i2v_config_22_14B"
-RUN_HISTORY_FILE = _PROJECT_DIR / "data" / "wan_video_history.jsonl"
+OUTPUTS_DIR      = _PROJECT_DIR / "Videos"                          # XBot Videos folder
+CONFIG_DIR       = WAN_DIR      / "_i2v_config"                     # wgp config written here
+RUN_HISTORY_FILE = _PROJECT_DIR / "data" / "wan_video_history.jsonl"  # XBot history
 
-# Dual-stage model: wgp derives the low (secondary) filename automatically.
-MODEL_FILENAME_HIGH = "wan2.2_image2video_14B_high_quanto_mbf16_int8.safetensors"
-MODEL_FILENAME_LOW  = "wan2.2_image2video_14B_low_quanto_mbf16_int8.safetensors"
-RESOLUTION          = "832x480"
-PRELOAD_MB          = 1500
-PERC_RESERVED       = 0.85
+MODEL_FILENAME = "wan2.1_image2video_480p_14B_quanto_mbf16_int8.safetensors"
+RESOLUTION     = "832x480"
+PRELOAD_MB     = 1500
+PERC_RESERVED  = 0.85
 
 
 # ── Video reward scorer ───────────────────────────────────────────────────────
@@ -96,7 +83,7 @@ def score_video(video_path: Path, prompt: str, n_frames: int = 16) -> dict:
 
     Requires torch, av, open_clip — available in Wan2GP's venv.
     Run this script with Wan2GP's venv python:
-        WAN_VIDEO_DIR/venv/bin/python test_WAN2.2_14B.py ...
+        WAN_VIDEO_DIR/venv/bin/python run_i2v.py ...
     """
     import torch
     import av
@@ -184,17 +171,13 @@ def write_wgp_config() -> dict:
 
 
 def build_task(image_path: Path, prompt: str, steps: int, seed: int, frames: int) -> dict:
-    # wgp auto-loads the low (secondary) transformer from URLs2 in the model
-    # definition; only the high (primary) filename is needed here.
     params: dict = {
-        "model_type":            "i2v_2_2",
-        "model_filename":        MODEL_FILENAME_HIGH,
+        "model_type":            "i2v",
+        "model_filename":        MODEL_FILENAME,
         "resolution":            RESOLUTION,
         "video_length":          frames,
         "num_inference_steps":   steps,
         "image_start":           str(image_path),
-        # "S" = Start image mode — explicitly request image-to-video conditioning.
-        "image_prompt_type":     "S",
         "prompt":                prompt,
         "skip_steps_cache_type": "",
     }
@@ -259,7 +242,7 @@ def print_run_banner(
 
     print()
     print("═" * 64)
-    print("  Wan2.2 I2V 14B  ·  Wan2GP  ·  480p 14B int8  (dual-stage)")
+    print("  Wan2.1 I2V  ·  Wan2GP  ·  480p 14B int8")
     print("═" * 64)
     print()
     print("  RUN")
@@ -281,9 +264,8 @@ def print_run_banner(
     _banner_line("output folder",        OUTPUTS_DIR)
     print()
     print("  MODEL")
-    _banner_line("model_type",      task.get("model_type"))
-    _banner_line("high (stage 1)",  MODEL_FILENAME_HIGH)
-    _banner_line("low  (stage 2)",  MODEL_FILENAME_LOW)
+    _banner_line("model_type",   task.get("model_type"))
+    _banner_line("weights file", MODEL_FILENAME)
     print()
     print("  SAMPLING")
     _banner_line("denoising steps", args.steps)
@@ -319,14 +301,14 @@ def print_run_banner(
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="Wan2.2 I2V-14B 480p Image-to-Video (dual-stage) — run from XBot 3 project root"
+        description="Wan2.1 480p 14B Image-to-Video — run from XBot 3 project root"
     )
     parser.add_argument("image",   help="Input image path (JPG/PNG)")
     parser.add_argument("prompt",  help="Motion prompt")
     parser.add_argument("--steps",  type=int, default=20,
                         help="Denoising steps (default: 20)")
-    parser.add_argument("--frames", type=int, default=80,
-                        help="Frames (default: 80 = ~5 s @ 16 fps)")
+    parser.add_argument("--frames", type=int, default=81,
+                        help="Frames (default: 81 = ~5 s @ 16 fps)")
     parser.add_argument("--seed",   type=int, default=-1,
                         help="Seed (-1 = random)")
     args = parser.parse_args()
@@ -352,7 +334,7 @@ def main() -> None:
     task = build_task(image_path, args.prompt, args.steps, args.seed, args.frames)
 
     timestamp     = datetime.now().strftime("%Y%m%d_%H%M%S")
-    settings_file = WAN_DIR / f"_i2v22_14b_task_{timestamp}.json"
+    settings_file = WAN_DIR / f"_i2v_task_{timestamp}.json"
 
     try:
         with open(settings_file, "w", encoding="utf-8") as f:
@@ -425,7 +407,7 @@ def main() -> None:
                 print("\n  (No new .mp4 found.)", file=sys.stderr)
 
         record = {
-            "engine":       "WAN2.2-14B",
+            "engine":       "WAN2.1",
             "started_at":   started_at,
             "finished_at":  finished_at,
             "wgp_exit_code": result.returncode,

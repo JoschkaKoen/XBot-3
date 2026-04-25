@@ -19,6 +19,8 @@ from pathlib import Path
 
 import requests
 
+from utils.ui import info, ok
+
 logger = logging.getLogger("xbot.grok_video")
 
 _XAI_API_KEY: str = os.getenv("XAI_API_KEY", "")
@@ -31,11 +33,8 @@ _VIDEOS_DIR = "Videos"  # mirrored from config to avoid a circular import
 # ── cycle-frequency gate ───────────────────────────────────────────────────────
 
 def _load_state() -> dict:
-    try:
-        with open(_VIDEO_STATE_FILE, encoding="utf-8") as f:
-            return json.load(f)
-    except (FileNotFoundError, ValueError, json.JSONDecodeError):
-        return {}
+    from utils.io import safe_json_read
+    return safe_json_read(_VIDEO_STATE_FILE, default={}, logger=logger)
 
 
 def _save_state(data: dict) -> None:
@@ -215,7 +214,7 @@ def _submit_generation(image_path: str, motion_prompt: str, duration: int = 8) -
     if not request_id:
         raise RuntimeError(f"xAI video API returned no request_id: {data}")
     logger.info("Grok video submitted, request_id=%s", request_id)
-    print(f"  ✉   Grok Imagine job queued (request_id={request_id[:8]}…)", flush=True)
+    info(f"Grok Imagine job queued (request_id={request_id[:8]}…)")
     return request_id
 
 
@@ -272,7 +271,7 @@ def _download_video(url: str) -> str:
     os.makedirs(_VIDEOS_DIR, exist_ok=True)
     ts = datetime.now().strftime("%Y%m%d_%H%M%S")
     path = os.path.join(_VIDEOS_DIR, f"grok_{ts}.mp4")
-    print(f"  ⬇   Downloading Grok video …", flush=True)
+    info("Downloading Grok video …")
     resp = requests.get(url, stream=True, timeout=120)
     resp.raise_for_status()
     with open(path, "wb") as f:
@@ -280,7 +279,7 @@ def _download_video(url: str) -> str:
             f.write(chunk)
     size_mb = os.path.getsize(path) / 1024 / 1024
     logger.info("Grok video downloaded → %s (%.1f MB)", path, size_mb)
-    print(f"  ✅  Grok video saved ({size_mb:.1f} MB) → {os.path.basename(path)}", flush=True)
+    ok(f"Grok video saved ({size_mb:.1f} MB) → {os.path.basename(path)}")
     return path
 
 

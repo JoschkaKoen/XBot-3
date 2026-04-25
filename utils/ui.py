@@ -1,11 +1,23 @@
 """
 Console UI helpers — pretty output for the terminal.
-All functions use print() directly so they never appear in the log file.
+
+All functions in this module use print() directly so they never appear in
+the log file. Output that is purely informational ("posting now", "job
+queued", etc.) should go to ``logger.info`` instead — print() is reserved
+for structured terminal UI: banners, boxes, animated spinners, ANSI-coloured
+diffs, and tables that are designed for a human reading the live console.
+
+Some node files (analyze, generate_content, generate_image, …) currently
+embed inline ANSI-coloured prints for the same purpose. Those are intentional
+terminal UI and should be migrated *into* this module as new helpers when
+convenient — never converted to logger calls.
 """
 
+import contextlib
 import sys
 import time
 import shutil
+import threading
 import config
 
 # ── ANSI colours ──────────────────────────────────────────────────────────────
@@ -162,6 +174,40 @@ def format_elapsed(seconds: float) -> str:
         return f"{m}m {s}s" if s else f"{m}m"
     h, m = divmod(m, 60)
     return f"{h}h {m}m {s}s" if s else f"{h}h {m}m"
+
+
+@contextlib.contextmanager
+def progress(label: str, *, dots: int = 4, interval: float = 0.5):
+    """
+    Animated dots spinner for long-running operations. Use as a context manager:
+
+        with progress("Generating image"):
+            do_long_thing()
+
+    Prints "  ⏳  <label>...." with animated dots while the block runs, then
+    clears the line on exit. Stays out of the log file (uses print).
+    """
+    stop = threading.Event()
+
+    def _spin() -> None:
+        i = 0
+        while not stop.is_set():
+            tail = "." * (i % (dots + 1))
+            pad = " " * (dots - len(tail))
+            print(f"\r  ⏳  {label}{tail}{pad}", end="", flush=True)
+            i += 1
+            stop.wait(interval)
+
+    t = threading.Thread(target=_spin, daemon=True)
+    t.start()
+    try:
+        yield
+    finally:
+        stop.set()
+        t.join(timeout=interval * 2)
+        # Erase the spinner line so the next print starts clean.
+        clear = " " * (len(label) + dots + 8)
+        print(f"\r{clear}\r", end="", flush=True)
 
 
 def cycle_summary(cycle: int, tweet_url: str, score: float, *, elapsed_sec: float | None = None):

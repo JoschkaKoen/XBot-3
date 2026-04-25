@@ -1,7 +1,7 @@
 #!/bin/bash
 # merge_improvement.sh — Manual review & merge helper for auto-improve branches
 #
-# Usage: bash merge_improvement.sh
+# Usage: bash scripts/merge_improvement.sh
 
 set -e
 

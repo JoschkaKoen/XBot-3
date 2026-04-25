@@ -23,6 +23,14 @@ updated strategy dict fed into generate_content.
   - services.ai_client: AI response handling
   - config:             ANALYZE_LAST_N, STRATEGY_MODEL settings
 ================================================================================
+
+================================================================================
+ STATE CONTRACT
+================================================================================
+  Reads from state:   metrics_refreshed (bool)
+  Writes to state:    strategy (dict)
+  Side effects:       writes data/strategy.json, appends data/strategy_history.json
+================================================================================
 """
 
 import json
@@ -34,7 +42,7 @@ import config
 from config import HISTORY_FILE, STRATEGY_FILE, STRATEGY_HISTORY_FILE
 from services.ai_client import get_ai_response
 from nodes.score import load_history
-from utils.io import atomic_json_write
+from utils.io import atomic_json_write, safe_json_read
 from utils.retry import retry_call
 from utils.ui import stage_banner, ok, info as ui_info, warn as ui_warn
 
@@ -82,14 +90,9 @@ _DEFAULT_STRATEGY = {
 
 def load_strategy() -> dict:
     """Load strategy from data/strategy.json, or return defaults if missing."""
-    if os.path.exists(STRATEGY_FILE):
-        try:
-            with open(STRATEGY_FILE, "r", encoding="utf-8") as f:
-                data = json.load(f)
-            if data:
-                return {**_DEFAULT_STRATEGY, **data}
-        except (json.JSONDecodeError, IOError) as exc:
-            logger.warning("Could not read strategy file: %s — using defaults.", exc)
+    data = safe_json_read(STRATEGY_FILE, default=None, logger=logger)
+    if data:
+        return {**_DEFAULT_STRATEGY, **data}
     return dict(_DEFAULT_STRATEGY)
 
 

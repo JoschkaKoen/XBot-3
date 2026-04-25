@@ -18,6 +18,14 @@ Two API versions are used:
   v1.1 — media upload (tweepy.API) — v2 does not support video upload yet
   v2   — tweet creation (tweepy.Client)
 ================================================================================
+
+================================================================================
+ STATE CONTRACT
+================================================================================
+  Reads from state:   full_tweet, video_path
+  Writes to state:    tweet_id, tweet_url
+  Side effects:       posts a tweet on X (Twitter)
+================================================================================
 """
 
 import time

@@ -2,7 +2,7 @@
 # setup_comfyui.sh — One-time ComfyUI setup for XBot 3 WAN test scripts
 #
 # Run from anywhere:
-#   bash setup_comfyui.sh
+#   bash scripts/setup_comfyui.sh
 #
 # What this does (fully self-contained, no dependency on Wan2GP):
 #   1. Clone ComfyUI to ~/ComfyUI

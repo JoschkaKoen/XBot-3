@@ -1,18 +1,18 @@
 #!/usr/bin/env python3
 """
-test_comfyUI_WAN2.1.py — Wan2.1 14B I2V (480p) via ComfyUI HTTP API
+test_comfyUI_WAN2.2.py — Wan2.2 TI2V-5B (720p) via ComfyUI HTTP API
 ================================================================================
 
-Animates a still image using the Wan 2.1 model running inside ComfyUI.
-ComfyUI handles all model loading and VRAM management; this script is a
-thin HTTP client that uploads the image, patches the workflow JSON, submits
-the job, polls for completion, copies the MP4, scores it, and logs results.
+Animates a still image using the Wan 2.2 5B Text-Image-to-Video model running
+inside ComfyUI.  ComfyUI handles all model loading and VRAM management; this
+script is a thin HTTP client that uploads the image, patches the workflow JSON,
+submits the job, polls for completion, copies the MP4, scores it, and logs.
 
 PREREQUISITES (one-time, see setup_comfyui.sh):
-  1. ComfyUI installed at ~/ComfyUI with Wan 2.1 models in place.
+  1. ComfyUI installed at ~/ComfyUI with Wan 2.2 5B models in place.
   2. Workflow JSON exported from ComfyUI and saved as:
-       XBot 3/workflows/comfyui_wan2.1.json
-     (Workflow → Browse Templates → Video → Wan 2.1 Image to Video
+       XBot 3/workflows/comfyui_wan2.2.json
+     (Workflow → Browse Templates → Video → Wan2.2 5B video generation
       → menu → Export (API format))
   3. COMFYUI_DIR and COMFYUI_URL set in settings.env (already done).
 
@@ -21,9 +21,9 @@ USAGE (no changes needed — run from XBot 3 project root):
   #    cd ~/ComfyUI && source venv/bin/activate && python main.py --normalvram --fp16-vae
 
   # 2. Run this script with any Python (torch not required in this venv):
-  python test_comfyUI_WAN2.1.py Images/photo.png "subtle camera drift, leaves rustle"
-  python test_comfyUI_WAN2.1.py Images/photo.png "gentle waves" --steps 40 --frames 49
-  python test_comfyUI_WAN2.1.py Images/photo.png "cinematic pan" --seed 42
+  python test_comfyUI_WAN2.2.py Images/photo.png "subtle camera drift, leaves rustle"
+  python test_comfyUI_WAN2.2.py Images/photo.png "gentle waves" --steps 50 --frames 49
+  python test_comfyUI_WAN2.2.py Images/photo.png "cinematic pan" --seed 42
 
 Settings are read automatically from settings.env — no manual exports needed.
 ================================================================================
@@ -43,7 +43,7 @@ from datetime import datetime
 from pathlib import Path
 
 # ── Load settings.env (stdlib only — no python-dotenv needed) ─────────────────
-_PROJECT_DIR = Path(__file__).parent.resolve()
+_PROJECT_DIR = Path(__file__).resolve().parent.parent.parent
 _settings_env = _PROJECT_DIR / "settings.env"
 if _settings_env.exists():
     with open(_settings_env, encoding="utf-8") as _f:
@@ -59,11 +59,11 @@ COMFYUI_DIR        = Path(os.getenv("COMFYUI_DIR", str(Path.home() / "ComfyUI"))
 _default_output    = str(Path.home() / "ComfyUI" / "output")
 COMFYUI_OUTPUT_DIR = Path(os.getenv("COMFYUI_OUTPUT_DIR", _default_output))
 WAN_VIDEO_DIR = Path(os.getenv("WAN_VIDEO_DIR", str(Path.home() / "Programming" / "Wan2GP")))
-WORKFLOW_FILE = _PROJECT_DIR / "workflows" / "comfyui_wan2.1.json"
+WORKFLOW_FILE = _PROJECT_DIR / "workflows" / "comfyui_wan2.2.json"
 OUTPUTS_DIR   = _PROJECT_DIR / "Videos"
 HISTORY_FILE  = _PROJECT_DIR / "data" / "wan_video_history.jsonl"
-ENGINE_TAG    = "ComfyUI-WAN2.1"
-BANNER        = "Wan2.1 14B I2V  ·  ComfyUI  ·  480p"
+ENGINE_TAG    = "ComfyUI-WAN2.2-5B"
+BANNER        = "Wan2.2 TI2V-5B  ·  ComfyUI  ·  720p"
 FPS           = 16
 
 # ── Inline video scorer (runs in Wan2GP venv which has torch/av/open_clip) ───
@@ -139,7 +139,6 @@ def upload_image(image_path: Path) -> str:
     with open(image_path, "rb") as fh:
         image_data = fh.read()
 
-    # Detect MIME type from extension
     suffix = image_path.suffix.lower()
     mime = {"jpg": "image/jpeg", ".jpg": "image/jpeg", ".jpeg": "image/jpeg",
             ".png": "image/png", ".webp": "image/webp"}.get(suffix, "image/png")
@@ -173,7 +172,7 @@ def patch_workflow(
     Patch a ComfyUI API-format workflow dict with runtime values.
 
     Scans every node by class_type and updates the relevant inputs.
-    Works with the standard Wan 2.1 ComfyUI template and similar layouts.
+    Works with the standard Wan 2.2 ComfyUI template and similar layouts.
     """
     wf = copy.deepcopy(workflow)
     for node in wf.values():
@@ -262,7 +261,6 @@ def poll_until_done(prompt_id: str, poll_interval: int = 5) -> dict:
                     f"ComfyUI reported an error for prompt {prompt_id}: {status}"
                 )
 
-        # Progress indicator
         dots += 1
         print(f"\r  ... generating {'.' * (dots % 4):<4}", end="", flush=True)
 
@@ -270,7 +268,7 @@ def poll_until_done(prompt_id: str, poll_interval: int = 5) -> dict:
 def find_output_video(history_entry: dict) -> Path | None:
     """
     Locate the generated video file from a completed history entry.
-    ComfyUI stores output files under COMFYUI_OUTPUT_DIR (set in settings.env).
+    ComfyUI stores output files under COMFYUI_DIR/output/.
     """
     for node_output in history_entry.get("outputs", {}).values():
         for key in ("videos", "gifs", "images"):
@@ -318,13 +316,13 @@ def score_video(video_path: str, prompt: str) -> tuple[dict | None, str | None]:
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="Wan2.1 14B I2V via ComfyUI — run from XBot 3 project root",
+        description="Wan2.2 TI2V-5B via ComfyUI — run from XBot 3 project root",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=(
             "Examples:\n"
-            "  python test_comfyUI_WAN2.1.py Images/photo.png \"subtle motion\"\n"
-            "  python test_comfyUI_WAN2.1.py Images/photo.png \"leaves rustle\" --steps 40\n"
-            "  python test_comfyUI_WAN2.1.py Images/photo.png \"gentle pan\" --seed 42\n"
+            "  python test_comfyUI_WAN2.2.py Images/photo.png \"subtle motion\"\n"
+            "  python test_comfyUI_WAN2.2.py Images/photo.png \"leaves rustle\" --steps 40\n"
+            "  python test_comfyUI_WAN2.2.py Images/photo.png \"gentle pan\" --seed 42\n"
         ),
     )
     parser.add_argument("image",  help="Input image path")
@@ -346,7 +344,7 @@ def main() -> None:
         print(
             f"\n  ERROR: workflow file not found:\n    {WORKFLOW_FILE}\n\n"
             "  Export it from ComfyUI:\n"
-            "    Workflow → Browse Templates → Video → Wan 2.1 Image to Video\n"
+            "    Workflow → Browse Templates → Video → Wan2.2 5B video generation\n"
             "    → menu → Export (API format)\n"
             f"    → save as {WORKFLOW_FILE}\n",
             file=sys.stderr,
@@ -401,7 +399,7 @@ def main() -> None:
         )
 
     ts = datetime.now().strftime("%Y%m%d_%H%M%S")
-    dest = OUTPUTS_DIR / f"comfyui_wan21_{ts}{comfy_video.suffix}"
+    dest = OUTPUTS_DIR / f"comfyui_wan22_{ts}{comfy_video.suffix}"
     shutil.copy2(comfy_video, dest)
     video_path = str(dest.resolve())
     size_mb = dest.stat().st_size / 1024 / 1024

@@ -26,6 +26,14 @@ or generate_source_audio() (simple mode, audio only).
   male or female subject, the pool is restricted to that gender first so TTS
   matches the image.
 ================================================================================
+
+================================================================================
+ STATE CONTRACT
+================================================================================
+  Reads from state:   example_sentence_source, full_tweet, midjourney_prompt
+  Writes to state:    clean_audio_path, word_timings, image_subject_gender
+  Side effects:       writes MP3 to Voices/, may grow data/voice_pool.json
+================================================================================
 """
 
 import os

@@ -19,6 +19,16 @@ Computes a weighted engagement score and appends the full record
   posting and is used by the strategy analyser to fairly compare tweets
   of different ages.
 ================================================================================
+
+================================================================================
+ STATE CONTRACT
+================================================================================
+  Reads from state:   metrics, tweet_id, tweet_url, full_tweet, source_word,
+                      article, cefr_level, example_sentence_source,
+                      example_sentence_target, used_trend, pool_theme, cycle
+  Writes to state:    engagement_score
+  Side effects:       appends record to data/post_history.json
+================================================================================
 """
 
 import json
@@ -28,7 +38,7 @@ from datetime import datetime, timezone
 
 from config import HISTORY_FILE
 from utils.ui import stage_banner, ok
-from utils.io import atomic_json_write
+from utils.io import atomic_json_write, safe_json_read
 
 logger = logging.getLogger("xbot.score")
 
@@ -82,14 +92,7 @@ def compute_score(metrics: dict) -> float:
 
 
 def load_history() -> list:
-    if not os.path.exists(HISTORY_FILE):
-        return []
-    try:
-        with open(HISTORY_FILE, "r", encoding="utf-8") as f:
-            return json.load(f)
-    except (json.JSONDecodeError, IOError) as exc:
-        logger.warning("Could not read history file: %s", exc)
-        return []
+    return safe_json_read(HISTORY_FILE, default=[], logger=logger)
 
 
 def save_history(history: list) -> None:

@@ -26,6 +26,16 @@ updated by the analyze node after each cycle.
   - services.grok_ai:  AI functions for different model tiers
   - scaffolds:         Provides next_scaffold() for tweet format templates
 ================================================================================
+
+================================================================================
+ STATE CONTRACT
+================================================================================
+  Reads from state:   strategy (dict), cycle (int)
+  Writes to state:    source_word, article, cefr_level, example_sentence_source,
+                      example_sentence_target, full_tweet, cycle, used_trend,
+                      pool_theme, error
+  Side effects:       advances scaffold cycle pointer (scaffolds.py)
+================================================================================
 """
 
 import json

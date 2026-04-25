@@ -9,16 +9,17 @@ Tests TWO things without running the full bot or calling any external API:
 
 Run from the project root:
     source venv/bin/activate
-    python test_ktv_video.py
+    python scripts/experiments/test_ktv_video.py
 """
 
 import os
 import sys
 import shutil
 import logging
+from pathlib import Path
 
 # Ensure project root is on sys.path
-sys.path.insert(0, os.path.dirname(__file__))
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 logger = logging.getLogger("test_ktv")

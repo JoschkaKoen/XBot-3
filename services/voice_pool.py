@@ -29,7 +29,7 @@ from datetime import datetime, timezone
 import requests
 
 from config import ELEVENLABS_API_KEY
-from utils.io import atomic_json_write
+from utils.io import atomic_json_write, safe_json_read
 
 logger = logging.getLogger("xbot.voice_pool")
 
@@ -43,21 +43,13 @@ _GROW_BATCH      = 50   # max new voices added per bot run
 
 def load_pool(language: str = "de") -> list:
     """Return pool entries for *language* from disk. Empty list if file missing."""
-    try:
-        with open(_POOL_FILE, encoding="utf-8") as f:
-            pool = json.load(f)
-        return [v for v in pool if v.get("language") == language]
-    except (FileNotFoundError, json.JSONDecodeError):
-        return []
+    pool = safe_json_read(_POOL_FILE, default=[], logger=logger)
+    return [v for v in pool if v.get("language") == language]
 
 
 def _load_full_pool() -> list:
     """Return the entire pool (all languages)."""
-    try:
-        with open(_POOL_FILE, encoding="utf-8") as f:
-            return json.load(f)
-    except (FileNotFoundError, json.JSONDecodeError):
-        return []
+    return safe_json_read(_POOL_FILE, default=[], logger=logger)
 
 
 def _save_pool(pool: list) -> None:

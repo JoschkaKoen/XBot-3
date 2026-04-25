@@ -51,7 +51,7 @@ from datetime import datetime
 from pathlib import Path
 
 # ── Load settings.env (stdlib only — no python-dotenv needed) ─────────────────
-_PROJECT_DIR = Path(__file__).parent.resolve()
+_PROJECT_DIR = Path(__file__).resolve().parent.parent.parent
 _settings_env = _PROJECT_DIR / "settings.env"
 if _settings_env.exists():
     with open(_settings_env, encoding="utf-8") as _f:

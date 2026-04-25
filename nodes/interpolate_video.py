@@ -9,6 +9,14 @@ Grok videos are already at their native FPS and are passed through unchanged.
 
 On any failure (RIFE not set up, VRAM OOM, etc.) the node logs a warning
 and passes the original video path through unchanged — the tweet still goes out.
+
+================================================================================
+ STATE CONTRACT
+================================================================================
+  Reads from state:   video_path
+  Writes to state:    video_path (replaced with interpolated MP4 when successful)
+  Side effects:       writes interpolated MP4 to Videos/
+================================================================================
 """
 
 import logging

@@ -10,7 +10,7 @@ Phase 2  → Live cycle (real post to X)
 Phase 3  → Verification (tweet exists, text quality, image quality, terminal output)
 Phase 4  → Success: swap bot process / Failure: delete tweets, discard branch
 
-NEVER auto-merges. NEVER touches .env, improve_with_claude_code.py, verify_quality.py.
+NEVER auto-merges. NEVER touches .env, improve_with_claude_code.py, scripts/verify_quality.py.
 
 Usage (manual):
     python improve_with_claude_code.py [--force]
@@ -248,7 +248,7 @@ Focus on what makes the top tweets better than the bottom ones.
 You may modify ANY file in the repository EXCEPT:
 - .env                          ← NEVER touch (API keys and secrets)
 - improve_with_claude_code.py   ← NEVER touch (self-modification forbidden)
-- verify_quality.py             ← NEVER touch (verifier must stay unchanged)
+- scripts/verify_quality.py    ← NEVER touch (verifier must stay unchanged)
 
 Everything else is fair game, including:
 - nodes/generate_content.py     — tweet prompts, word selection logic, scaffold
@@ -304,7 +304,7 @@ Terminal output (first 5000 chars):
 {snippet}
 ---
 
-You may modify any file EXCEPT .env, improve_with_claude_code.py, and verify_quality.py.
+You may modify any file EXCEPT .env, improve_with_claude_code.py, and scripts/verify_quality.py.
 Same cost constraint applies: do not switch high-volume calls to grok-4 flagship.
 
 Review the failures and decide:
@@ -912,7 +912,7 @@ def phase_4_success(branch_name: str, original_branch: str) -> None:
     else:
         log_both(f"{_YELLOW}⚠️  OLD_BOT_PID not set — old bot may still be running. Kill it manually.{_R}", "warning")
 
-    log_both(f"{_GREEN}{_BOLD}⚠️  Branch NOT merged into main — run merge_improvement.sh to merge manually{_R}")
+    log_both(f"{_GREEN}{_BOLD}⚠️  Branch NOT merged into main — run scripts/merge_improvement.sh to merge manually{_R}")
 
 
 # ── Phase 4: Failure ───────────────────────────────────────────────────────────

@@ -32,6 +32,17 @@ KEN BURNS:
   - services.wan_video:   Wan2.1 local I2V video generation
   - config:               KTV_FONT, VIDEO_STYLE, ENABLE_VIDEO, ENABLE_BACKGROUND_MUSIC, etc.
 ================================================================================
+
+================================================================================
+ STATE CONTRACT
+================================================================================
+  Reads from state:   image_path, midjourney_prompt, clean_audio_path,
+                      word_timings, example_sentence_source,
+                      example_sentence_target, cycle
+  Writes to state:    mixed_audio_path, video_path
+  Side effects:       writes MP3 to Voices with Background Music/,
+                      writes MP4 to Videos/
+================================================================================
 """
 
 import io

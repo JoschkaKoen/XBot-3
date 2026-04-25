@@ -1,15 +1,22 @@
 """
-utils/io  — safe file-write helpers
+utils/io — safe file I/O helpers.
 
 atomic_json_write(path, data, **json_kwargs)
     Writes JSON to a temp file in the same directory, then renames it over
     the target. On Linux os.replace() is atomic, so readers always see either
     the old complete file or the new complete file — never a half-written one.
+
+safe_json_read(path, default=None, *, logger=None)
+    Reads JSON from *path*. If the file is missing or corrupt, returns
+    *default* and (if *logger* is supplied) emits a warning. Use this instead
+    of hand-rolled try/except blocks at every call site.
 """
 
 import json
+import logging
 import os
 import tempfile
+from typing import Any
 
 
 def atomic_json_write(path: str, data, **json_kwargs) -> None:
@@ -30,3 +37,26 @@ def atomic_json_write(path: str, data, **json_kwargs) -> None:
         except OSError:
             pass
         raise
+
+
+def safe_json_read(
+    path: str,
+    default: Any = None,
+    *,
+    logger: logging.Logger | None = None,
+) -> Any:
+    """
+    Read JSON from *path*. Return *default* (or {} if default is None) when
+    the file is missing or unreadable. When *logger* is given, log a warning
+    on parse/IO errors so silent corruption is at least visible.
+    """
+    fallback = {} if default is None else default
+    if not os.path.exists(path):
+        return fallback
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except (json.JSONDecodeError, OSError) as exc:
+        if logger:
+            logger.warning("Could not read %s: %s — using default.", path, exc)
+        return fallback

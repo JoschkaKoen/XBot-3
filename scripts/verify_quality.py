@@ -8,7 +8,7 @@ Exit code 0 = all checks pass
 Exit code 1 = one or more checks fail
 
 Usage:
-    python verify_quality.py
+    python scripts/verify_quality.py
 """
 
 import json
@@ -16,7 +16,7 @@ import os
 import sys
 from pathlib import Path
 
-PROJECT_DIR = Path(__file__).parent.resolve()
+PROJECT_DIR = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_DIR))
 
 _R     = "\033[0m"

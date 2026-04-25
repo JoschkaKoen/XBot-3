@@ -1,3 +1,4 @@
+import atexit
 import os
 import logging
 import requests
@@ -29,6 +30,12 @@ class ScalewayAI:
             "Content-Type": "application/json",
             "Accept": "application/json",
         })
+
+    def close(self) -> None:
+        try:
+            self.session.close()
+        except Exception as exc:
+            logger.debug("ScalewayAI.close: %s", exc)
 
     def get_response(
         self,
@@ -67,6 +74,7 @@ def _get_client() -> ScalewayAI:
     global _scaleway_client
     if _scaleway_client is None:
         _scaleway_client = ScalewayAI()
+        atexit.register(_scaleway_client.close)
     return _scaleway_client
 
 

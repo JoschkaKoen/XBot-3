@@ -277,7 +277,7 @@ PHASE 4 — Decision
 The improved branch is **never auto-merged into main** — you review and merge manually:
 
 ```bash
-bash merge_improvement.sh
+bash scripts/merge_improvement.sh
 ```
 
 ### Prerequisites
@@ -327,8 +327,12 @@ XBot 3/
 ├── config.py                      # Settings loader, folder creation, logging
 ├── scaffolds.py                   # Tweet format templates
 ├── improve_with_claude_code.py    # Code self-improvement engine
-├── verify_quality.py              # Standalone quality checker
-├── merge_improvement.sh           # Interactive branch review & merge helper
+├── scripts/
+│   ├── verify_quality.py          # Standalone quality checker
+│   ├── merge_improvement.sh       # Interactive branch review & merge helper
+│   ├── setup_comfyui.sh           # One-time ComfyUI setup
+│   ├── experiments/               # Standalone test/experiment drivers
+│   └── cursor/                    # Cursor IDE helper utilities
 ├── requirements.txt
 ├── settings.env                   # Public bot configuration (committed)
 ├── .env                           # Secret API keys (gitignored)

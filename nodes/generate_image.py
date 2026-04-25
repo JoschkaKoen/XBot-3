@@ -17,6 +17,16 @@ source/target flag badge (FLAG_OVERLAY).
 ================================================================================
 
 IMAGE_PROVIDER (settings.env): "midjourney" (TT_API_KEY), "grok" (XAI_API_KEY), or "z-image-turbo" (ComfyUI local).
+
+================================================================================
+ STATE CONTRACT
+================================================================================
+  Reads from state:   source_word, full_tweet, example_sentence_source,
+                      example_sentence_target, cycle
+  Writes to state:    midjourney_prompt, image_path, image_subject_gender,
+                      comfyui_unavailable (set when ComfyUI is unreachable)
+  Side effects:       writes PNG to Images/, may pre-warm ImageReward model
+================================================================================
 """
 
 import os
@@ -31,186 +41,16 @@ import config
 from config import TT_API_KEY, IMAGES_DIR, resolve_image_style
 from services.ai_client import get_ai_response
 from services.image_ranker import pick_best_image, score_image
-from services.zit_image import ComfyUIUnavailableError
+from services.image_clients import (
+    MidjourneyClient,
+    GrokImagineClient,
+    ComfyUIUnavailableError,
+)
 from utils.errors import FatalProviderError
 from utils.retry import retry_call, with_retry
 from utils.ui import stage_banner, ok, info, warn as ui_warn
 
 logger = logging.getLogger("xbot.generate_image")
-
-
-# ── Midjourney client (copied from midjourney.py) ─────────────────────────────
-
-class MidjourneyClient:
-    """Internal Midjourney client via TTAPI."""
-
-    BASE_URL = "https://api.ttapi.io/midjourney/v1"
-
-    def __init__(self):
-        if not TT_API_KEY:
-            raise ValueError("❌ TT_API_KEY not found in .env!")
-        self.HEADERS = {
-            "TT-API-KEY": TT_API_KEY,
-            "Content-Type": "application/json",
-        }
-        os.makedirs(IMAGES_DIR, exist_ok=True)
-
-    @with_retry(max_attempts=4, base_delay=3.0, label="mj_submit")
-    def _submit_imagine(self, prompt: str, mode: str = "fast", aspect_ratio: str = "16:9") -> str:
-        prompt = prompt.strip()
-        if "--ar" not in prompt.lower() and "--aspect" not in prompt.lower():
-            prompt += f" --ar {aspect_ratio}"
-        if "--style" not in prompt.lower():
-            prompt += " --style raw"
-        if "--s " not in prompt.lower() and "--stylize" not in prompt.lower():
-            prompt += " --s 0"
-
-        payload = {"prompt": prompt, "mode": mode}
-        resp = requests.post(f"{self.BASE_URL}/imagine", headers=self.HEADERS, json=payload, timeout=30)
-        if resp.status_code in (401, 402, 403):
-            raise FatalProviderError(
-                f"TTAPI returned HTTP {resp.status_code} — check your subscription/credits "
-                f"at ttapi.io. Bot stopping to avoid further charges."
-            )
-        resp.raise_for_status()
-        data = resp.json()
-
-        if data.get("status") != "SUCCESS":
-            raise RuntimeError(f"Midjourney submit failed: {data}")
-
-        job_id = data["data"]["jobId"]
-        logger.info("Midjourney job submitted: %s (ar=%s)", job_id, aspect_ratio)
-        return job_id
-
-    def _poll_job(self, job_id: str, timeout_sec: int = 360, interval: int = 1):
-        url = f"{self.BASE_URL}/fetch"
-        start = time.time()
-        dots = 0
-        while time.time() - start < timeout_sec:
-            resp = requests.post(url, headers=self.HEADERS, json={"jobId": job_id}, timeout=30)
-            resp.raise_for_status()
-            result = resp.json()
-            status = result.get("status")
-            logger.debug("Midjourney poll status: %s", status)
-
-            if status == "SUCCESS":
-                print()   # newline after dots
-                logger.info("Midjourney image generation complete.")
-                return result.get("data", result)
-            if status in ("FAILED", "CANCELLED"):
-                print()
-                raise RuntimeError(f"Midjourney job failed: {result}")
-
-            dots += 1
-            print(f"\r  ⏳  Generating image{'.' * (dots % 4):<4}", end="", flush=True)
-            time.sleep(interval)
-        raise TimeoutError(f"Midjourney job timed out after {timeout_sec}s")
-
-    @with_retry(max_attempts=3, base_delay=2.0, label="mj_download")
-    def _download_image(self, img_url: str, job_id: str, idx: int) -> str:
-        resp = requests.get(img_url, stream=True, timeout=60)
-        resp.raise_for_status()
-        filename = f"mj_{job_id}_{idx}.png"
-        path = os.path.join(IMAGES_DIR, filename)
-        with open(path, "wb") as f:
-            for chunk in resp.iter_content(8192):
-                f.write(chunk)
-        logger.debug("Downloaded image → %s", path)
-        return path
-
-    def generate(self, prompt: str, mode: str = "fast", aspect_ratio: str = "16:9") -> List[str]:
-        job_id = self._submit_imagine(prompt, mode, aspect_ratio)
-        job_data = self._poll_job(job_id)
-        images = job_data.get("images", [])
-        if not images:
-            raise RuntimeError("Midjourney returned no images.")
-        paths = [self._download_image(url, job_id, i + 1) for i, url in enumerate(images)]
-        return paths
-
-
-# ── Grok Imagine client ───────────────────────────────────────────────────────
-
-_GROK_IMAGE_MODEL = "grok-imagine-image"
-_XAI_BASE_URL = "https://api.x.ai/v1"
-
-
-class GrokImagineClient:
-    """Image generation via the xAI Grok Imagine API."""
-
-    def __init__(self):
-        self._api_key = os.getenv("XAI_API_KEY", "")
-        if not self._api_key:
-            raise ValueError("❌ XAI_API_KEY not found in .env — required for IMAGE_PROVIDER=grok")
-        os.makedirs(IMAGES_DIR, exist_ok=True)
-
-    def _headers(self) -> dict:
-        return {
-            "Authorization": f"Bearer {self._api_key}",
-            "Content-Type": "application/json",
-        }
-
-    @with_retry(max_attempts=3, base_delay=2.0, label="grok_download")
-    def _download_image(self, img_url: str, idx: int) -> str:
-        resp = requests.get(img_url, stream=True, timeout=60)
-        resp.raise_for_status()
-        ts = datetime.now().strftime("%Y%m%d_%H%M%S")
-        filename = f"grok_{ts}_{idx}.png"
-        path = os.path.join(IMAGES_DIR, filename)
-        with open(path, "wb") as f:
-            for chunk in resp.iter_content(8192):
-                f.write(chunk)
-        logger.debug("Downloaded Grok image → %s", path)
-        return path
-
-    def generate(self, prompt: str, n: int = 1, aspect_ratio: str = "16:9") -> List[str]:
-        payload = {
-            "model": _GROK_IMAGE_MODEL,
-            "prompt": prompt,
-            "n": n,
-            "aspect_ratio": aspect_ratio,
-            "response_format": "url",
-        }
-        print(f"\r  ⏳  Requesting {n} image(s) from Grok Imagine …", flush=True)
-        resp = requests.post(
-            f"{_XAI_BASE_URL}/images/generations",
-            headers=self._headers(),
-            json=payload,
-            timeout=120,
-        )
-        if resp.status_code in (401, 402, 403):
-            raise FatalProviderError(
-                f"Grok Imagine returned HTTP {resp.status_code} — check your XAI_API_KEY "
-                f"and account credits. Bot stopping to avoid further charges."
-            )
-        resp.raise_for_status()
-        data = resp.json()
-        items = data.get("data", [])
-        if not items:
-            raise RuntimeError(f"Grok Imagine returned no images: {data}")
-        print()
-        logger.info("Grok Imagine returned %d image(s).", len(items))
-        paths = []
-        for i, item in enumerate(items):
-            url = item.get("url") or item.get("b64_json")
-            if not url:
-                logger.warning("Grok Imagine item %d has no URL — skipping.", i + 1)
-                continue
-            if url.startswith("data:") or not url.startswith("http"):
-                # base64 fallback
-                import base64
-                b64 = url.split(",", 1)[-1] if "," in url else url
-                ts = datetime.now().strftime("%Y%m%d_%H%M%S")
-                filename = f"grok_{ts}_{i + 1}.png"
-                path = os.path.join(IMAGES_DIR, filename)
-                with open(path, "wb") as f:
-                    f.write(base64.b64decode(b64))
-                logger.debug("Saved Grok b64 image → %s", path)
-                paths.append(path)
-            else:
-                paths.append(self._download_image(url, i + 1))
-        if not paths:
-            raise RuntimeError("Grok Imagine: all returned items had no usable image data.")
-        return paths
 
 
 # ── image prompt builder ──────────────────────────────────────────────────────
@@ -594,14 +434,14 @@ def generate_image(state: dict) -> dict:
             p = _build_image_prompt(example_en, example_de, full_tweet, image_style, funny)
             prompts.append(p)
             logger.debug("Prompt %d/%d: %s", i + 1, n, p)
-            print(f"  Prompt {i + 1}/{n}: {p[:100]}{'…' if len(p) > 100 else ''}", flush=True)
+            logger.info("Prompt %d/%d: %.100s%s", i + 1, n, p, "…" if len(p) > 100 else "")
         # Representative prompt for backwards-compatible state key: use the first one.
         image_prompt = prompts[0]
     else:
         image_prompt = _build_image_prompt(example_en, example_de, full_tweet, image_style, funny)
         prompts = [image_prompt] * n
         logger.debug("Image prompt (%s): %s", config.IMAGE_PROVIDER, image_prompt)
-        print(f"  Prompt: {image_prompt}", flush=True)
+        logger.info("Prompt: %s", image_prompt)
 
     # ── 2. Generate images via the configured provider ────────────────────────
     # Each entry in prompt_image_pairs: (prompt_used, image_path)

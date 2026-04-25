@@ -17,6 +17,14 @@ to at most once every STRATEGY_UPDATE_INTERVAL_HOURS hours.
 
 If STRATEGY_UPDATE_INTERVAL_HOURS is false/off/never/disabled in settings, metrics
 refresh and strategy update are both skipped every cycle (no X API metric calls).
+
+================================================================================
+ STATE CONTRACT
+================================================================================
+  Reads from state:   (none — works from history file + config)
+  Writes to state:    metrics_refreshed (bool)
+  Side effects:       updates data/post_history.json, writes data/metrics_refresh.json
+================================================================================
 """
 
 import json

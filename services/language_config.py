@@ -20,11 +20,8 @@ _GROK_BASE  = "https://api.x.ai/v1"
 
 
 def _load_cache() -> dict:
-    try:
-        with open(_CACHE_FILE, encoding="utf-8") as f:
-            return json.load(f)
-    except (FileNotFoundError, json.JSONDecodeError):
-        return {}
+    from utils.io import safe_json_read
+    return safe_json_read(_CACHE_FILE, default={}, logger=logger)
 
 
 def _save_cache(data: dict) -> None:

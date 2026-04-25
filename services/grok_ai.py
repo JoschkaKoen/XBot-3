@@ -1,3 +1,4 @@
+import atexit
 import os
 import logging
 from dotenv import load_dotenv
@@ -12,6 +13,18 @@ _MODEL_REASONING = "grok-4-1-fast"       # fast reasoning variant
 _MODEL_FLAGSHIP  = "grok-4"              # flagship model — best language quality
 
 
+def _close_client() -> None:
+    global _client
+    if _client is None:
+        return
+    try:
+        # OpenAI SDK v1 exposes .close() on the underlying httpx client.
+        _client.close()
+    except Exception as exc:
+        logger.debug("Grok client close: %s", exc)
+    _client = None
+
+
 def _get_client():
     global _client
     if _client is None:
@@ -20,6 +33,7 @@ def _get_client():
         if not api_key:
             raise ValueError("❌ XAI_API_KEY not found in .env!")
         _client = OpenAI(base_url="https://api.x.ai/v1", api_key=api_key)
+        atexit.register(_close_client)
     return _client
 
 

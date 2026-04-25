@@ -58,6 +58,20 @@ def _check_for_update() -> None:
     try:
         from utils.ui import ok, warn as ui_warn
 
+        # Skip auto-update if there are uncommitted local changes — pulling on
+        # a dirty tree fails messily and may stash work the user didn't expect.
+        dirty = subprocess.run(
+            ["git", "status", "--porcelain"],
+            cwd=str(_PROJECT_DIR),
+            capture_output=True,
+            text=True,
+            timeout=10,
+        ).stdout.strip()
+        if dirty:
+            logger.warning("Auto-update: uncommitted local changes — skipping pull.")
+            ui_warn("Uncommitted changes — skipping auto-update.")
+            return
+
         # Fetch without merging
         subprocess.run(
             ["git", "fetch", "origin", "main"],
@@ -206,9 +220,12 @@ def get_graph():
 
     SqliteSaver requires a sqlite3 connection (not from_conn_string, which
     returns a context manager). We create a persistent connection here and
-    keep it open for the lifetime of the process.
+    keep it open for the lifetime of the process; an atexit hook closes it
+    on clean shutdown so the WAL is flushed.
     """
+    import atexit
     conn = sqlite3.connect(CHECKPOINT_DB, check_same_thread=False)
+    atexit.register(conn.close)
     checkpointer = SqliteSaver(conn)
     graph = build_graph(checkpointer=checkpointer)
     logger.info("LangGraph compiled | checkpoint DB: %s", CHECKPOINT_DB)
