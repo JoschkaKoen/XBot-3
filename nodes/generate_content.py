@@ -21,7 +21,7 @@ updated by the analyze node after each cycle.
  RELATED MODULES
 ================================================================================
   - nodes.analyze:     Provides strategy via load_strategy()
-  - nodes.score:       Provides load_history() for avoid_words
+  - services.history:  Provides load_history() for avoid_words
   - services.x_trends: Provides get_trends() for trend-based word selection
   - services.grok_ai:  AI functions for different model tiers
   - scaffolds:         Provides next_scaffold() for tweet format templates
@@ -46,6 +46,7 @@ import config
 from services.ai_client import get_ai_response
 from services.x_trends import get_trends
 from utils.retry import retry_call
+from utils.text import truncate_emoji_pairs as _truncate_emoji_pairs
 from utils.ui import stage_banner, ok, tweet_box, info, warn as ui_warn
 
 
@@ -123,35 +124,6 @@ def _pool_themes_enabled() -> bool:
 
 
 # ── helpers ───────────────────────────────────────────────────────────────────
-
-def _truncate_emoji_pairs(tweet: str) -> str:
-    """
-    Replace doubled trailing emoji pairs (🚗🚗 → 🚗) to shorten the tweet.
-    
-    This is a post-processing step when tweets exceed MAX_TWEET_LENGTH.
-    The AI sometimes adds duplicate emoji pairs for emphasis, which can be
-    safely reduced without changing the meaning.
-    
-    Args:
-        tweet: The full tweet text, possibly with doubled emoji pairs.
-    
-    Returns:
-        The tweet with any doubled trailing emoji pairs collapsed to single.
-    """
-    lines = tweet.split("\n")
-    result = []
-    for line in lines:
-        # Only process lines that have a double-space separator (tweet format)
-        if "  " in line:
-            idx = line.rfind("  ")
-            prefix = line[: idx + 2]
-            suffix = line[idx + 2 :].strip()
-            n = len(suffix)
-            # Check if suffix is an even-length doubled string (e.g., "🚗🚗")
-            if n % 2 == 0 and n > 0 and suffix[: n // 2] == suffix[n // 2 :]:
-                line = prefix + suffix[: n // 2]
-        result.append(line)
-    return "\n".join(result)
 
 
 def _build_word_prompt(strategy: dict) -> str:
@@ -720,7 +692,7 @@ def _next_cefr_rotation() -> str:
     cefr_level, then advances one step in A1→A2→B1→B2→C1→C2→A1 order.
     Falls back to A1 when history is empty or no level has been recorded yet.
     """
-    from nodes.score import load_history
+    from services.history import load_history
     for record in reversed(load_history()):
         last = (record.get("cefr_level") or "").strip().upper()
         if last in _VALID_CEFR:
@@ -824,7 +796,7 @@ def generate_content(state: dict) -> dict:
 
     if word_source_mode == "trends":
         info(f"Word source: trends — fetching trends ({config.TRENDS_COUNTRY}) …")
-        from nodes.score import load_history
+        from services.history import load_history
         history_words = [r.get("source_word", "") for r in load_history() if r.get("source_word")]
         strategy_words = strategy.get("avoid_words", [])
         avoid_words = list(dict.fromkeys(history_words + strategy_words))
@@ -839,7 +811,7 @@ def generate_content(state: dict) -> dict:
                 word_cefr = _trend_cefr
 
     if not german_word:
-        from nodes.score import load_history
+        from services.history import load_history
         history_words = [r.get("source_word", "") for r in load_history() if r.get("source_word")]
         # Enrich avoid_words with full history before building the word prompt.
         avoid_words = list(dict.fromkeys(history_words + strategy.get("avoid_words", [])))
@@ -940,7 +912,7 @@ def generate_content(state: dict) -> dict:
     logger.info("Picked word: %s  CEFR: %s", german_word, word_cefr or "unknown")
 
     # ── 2. Gather context for the single AI call ───────────────────────────────
-    from nodes.score import load_history
+    from services.history import load_history
     from scaffolds import next_scaffold
     scaffold_name, scaffold = next_scaffold()
     info(f"Scaffold: {scaffold_name}")

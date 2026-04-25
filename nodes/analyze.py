@@ -18,7 +18,7 @@ updated strategy dict fed into generate_content.
 ================================================================================
  RELATED MODULES
 ================================================================================
-  - nodes.score:        Provides load_history() and tweet performance metrics
+  - services.history:   Provides load_history(), tweet_age_hours, normalized_score
   - nodes.generate_content: Consumes strategy for word/tweet generation
   - services.ai_client: AI response handling
   - config:             ANALYZE_LAST_N, STRATEGY_MODEL settings
@@ -41,7 +41,7 @@ from datetime import datetime, timezone
 import config
 from config import HISTORY_FILE, STRATEGY_FILE, STRATEGY_HISTORY_FILE
 from services.ai_client import get_ai_response
-from nodes.score import load_history
+from services.history import load_history
 from utils.io import atomic_json_write, safe_json_read
 from utils.retry import retry_call
 from utils.ui import stage_banner, ok, info as ui_info, warn as ui_warn
@@ -223,7 +223,7 @@ def _log_strategy_diff(old: dict, new: dict) -> bool:
 # ── analysis prompt ────────────────────────────────────────────────────────────
 
 def _build_analysis_prompt(history_slice: list, current_scaffold: str, funny_mode: bool = False, cefr_frozen: bool = False) -> str:
-    from nodes.score import tweet_age_hours, normalized_score
+    from services.history import tweet_age_hours, normalized_score
 
     posts_summary = json.dumps(
         [

@@ -62,12 +62,12 @@ def main() -> int:
     terminal_output = terminal_path.read_text(encoding="utf-8") \
         if terminal_path.exists() else ""
 
-    # Import shared check functions from improve_with_claude_code
-    from improve_with_claude_code import (
-        _verify_tweet_exists,
-        _verify_tweet_text,
-        _verify_image_quality,
-        _verify_terminal_output,
+    # Shared check functions live in improve/verify.py.
+    from improve.verify import (
+        verify_tweet_exists as _verify_tweet_exists,
+        verify_tweet_text as _verify_tweet_text,
+        verify_image_quality as _verify_image_quality,
+        verify_terminal_output as _verify_terminal_output,
     )
 
     results = {}

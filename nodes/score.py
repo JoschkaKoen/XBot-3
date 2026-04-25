@@ -4,8 +4,11 @@ Node: score_and_store
 Computes a weighted engagement score and appends the full record
 (tweet text, word, metrics, score, timestamps) to data/post_history.json.
 
+The actual load/save/scoring helpers live in services/history.py — this
+module is just the LangGraph node wrapper.
+
 ================================================================================
- ENGAGEMENT SCORE FORMULA  (edit compute_score to change weights)
+ ENGAGEMENT SCORE FORMULA  (edit services/history.py:compute_score to change weights)
 ================================================================================
   score = likes + 3×reposts + 5×replies + 2×quotes + impressions/100
 
@@ -31,72 +34,13 @@ Computes a weighted engagement score and appends the full record
 ================================================================================
 """
 
-import json
 import logging
-import os
 from datetime import datetime, timezone
 
-from config import HISTORY_FILE
+from services.history import compute_score, load_history, save_history
 from utils.ui import stage_banner, ok
-from utils.io import atomic_json_write, safe_json_read
 
 logger = logging.getLogger("xbot.score")
-
-_MIN_AGE_HOURS = 6   # avoid extreme inflation for very fresh tweets
-
-
-def tweet_age_hours(record: dict) -> float:
-    """Return how many hours ago this tweet was posted. Minimum 6 hours to avoid division inflation."""
-    ts = record.get("timestamp", "")
-    if not ts:
-        return 24.0
-    try:
-        posted = datetime.fromisoformat(ts)
-        if posted.tzinfo is None:
-            posted = posted.replace(tzinfo=timezone.utc)
-        age_hours = (datetime.now(timezone.utc) - posted).total_seconds() / 3600
-        return round(max(age_hours, _MIN_AGE_HOURS), 2)
-    except (ValueError, TypeError):
-        return 24.0
-
-
-def normalized_score(record: dict) -> float:
-    """Engagement score divided by age in hours — a fair per-hour rate for comparison."""
-    age_hours = tweet_age_hours(record)
-    return round(record.get("engagement_score", 0.0) / age_hours, 4)
-
-
-def get_top_tweets(history: list, n: int = 3) -> list:
-    """Return the N highest age-normalized-scoring tweets from history, excluding score 0.0."""
-    qualifying = [
-        r for r in history
-        if r.get("engagement_score", 0.0) > 0.0 and r.get("full_tweet")
-    ]
-    qualifying.sort(key=normalized_score, reverse=True)
-    return qualifying[:n]
-
-
-def compute_score(metrics: dict) -> float:
-    """
-    Weighted engagement score:
-        likes + 3×reposts + 5×replies + 2×quotes + impressions/100
-    """
-    likes       = metrics.get("like_count", 0)
-    reposts     = metrics.get("retweet_count", 0)
-    replies     = metrics.get("reply_count", 0)
-    quotes      = metrics.get("quote_count", 0)
-    impressions = metrics.get("impression_count", 0)
-
-    score = likes + 3 * reposts + 5 * replies + 2 * quotes + impressions / 100
-    return round(score, 2)
-
-
-def load_history() -> list:
-    return safe_json_read(HISTORY_FILE, default=[], logger=logger)
-
-
-def save_history(history: list) -> None:
-    atomic_json_write(HISTORY_FILE, history, ensure_ascii=False, indent=2)
 
 
 # ── node ──────────────────────────────────────────────────────────────────────

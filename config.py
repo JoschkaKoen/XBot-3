@@ -53,125 +53,23 @@ Most settings are read from settings.env (git-tracked) and .env (gitignored, API
 import os
 import platform
 import logging
-import re
 from dotenv import load_dotenv
+
+from config_parsers import (
+    parse_strategy_update_interval as _parse_strategy_update_interval,
+    parse_metrics_fetch_max as _parse_metrics_fetch_max,
+    parse_use_trends_mode_cycle as _parse_use_trends_mode_cycle,
+    parse_on_off_env as _parse_on_off_env_value,
+    parse_ktv_font_size as _parse_ktv_font_size,
+    parse_flag_colors as _parse_flag_colors,
+)
 
 _LOG = logging.getLogger(__name__)
 
 
-def _parse_strategy_update_interval(raw: str | None) -> tuple[bool, int]:
-    """
-    Parse STRATEGY_UPDATE_INTERVAL_HOURS.
-
-    Returns (metrics_and_strategy_updates_enabled, interval_hours).
-    When enabled is False, the bot never calls the X API to refresh metrics and
-    never re-runs LLM strategy analysis (same as leaving metrics_refreshed=False).
-
-    Accepts: false / off / no / never / disabled (case-insensitive) → disabled.
-    Accepts: plain integers, or simple expressions like 24*7 or 24 * 7 → hours.
-    """
-    if raw is None or not str(raw).strip():
-        return True, 24
-    s = str(raw).strip()
-    low = s.lower()
-    if low in ("false", "off", "no", "never", "disabled", "none"):
-        return False, 24
-    # e.g. 24*7, 24 * 7
-    mul = re.fullmatch(r"^\s*(\d+)\s*\*\s*(\d+)\s*$", s)
-    if mul:
-        try:
-            return True, int(mul.group(1)) * int(mul.group(2))
-        except ValueError:
-            pass
-    try:
-        return True, int(s)
-    except ValueError:
-        _LOG.warning(
-            "Invalid STRATEGY_UPDATE_INTERVAL_HOURS=%r — using 24h. "
-            "Use an integer, e.g. 24, 168, or false to disable metrics + strategy updates.",
-            raw,
-        )
-        return True, 24
-
-
-def _parse_metrics_fetch_max(raw: str | None, analyze_last_n: int) -> int:
-    """
-    Max tweets to refresh per metrics run (X API calls). Empty/unset → max(analyze_last_n, 30).
-    Set to 0 or 'all' / 'unlimited' for no cap (every row in post_history).
-    """
-    if raw is None or not str(raw).strip():
-        return max(analyze_last_n, 30)
-    s = str(raw).strip().lower()
-    if s in ("0", "all", "unlimited", "none"):
-        return 0
-    return max(1, int(s))
-
-
-def _parse_use_trends_mode_cycle(raw: str | None) -> list[str]:
-    """
-    Parse USE_TRENDS into a cycle of word-source modes.
-
-    Tokens (case-insensitive):
-      trends, true, 1, yes, on  → pick word from X trending topics
-      pool                       → AI word pick + ephemeral random theme (German→English bank)
-      false, 0, no, off, strategy → AI word pick + strategy next_topic / style
-
-    Examples:
-      "false"                         → ["strategy"]
-      "true"                          → ["trends"]
-      "trends,trends,pool,pool,trends" → five-step cycle
-      "true,false,false,false"        → trends then three strategy steps (backward compatible)
-    """
-    if raw is None or not str(raw).strip():
-        return ["strategy"]
-    parts = [p.strip().lower() for p in str(raw).split(",") if p.strip()]
-    if not parts:
-        return ["strategy"]
-    out: list[str] = []
-    for p in parts:
-        if p in ("trends", "true", "1", "yes", "on"):
-            out.append("trends")
-        elif p == "pool":
-            out.append("pool")
-        elif p in ("false", "0", "no", "off", "strategy"):
-            out.append("strategy")
-        else:
-            _LOG.warning("Invalid USE_TRENDS token %r — treating as strategy.", p)
-            out.append("strategy")
-    return out
-
-
 def _parse_on_off_env(key: str, default: bool = False) -> bool:
-    """
-    Parse a boolean env var as true/false, yes/no, on/off, or 1/0.
-    Unknown values fall back to *default*.
-    """
-    raw = os.getenv(key)
-    if raw is None or not str(raw).strip():
-        return default
-    s = str(raw).strip().lower()
-    if s in ("true", "1", "yes", "on"):
-        return True
-    if s in ("false", "0", "no", "off"):
-        return False
-    return default
-
-
-def _parse_ktv_font_size(raw: str | None) -> int:
-    """
-    KTV karaoke subtitle font size in px at a 720p output frame (standard HD reference).
-    At other resolutions the size is scaled proportionally (e.g. ~53px at 480p Wan when
-    set to 80). Clamped to a safe range (12–200).
-    """
-    if raw is None or not str(raw).strip():
-        v = 80
-    else:
-        try:
-            v = int(str(raw).strip())
-        except ValueError:
-            _LOG.warning("Invalid KTV_FONT_SIZE=%r — using 80.", raw)
-            v = 80
-    return max(12, min(200, v))
+    """Convenience wrapper: read *key* from os.environ and parse as bool."""
+    return _parse_on_off_env_value(os.getenv(key), default)
 
 
 # Load public configuration first, then secret keys.
@@ -228,18 +126,6 @@ def resolve_language_config() -> None:
     TRENDS_COUNTRY       = derived.get("trends_country",       TRENDS_COUNTRY)
     SOURCE_FLAG_COLORS   = derived.get("source_flag_colors",   SOURCE_FLAG_COLORS)
     TARGET_FLAG_COLORS   = derived.get("target_flag_colors",   TARGET_FLAG_COLORS)
-
-
-def _parse_flag_colors(env_val: str, default: list) -> list:
-    """Parse a comma-separated hex color string into a list of (R, G, B) tuples."""
-    try:
-        parts = [p.strip() for p in env_val.split(",") if p.strip()]
-        result = [tuple(int(c[i:i+2], 16) for i in (0, 2, 4)) for c in parts]
-        if len(result) >= 3:
-            return result
-    except Exception:
-        pass
-    return default
 
 
 # ── AI provider ──────────────────────────────────────────────────────────────
@@ -719,59 +605,14 @@ for _d in (IMAGES_DIR, VOICES_DIR, VOICES_MUSIC_DIR, VIDEOS_DIR, "data"):
     os.makedirs(_d, exist_ok=True)
 
 # ── Logging ───────────────────────────────────────────────────────────────────
+# Implementation lives in config_logging.py; this module just calls it so the
+# `import config; config.setup_logging()` and `config.logger` API is preserved.
 
-class _ConsoleFormatter(logging.Formatter):
-    """
-    Clean, coloured console output.
-    - INFO:    HH:MM:SS  message   (plain)
-    - WARNING: HH:MM:SS  ⚠  message (yellow, truncated exception)
-    - ERROR:   HH:MM:SS  ✖  message (red)
-    Logger name is omitted — stage banners in ui.py carry context instead.
-    """
-    _R  = "\033[0m"
-    _Y  = "\033[93m"
-    _RE = "\033[91m"
-    _G  = "\033[90m"   # gray for dim info lines
-
-    def format(self, record: logging.LogRecord) -> str:
-        ts = self.formatTime(record, "%H:%M:%S")
-        msg = record.getMessage()
-
-        # Truncate very long messages (full detail stays in the file log)
-        if len(msg) > 220:
-            msg = msg[:220] + " …"
-
-        if record.levelno >= logging.ERROR:
-            return f"{self._RE}{ts}  ✖  {msg}{self._R}"
-        if record.levelno >= logging.WARNING:
-            return f"{self._Y}{ts}  ⚠  {msg}{self._R}"
-        return f"{ts}     {msg}"
+from config_logging import build_root_logger as _build_root_logger
 
 
 def setup_logging() -> logging.Logger:
-    logger = logging.getLogger("xbot")
-    if logger.handlers:
-        return logger
-
-    logger.setLevel(logging.DEBUG)
-
-    # ── Console: clean & coloured ──────────────────────────────────────────
-    ch = logging.StreamHandler()
-    ch.setLevel(logging.INFO)
-    ch.setFormatter(_ConsoleFormatter())
-
-    # ── File: full detail ──────────────────────────────────────────────────
-    file_fmt = logging.Formatter(
-        "%(asctime)s [%(levelname)s] %(name)s: %(message)s",
-        datefmt="%Y-%m-%d %H:%M:%S",
-    )
-    fh = logging.FileHandler(LOG_FILE, encoding="utf-8")
-    fh.setLevel(logging.DEBUG)
-    fh.setFormatter(file_fmt)
-
-    logger.addHandler(ch)
-    logger.addHandler(fh)
-    return logger
+    return _build_root_logger(LOG_FILE)
 
 
 logger = setup_logging()

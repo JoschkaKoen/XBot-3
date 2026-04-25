@@ -45,7 +45,7 @@ from config import (
     METRICS_FETCH_MAX_TWEETS,
     METRICS_REFRESH_FILE,
 )
-from nodes.score import load_history, save_history, compute_score
+from services.history import load_history, save_history, compute_score
 from utils.retry import with_retry
 from utils.ui import stage_banner, ok, info as ui_info, warn as ui_warn
 
