@@ -43,6 +43,7 @@ sys.stdout.reconfigure(line_buffering=True)
 
 import config as _config
 from config import setup_logging, reload_settings
+from utils.errors import FatalProviderError
 from utils.ui import (
     startup_banner,
     cycle_banner,
@@ -196,9 +197,11 @@ def main():
 
     state = _initial_state()
     cycle = 0
+    consecutive_failures = 0
 
     while not _shutdown:
         reload_settings()
+        max_consecutive = _config.MAX_CONSECUTIVE_FAILURES
 
         # If IMAGE_PROVIDER=z-image-turbo, make sure ComfyUI is running.
         # This spawns it in the background (non-blocking) so it has time to
@@ -215,6 +218,7 @@ def main():
         try:
             result = graph.invoke(state, config=config)
 
+            consecutive_failures = 0
             state = {
                 "cycle":    cycle,
                 "strategy": result.get("strategy", state["strategy"]),
@@ -238,12 +242,32 @@ def main():
             warn("Interrupted — stopping.")
             logger.info("KeyboardInterrupt — stopping.")
             break
+        except FatalProviderError as exc:
+            elapsed = time.perf_counter() - t_cycle
+            err(f"FATAL provider error after {format_elapsed(elapsed)} — stopping bot: {exc}")
+            logger.critical("Cycle %d — FatalProviderError: %s", cycle, exc)
+            state["error"] = str(exc)
+            break
         except Exception as exc:
             elapsed = time.perf_counter() - t_cycle
-            err(f"Cycle {cycle} failed after {format_elapsed(elapsed)}: {exc}")
+            consecutive_failures += 1
+            err(
+                f"Cycle {cycle} failed after {format_elapsed(elapsed)} "
+                f"({consecutive_failures}/{max_consecutive}): {exc}"
+            )
             logger.exception(
                 "Cycle %d failed after %.1fs: %s", cycle, elapsed, exc
             )
+            if consecutive_failures >= max_consecutive:
+                err(
+                    f"Stopping bot — {consecutive_failures} consecutive failures. "
+                    "Fix the underlying issue before restarting."
+                )
+                logger.critical(
+                    "Aborting after %d consecutive failures.", consecutive_failures
+                )
+                state["error"] = str(exc)
+                break
             warn("Waiting 60s before retrying …")
             time.sleep(60)
             state["error"] = str(exc)

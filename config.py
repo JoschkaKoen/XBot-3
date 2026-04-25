@@ -335,6 +335,7 @@ def reload_settings() -> None:
     global ENABLE_VIDEO, ENABLE_GROK_VIDEO, VIDEO_FREQUENCY, GROK_VIDEO_FREQUENCY, ENABLE_KEN_BURNS, ENABLE_BACKGROUND_MUSIC, WAN_VIDEO_DIR, WAN_VIDEO_STEPS, WAN_VIDEO_FRAMES, WAN_VIDEO_HISTORY_FILE, KTV_FONT_SIZE, VIDEO_FPS
     global ENABLE_REALESRGAN, REALESRGAN_DIR, REALESRGAN_MODEL, REALESRGAN_OUTSCALE, REALESRGAN_TILE
     global ENABLE_SELF_IMPROVEMENT, IMPROVEMENT_INTERVAL_CYCLES, IMPROVEMENT_SCORE_THRESHOLD
+    global MAX_CONSECUTIVE_FAILURES
     global STRATEGY_METRICS_UPDATES_ENABLED, STRATEGY_UPDATE_INTERVAL_HOURS
     global METRICS_FETCH_MAX_TWEETS
     global COMFYUI_ARGS
@@ -404,6 +405,7 @@ def reload_settings() -> None:
     ENABLE_SELF_IMPROVEMENT        = os.getenv("ENABLE_SELF_IMPROVEMENT", "false").lower().strip() == "true"
     IMPROVEMENT_INTERVAL_CYCLES    = int(os.getenv("IMPROVEMENT_INTERVAL_CYCLES", "5"))
     IMPROVEMENT_SCORE_THRESHOLD    = float(os.getenv("IMPROVEMENT_SCORE_THRESHOLD", "9999"))
+    MAX_CONSECUTIVE_FAILURES       = int(os.getenv("MAX_CONSECUTIVE_FAILURES", "5"))
     STRATEGY_METRICS_UPDATES_ENABLED, STRATEGY_UPDATE_INTERVAL_HOURS = _parse_strategy_update_interval(
         os.getenv("STRATEGY_UPDATE_INTERVAL_HOURS", "24")
     )
@@ -543,6 +545,11 @@ IMPROVEMENT_INTERVAL_CYCLES: int = int(os.getenv("IMPROVEMENT_INTERVAL_CYCLES", 
 # Only run improvement if the average engagement score of recent posts is below
 # this threshold. Set high (e.g. 9999) to always run. Use --force to override.
 IMPROVEMENT_SCORE_THRESHOLD: float = float(os.getenv("IMPROVEMENT_SCORE_THRESHOLD", "9999"))
+
+# Stop the bot after this many consecutive failed cycles (any non-fatal error in a row).
+# Prevents the bot from burning upstream API credits indefinitely when a provider is down.
+# Fatal billing/auth errors (HTTP 401/402/403) always stop the bot immediately regardless.
+MAX_CONSECUTIVE_FAILURES: int = int(os.getenv("MAX_CONSECUTIVE_FAILURES", "5"))
 
 
 # Which video engine to use for animating the generated image.

@@ -42,7 +42,7 @@ from datetime import datetime
 from pydub import AudioSegment
 import numpy as np
 import requests
-from PIL import Image as _PILImage
+from PIL import Image as _PILImage, ImageFont, ImageDraw
 from moviepy import (
     AudioFileClip,
     ColorClip,
@@ -255,6 +255,38 @@ def _ktv_scale_factors(base_clip) -> tuple[float, int, int, int, int, int, int, 
     return s, bar_h, text_h, font_size, stroke_w, text_w, text_x, text_y
 
 
+def _count_wrapped_lines(text: str, font_path: str, font_size: int, max_width: int) -> int:
+    """
+    Return how many wrapped lines *text* produces at *font_size* within *max_width*
+    pixels, using PIL for accurate measurement.  Falls back to a character-based
+    estimate if the font file cannot be loaded.
+    """
+    try:
+        pil_font = ImageFont.truetype(font_path, font_size)
+        img = _PILImage.new("RGB", (max_width * 2, font_size * 10))
+        draw = ImageDraw.Draw(img)
+        words = text.split()
+        lines = 0
+        current_line = ""
+        for word in words:
+            test = (current_line + " " + word).strip()
+            bbox = draw.textbbox((0, 0), test, font=pil_font)
+            if bbox[2] <= max_width:
+                current_line = test
+            else:
+                if current_line:
+                    lines += 1
+                current_line = word
+        if current_line:
+            lines += 1
+        return max(lines, 1)
+    except Exception:
+        # Rough fallback: avg ~0.55× font_size per character
+        chars_per_line = max(1, int(max_width / (font_size * 0.55)))
+        import textwrap
+        return len(textwrap.wrap(text, width=chars_per_line)) or 1
+
+
 def _build_ktv_overlay_clips(
     base_clip,
     duration: float,
@@ -265,15 +297,54 @@ def _build_ktv_overlay_clips(
     Return the list of overlay clips (bar + text + highlights) to composite
     on top of *base_clip*.  Does NOT include base_clip itself.
 
+    If the sentence overflows 2 lines at the configured font size, the font is
+    reduced to 75 % of the original first.  If the text still needs 3 lines the
+    bar and text box are expanded to accommodate a third line rather than cutting
+    the text off.
+
     Args:
         base_clip:    The underlying ImageClip or VideoFileClip (already sized).
         duration:     Final video duration in seconds.
         german_text:  Full source-language sentence shown as the base caption.
         word_timings: Optional list of {word, start, end} dicts for highlighting.
     """
-    _, _BAR_H, _TEXT_H, font_size, stroke_w, _TEXT_W, _TEXT_X, _TEXT_Y = (
+    s, _BAR_H, _TEXT_H, font_size, stroke_w, _TEXT_W, _TEXT_X, _TEXT_Y = (
         _ktv_scale_factors(base_clip)
     )
+
+    # ── adaptive font + bar height ───────────────────────────────────────────
+    _FONT_SHRINK = 0.75          # first step: reduce font to 75 %
+    _MAX_LINES   = 3             # never exceed this many lines
+    _LINE_SPACING = 1.35         # assumed line-height multiplier for bar sizing
+
+    n_lines = _count_wrapped_lines(german_text, _FONT, font_size, _TEXT_W)
+
+    if n_lines > 2:
+        reduced_size = max(12, int(round(font_size * _FONT_SHRINK)))
+        n_lines_reduced = _count_wrapped_lines(german_text, _FONT, reduced_size, _TEXT_W)
+        if n_lines_reduced <= 2:
+            # Smaller font fits in 2 lines — use it, keep original bar height
+            font_size = reduced_size
+            stroke_w  = max(1, int(round(stroke_w * _FONT_SHRINK)))
+            logger.info(
+                "KTV: text needs %d lines at default size — shrinking font to %dpx (fits in 2 lines).",
+                n_lines, font_size,
+            )
+        else:
+            # Even reduced font needs 3 lines — allow 3, keep reduced font
+            font_size = reduced_size
+            stroke_w  = max(1, int(round(stroke_w * _FONT_SHRINK)))
+            n_lines   = min(n_lines_reduced, _MAX_LINES)
+            # Expand bar and text box for the extra line
+            line_h   = int(round(font_size * _LINE_SPACING))
+            extra    = line_h  # one extra line worth of height
+            _BAR_H  += extra
+            _TEXT_H += extra
+            _TEXT_Y  = base_clip.h - _BAR_H - max(4, int(round(_KTV_BOTTOM_INSET_REF * s)))
+            logger.info(
+                "KTV: text needs %d lines even at %dpx — expanding bar to 3 lines.",
+                n_lines_reduced, font_size,
+            )
 
     bar = (
         ColorClip(size=(base_clip.w, _BAR_H), color=(0, 0, 0))

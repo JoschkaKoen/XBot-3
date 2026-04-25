@@ -32,6 +32,7 @@ from config import TT_API_KEY, IMAGES_DIR, resolve_image_style
 from services.ai_client import get_ai_response
 from services.image_ranker import pick_best_image, score_image
 from services.zit_image import ComfyUIUnavailableError
+from utils.errors import FatalProviderError
 from utils.retry import retry_call, with_retry
 from utils.ui import stage_banner, ok, info, warn as ui_warn
 
@@ -66,6 +67,11 @@ class MidjourneyClient:
 
         payload = {"prompt": prompt, "mode": mode}
         resp = requests.post(f"{self.BASE_URL}/imagine", headers=self.HEADERS, json=payload, timeout=30)
+        if resp.status_code in (401, 402, 403):
+            raise FatalProviderError(
+                f"TTAPI returned HTTP {resp.status_code} — check your subscription/credits "
+                f"at ttapi.io. Bot stopping to avoid further charges."
+            )
         resp.raise_for_status()
         data = resp.json()
 
@@ -171,6 +177,11 @@ class GrokImagineClient:
             json=payload,
             timeout=120,
         )
+        if resp.status_code in (401, 402, 403):
+            raise FatalProviderError(
+                f"Grok Imagine returned HTTP {resp.status_code} — check your XAI_API_KEY "
+                f"and account credits. Bot stopping to avoid further charges."
+            )
         resp.raise_for_status()
         data = resp.json()
         items = data.get("data", [])
