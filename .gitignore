@@ -62,3 +62,4 @@ Screenshots/._*
 .DS_Store
 Thumbs.db
 cursor switch model data
+.claude/
