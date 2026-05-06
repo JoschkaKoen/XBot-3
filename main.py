@@ -185,6 +185,13 @@ def _initial_state() -> dict:
 def main():
     _config.resolve_language_config()
 
+    # Discover styles from styles/ and validate the configured IMAGE_STYLE cycle
+    # before doing anything else — fail-fast on a typo so the operator sees the
+    # error immediately rather than mid-cycle.
+    import styles
+    styles.reload_styles()
+    styles.validate_cycle(_config.IMAGE_STYLE_CYCLE)
+
     from graph import get_graph
 
     startup_banner(_model_lines())
@@ -201,6 +208,11 @@ def main():
 
     while not _shutdown:
         reload_settings()
+        # Re-discover styles after settings reload so files added/edited between
+        # cycles are picked up, then validate the (possibly updated) IMAGE_STYLE
+        # cycle against the (possibly updated) registry.
+        styles.reload_styles()
+        styles.validate_cycle(_config.IMAGE_STYLE_CYCLE)
         max_consecutive = _config.MAX_CONSECUTIVE_FAILURES
 
         # If IMAGE_PROVIDER=z-image-turbo, make sure ComfyUI is running.
@@ -290,6 +302,10 @@ def _single_cycle() -> None:
 
     setup_logging()
     _config.resolve_language_config()
+
+    import styles
+    styles.reload_styles()
+    styles.validate_cycle(_config.IMAGE_STYLE_CYCLE)
 
     graph = get_graph()
     thread_id = f"single_cycle_{uuid.uuid4().hex[:8]}"

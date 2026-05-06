@@ -12,7 +12,10 @@ Most settings are read from settings.env (git-tracked) and .env (gitignored, API
     TARGET_LANGUAGE     → e.g. "English"
 
   CONTENT GENERATION
-    IMAGE_STYLE        → "photographic" (realistic) or "disney" (Pixar-style)
+    IMAGE_STYLE        → name of any file in styles/ (e.g. "photographic",
+                         "disney"), or "random" to pick a random registered
+                         style each cycle. Comma-separated to cycle (see
+                         styles/ for the live registry).
     TWEET_STYLE        → "funny" (jokes) or "educational" (plain)
     MAX_EXAMPLE_WORDS  → max words in example sentence (default: 13)
 
@@ -147,9 +150,14 @@ TT_API_KEY: str = os.getenv("TT_API_KEY", "")
 # ── Image style ──────────────────────────────────────────────────────────────
 # Single value  → every tweet uses that style.
 # Comma-separated → cycles deterministically across tweets.
+# Valid values: any filename in styles/ (without .py) plus the special token
+# "random", which picks a random registered style each cycle.
 #   "photographic"              → always photographic
 #   "disney"                    → always disney
 #   "photographic,disney,disney"→ tweet 0: photographic, 1: disney, 2: disney, 3: photographic, …
+#   "random"                    → every tweet picks a random registered style
+#   "random,disney"             → cycle 0 random, cycle 1 disney, cycle 2 random, …
+# See styles/ for the live registry; new files dropped there are auto-discovered.
 _IMAGE_STYLE_RAW: str = os.getenv("IMAGE_STYLE", "photographic")
 IMAGE_STYLE_CYCLE: list[str] = [s.lower().strip() for s in _IMAGE_STYLE_RAW.split(",") if s.strip()]
 if not IMAGE_STYLE_CYCLE:
@@ -158,10 +166,37 @@ if not IMAGE_STYLE_CYCLE:
 # Convenience alias for single-style setups (first element of the cycle).
 IMAGE_STYLE: str = IMAGE_STYLE_CYCLE[0]
 
+# Per-cycle cache so that "random" resolves once per cycle, not once per call.
+# resolve_image_style(cycle) is called twice per cycle (generate_image and
+# create_video); without caching, "random" would pick different styles for
+# image generation vs. video motion. The cache grows by one entry per cycle
+# (~50 bytes); never invalidated because cycle indices are monotonic — past
+# resolutions stay correct even if IMAGE_STYLE_CYCLE changes mid-run.
+_RESOLVED_IMAGE_STYLE: dict[int, str] = {}
+
 
 def resolve_image_style(cycle: int) -> str:
-    """Return the effective image style for the given tweet cycle index."""
-    return IMAGE_STYLE_CYCLE[cycle % len(IMAGE_STYLE_CYCLE)]
+    """Return the effective image style for the given tweet cycle index.
+
+    Handles the "random" token by picking from the live styles/ registry on
+    first call for a given cycle, then memoising. Lazy-imports styles to
+    avoid an import cycle (config <- styles is forbidden; styles <- config
+    is via PromptContext marshalling at the call site).
+    """
+    if cycle in _RESOLVED_IMAGE_STYLE:
+        return _RESOLVED_IMAGE_STYLE[cycle]
+    raw = IMAGE_STYLE_CYCLE[cycle % len(IMAGE_STYLE_CYCLE)]
+    if raw == "random":
+        import random as _random
+        from styles import known_styles
+        chosen = _random.choice(known_styles())
+        logging.getLogger("xbot.config").info(
+            "IMAGE_STYLE=random → picked %r for cycle %d", chosen, cycle,
+        )
+    else:
+        chosen = raw
+    _RESOLVED_IMAGE_STYLE[cycle] = chosen
+    return chosen
 
 
 # ── Tweet style ───────────────────────────────────────────────────────────────

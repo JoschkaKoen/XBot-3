@@ -10,9 +10,9 @@ source/target flag badge (FLAG_OVERLAY).
  SECTIONS YOU MAY WANT TO EDIT
 ================================================================================
   _RULES                  — global rules appended to every image prompt
-  _DISNEY_AESTHETIC       — style block for image_style=disney
-  _IMMERSIVE / _AESTHETIC — style blocks for image_style=photographic
-  STYLE_SUFFIX (Midjourney)— suffix added to prompts (e.g. "positive facial expressions")
+  styles/<name>.py        — per-style prompt blocks, midjourney_suffix, motion
+                            guidance. To add a new style, drop a new file in
+                            styles/ — it is auto-discovered each cycle.
   Flag overlay: _overlay_flags(), _create_flag_badge() — see _FLAGCDN_* constants
 ================================================================================
 
@@ -46,6 +46,7 @@ from services.image_clients import (
     GrokImagineClient,
     ComfyUIUnavailableError,
 )
+from styles import get_style, PromptContext
 from utils.errors import FatalProviderError
 from utils.retry import retry_call, with_retry
 from utils.ui import stage_banner, ok, info, warn as ui_warn
@@ -108,252 +109,18 @@ def _build_image_prompt(
     else:
         _aspect_hint = "16:9"
 
-    if image_style == "disney":
-        _DISNEY_AESTHETIC = (
-            "Style: polished 3D CGI animation in the style of Pixar and Walt Disney. "
-            "Stylised shapes with clear, confident silhouettes. "
-            "Characters have expressive eyes and readable facial features — personality-driven, not overly saccharine. "
-            "Colour palette: rich, harmonious tones — warm ambers, deep blues, forest greens, and saturated accents "
-            "grounded by neutral mid-tones. "
-            "Lighting: cinematic directional light with strong contrast, rim highlights, and atmospheric depth, "
-            "as if lit for a Pixar feature film. "
-            "Background: a purposeful environment with painterly detail, soft depth of field, and clear visual hierarchy. "
-            "Everything feels polished, characterful, and cinematic. "
-            "The image should look like a still from a Pixar or Disney animated feature."
-        )
-        if funny and example_de:
-            tweet_context = f"Full tweet:\n{full_tweet}\n\n" if full_tweet else ""
-            if is_zit:
-                img_req = (
-                    f"A {config.SOURCE_LANGUAGE} learning tweet contains a joke. "
-                    f"Write a rich, detailed image description for a Disney/Pixar-style 3D animated scene "
-                    f"in a {_aspect_hint} that shows the punchline clearly and with visual wit. "
-                    "Use full natural-language sentences, not comma-separated tags. "
-                    "Describe the setting, characters, their expressions and body language, the lighting, "
-                    "and the colour palette in concrete detail — aim for 100–200 words.\n\n"
-                    f"{tweet_context}"
-                    f"{config.SOURCE_LANGUAGE} sentence: \"{example_de}\"\n"
-                    f"{config.TARGET_LANGUAGE} sentence: \"{example_en}\"\n\n"
-                    "Step 1 — Identify the punchline: find the ironic twist, absurd contrast, or subverted expectation.\n"
-                    "Step 2 — Stage it visually: describe expressive body language and facial expressions that land the joke — "
-                    "the comedy should be immediately readable from the image alone.\n"
-                    "Step 3 — Describe the environment: background, lighting direction (rim, key, fill), colour temperature.\n"
-                    "Step 4 — Keep it clean: ONE main character, ONE clear joke, uncluttered focused background.\n"
-                    "Step 5 — Keep it family-friendly: warm, uplifting, never dark or unsettling.\n\n"
-                    f"{_DISNEY_AESTHETIC}"
-                    f"{_RULES}"
-                )
-                system_prompt = (
-                    "You are an expert Disney/Pixar 3D animation image description writer for Z-Image-Turbo, "
-                    "a model that excels at detailed natural-language scene descriptions. "
-                    "Write rich, flowing prose that covers subject, environment, lighting, colour palette, and mood — "
-                    "never use comma-separated tags. "
-                    "Every description should feel like a scene memo from a Pixar director: "
-                    "specific, visual, and full of personality. "
-                    "Output only the image description."
-                )
-            else:
-                img_req = (
-                    f"A {config.SOURCE_LANGUAGE} learning tweet contains a joke. "
-                    "Create an image generation prompt for a Disney/Pixar-style 3D animated scene "
-                    "that shows the punchline of the joke clearly and with visual wit.\n\n"
-                    f"{tweet_context}"
-                    f"{config.SOURCE_LANGUAGE} sentence: \"{example_de}\"\n"
-                    f"{config.TARGET_LANGUAGE} sentence: \"{example_en}\"\n\n"
-                    "Step 1 — Identify the punchline: find the ironic twist, absurd contrast, or subverted expectation.\n"
-                    "Step 2 — Stage it visually: use expressive body language and facial expressions to land the joke — "
-                    "the comedy should be immediately readable from the image alone.\n"
-                    "Step 3 — Make it cinematic and polished: deliberate lighting, strong composition, rich colours. "
-                    "Think of a memorable frame from a Pixar feature — that level of craft and visual storytelling.\n"
-                    "Step 4 — Keep it clean: ONE main character, ONE clear joke, uncluttered focused background.\n"
-                    "Step 5 — Keep it family-friendly: warm, uplifting, never dark or unsettling.\n\n"
-                    f"{_DISNEY_AESTHETIC}"
-                    f"{_RULES}"
-                )
-                system_prompt = (
-                    "You are an expert Disney/Pixar 3D animation prompt engineer. "
-                    "You write image prompts that produce polished, expressive, and funny animated stills. "
-                    "Every prompt you write feels like a frame from a Pixar feature: "
-                    "strong character silhouettes, expressive faces, cinematic lighting, rich cohesive colours. "
-                    "Humour is conveyed through clear visual storytelling and expressive performance, never saccharine excess. "
-                    "Never mention photography, cameras, lenses, or film. "
-                    "No parameter flags. No double hyphens. Output only the image description."
-                )
-        else:
-            if is_zit:
-                img_req = (
-                    f"Write a rich, detailed image description for a Disney/Pixar-style 3D animated scene "
-                    f"in a {_aspect_hint}. "
-                    "Use full natural-language sentences, not comma-separated tags. "
-                    "Describe the setting, the main character(s), their pose and expression, "
-                    "the lighting (direction, quality, colour temperature), "
-                    "and the colour palette in concrete detail — aim for 100–200 words.\n\n"
-                    f"Scene to illustrate: \"{example_en}\"\n\n"
-                    "Design a visually compelling, characterful scene that brings this sentence to life. "
-                    "Characters should have expressive features and strong readable silhouettes. "
-                    "The scene should look like a cinematic still from a Pixar or Disney animated feature — "
-                    "polished, purposeful, and full of personality without being saccharine.\n\n"
-                    f"{_DISNEY_AESTHETIC}"
-                    "No text visible in the image."
-                    f"{_RULES}"
-                )
-                system_prompt = (
-                    "You are an expert Disney/Pixar 3D animation image description writer for Z-Image-Turbo, "
-                    "a model that excels at detailed natural-language scene descriptions. "
-                    "Write rich, flowing prose that covers subject, environment, lighting, colour palette, and mood — "
-                    "never use comma-separated tags. Aim for the detail of a Pixar art director's scene brief. "
-                    "Output only the image description."
-                )
-            else:
-                img_req = (
-                    "Create an image generation prompt for a Disney/Pixar-style 3D animated scene.\n\n"
-                    f"Sentence: \"{example_en}\"\n\n"
-                    "Design a visually compelling, characterful scene that brings this sentence to life. "
-                    "Characters should have expressive features and strong readable silhouettes. "
-                    "The scene should look like a cinematic still from a Pixar or Disney animated feature — "
-                    "polished, purposeful, and full of personality without being saccharine.\n\n"
-                    f"{_DISNEY_AESTHETIC}"
-                    "No text in the image."
-                    f"{_RULES}"
-                )
-                system_prompt = (
-                    "You are an expert Disney/Pixar 3D animation prompt engineer. "
-                    "You write image prompts that produce cinematic, expressive, Pixar-quality stills. "
-                    "Strong character design, deliberate lighting, rich cohesive colour palette — "
-                    "every element should feel polished, purposeful, and full of personality. "
-                    "Avoid over-sweetening: aim for charming and engaging, not saccharine. "
-                    "Never mention photography, cameras, lenses, or film. "
-                    "No parameter flags. No double hyphens. Output only the image description."
-                )
-    else:
-        _IMMERSIVE = (
-            "Frame the shot so the viewer feels placed directly inside the scene: "
-            "The composition should feel lived-in and immediate, as if the viewer just walked into the moment. "
-        )
-        _CLEAN_AESTHETIC = (
-            "Composition: ONE clear subject, uncluttered frame, minimal background elements. "
-            "The joke or mood must be immediately readable at a glance — never crowd the scene. "
-        )
-        _AESTHETIC = (
-            "Aesthetics: make this image genuinely beautiful — not just technically correct. "
-            "Think carefully about: harmonious colour palette (warm, vibrant, or richly contrasted), "
-            "flattering and dramatic natural light (golden hour, soft side-light, or crisp morning sun), "
-            "shallow depth of field to isolate the subject against a beautifully blurred background, "
-            "and a composition that would stop someone mid-scroll. "
-            "The image should look like a professional editorial photo that people want to share for its looks alone. "
-        )
-        if funny and example_de:
-            tweet_context = f"Full tweet:\n{full_tweet}\n\n" if full_tweet else ""
-            if is_zit:
-                img_req = (
-                    f"A {config.SOURCE_LANGUAGE} learning tweet contains a joke. "
-                    f"Write a rich, detailed photographic scene description for Z-Image-Turbo in a {_aspect_hint} "
-                    "that is BOTH visually stunning AND makes the punchline instantly obvious. "
-                    "Use flowing natural-language sentences — not comma tags. "
-                    "Cover: the subject and their expression/body language, the environment, "
-                    "the lighting (direction, quality, colour temperature), the colour palette, "
-                    "and the camera framing. Aim for 100–200 words.\n\n"
-                    f"{tweet_context}"
-                    f"{config.SOURCE_LANGUAGE} sentence: \"{example_de}\"\n"
-                    f"{config.TARGET_LANGUAGE} sentence: \"{example_en}\"\n\n"
-                    "Step 1 — Identify the punchline: the ironic twist, subverted expectation, or absurd contrast.\n"
-                    "Step 2 — Stage it: describe a real scene where expressions or body language land the joke — "
-                    "the comedy must read from the image alone.\n"
-                    "Step 3 — Make it beautiful: golden-hour or cinematic light, rich colours, "
-                    "shallow depth of field — a composition worth sharing.\n"
-                    "Step 4 — Keep it photorealistic: no CGI, no animation, no cartoon. ONE subject, uncluttered frame.\n\n"
-                    f"{_IMMERSIVE}"
-                    f"{_CLEAN_AESTHETIC}"
-                    f"{_AESTHETIC}"
-                    f"{_RULES}"
-                )
-                system_prompt = (
-                    "You are an expert photographic scene description writer for Z-Image-Turbo. "
-                    "This model responds best to detailed natural-language prose describing subjects, "
-                    "environments, lighting, and colour — never comma-separated tag lists. "
-                    "Your descriptions are both visually stunning and instantly funny: "
-                    "a clear visual punchline combined with cinematic photographic beauty. "
-                    "ALL output must be photorealistic. Never describe CGI, animation, or cartoon styles. "
-                    "Output only the scene description."
-                )
-            else:
-                img_req = (
-                    f"A {config.SOURCE_LANGUAGE} learning tweet contains a joke. Your job is to create an image generation prompt that is "
-                    "BOTH visually stunning AND makes the punchline of the joke instantly obvious.\n\n"
-                    f"{tweet_context}"
-                    f"{config.SOURCE_LANGUAGE} sentence: \"{example_de}\"\n"
-                    f"{config.TARGET_LANGUAGE} sentence: \"{example_en}\"\n\n"
-                    "Step 1 — Identify the punchline: find the ironic twist, the subverted expectation, or the absurd contrast.\n"
-                    "Step 2 — Stage it visually: design a real photographic scene that shows the punchline, "
-                    "body language, or clever composition. The comedy must land from the image alone.\n"
-                    "Step 3 — Make it beautiful: apply deliberate aesthetic choices — golden-hour light, rich colours, "
-                    "shallow depth of field, a composition worth sharing for its looks alone. "
-                    "Beauty and humour must coexist: a stunning photograph that is also funny.\n"
-                    "Step 4 — Keep it clean and readable: ONE subject, ONE joke, uncluttered frame.\n"
-                    "Step 5 — Keep it positive and photorealistic: warm, light-hearted, family-friendly. "
-                    "The output MUST be a photorealistic photograph — never animation, illustration, or cartoon.\n\n"
-                    f"{_IMMERSIVE}"
-                    f"{_CLEAN_AESTHETIC}"
-                    f"{_AESTHETIC}"
-                    "Photorealistic photography ONLY — no CGI, no illustration, no cartoon, no animation."
-                    f"{_RULES}"
-                )
-                system_prompt = (
-                    "You are an expert photographic image prompt engineer who creates images that are both visually stunning "
-                    "and instantly funny. Your prompts always combine: (1) a clear visual punchline readable from the photo alone, "
-                    "and (2) deliberately beautiful photographic aesthetics — perfect light, rich colours, shallow depth of field, "
-                    "editorial composition. "
-                    "ALL output must be photorealistic photography. NEVER describe CGI, illustration, animation, or Pixar/Disney style — "
-                    "even for unusual or humorous subjects. If a scene seems absurd, make it work as a clever, well-composed photograph. "
-                    "Always include specific camera model, lens, and lighting descriptors "
-                    "(e.g. 'shot on Sony A7IV, 50mm f/1.4, golden hour backlight'). "
-                    "Never use words like 'painting', 'illustration', 'artistic', 'rendered', 'digital art', 'animated', 'cartoon'. "
-                    "No parameter flags. No double hyphens. Output only the description."
-                )
-        else:
-            if is_zit:
-                img_req = (
-                    f"Write a rich, detailed photographic scene description for Z-Image-Turbo in a {_aspect_hint}. "
-                    "Use flowing natural-language sentences — not comma tags. "
-                    "Describe: the main subject (identity, pose, expression), the environment and background, "
-                    "the lighting (direction, quality, colour temperature — e.g. warm golden-hour backlight, "
-                    "soft diffused daylight, cinematic key light), the colour palette, "
-                    "and the overall mood. Aim for 100–200 words.\n\n"
-                    f"Scene to illustrate: \"{example_en}\"\n\n"
-                    f"{_IMMERSIVE}"
-                    f"{_CLEAN_AESTHETIC}"
-                    f"{_AESTHETIC}"
-                    "Photorealistic scene — no text visible in the image."
-                    f"{_RULES}"
-                )
-                system_prompt = (
-                    "You are an expert photographic scene description writer for Z-Image-Turbo, "
-                    "a model that excels at detailed natural-language descriptions. "
-                    "Write rich, flowing prose that covers subject, environment, lighting direction and quality, "
-                    "colour palette, and mood — never comma-separated tags. "
-                    "Every description should be a complete cinematic scene brief: "
-                    "specific enough that a photographer could recreate the exact shot. "
-                    "Output only the scene description."
-                )
-            else:
-                img_req = (
-                    f"Generate an image generation prompt for a photorealistic, aesthetically stunning {_aspect_hint} photograph.\n\n"
-                    f"Sentence: \"{example_en}\"\n\n"
-                    f"{_IMMERSIVE}"
-                    f"{_CLEAN_AESTHETIC}"
-                    f"{_AESTHETIC}"
-                    "No text in the image."
-                    f"{_RULES}"
-                )
-                system_prompt = (
-                    "You are an expert image generation prompt engineer who creates images that look like professional "
-                    "editorial photography. Every prompt you write is deliberately beautiful: perfect light, "
-                    "rich harmonious colours, shallow depth of field, and a composition people want to share. "
-                    "ONE clear subject, uncluttered frame — every element serves the main subject. "
-                    "Always include specific camera model, lens, and lighting descriptors (e.g. 'shot on Sony A7IV, 50mm f/1.4, golden hour'). "
-                    "Never use words like 'painting', 'illustration', 'artistic', 'rendered', 'digital art'. "
-                    "No parameter flags. No double hyphens. Output only the description."
-                )
+    ctx = PromptContext(
+        example_en=example_en,
+        example_de=example_de,
+        full_tweet=full_tweet,
+        aspect_hint=_aspect_hint,
+        rules=_RULES,
+        source_language=config.SOURCE_LANGUAGE,
+        target_language=config.TARGET_LANGUAGE,
+    )
+    img_req, system_prompt = get_style(image_style).build_image_prompt(
+        funny=funny, is_zit=is_zit, ctx=ctx,
+    )
 
     max_tokens = 700 if is_zit else 400
 
@@ -370,23 +137,13 @@ def _build_image_prompt(
 
     if config.IMAGE_PROVIDER == "midjourney":
         image_prompt = re.sub(r"\s*--\w[\w\d]*.*$", "", image_prompt).strip()
-        if image_style == "disney":
-            STYLE_SUFFIX = (
-                ", Pixar 3D animation style, expressive character design, "
-                "strong silhouettes, cinematic directional lighting, rich saturated colours, "
-                "8K render, polished and characterful"
-            )
-        else:
-            STYLE_SUFFIX = (
-                ", shot on Canon EOS R5, 35mm lens, natural lighting, "
-                "RAW photo, ultra realistic, 8k UHD, "
-                "positive joyful atmosphere, warm and welcoming, bright uplifting mood, "
-                "subjects with natural warm smiles, positive facial expressions"
-            )
-        image_prompt = image_prompt.rstrip(".") + STYLE_SUFFIX
+        image_prompt = image_prompt.rstrip(".") + get_style(image_style).midjourney_suffix
 
     if is_zit:
-        # Strip any accidental --flags the LLM may have included
+        # Strip any accidental --flags the LLM may have included.
+        # Z_IMAGE_PROMPT_SUFFIX below is style-agnostic — it's a global
+        # fine-tuning hint applied to every Z-Image run regardless of style.
+        # Per-style suffixes live in styles/<name>.py:midjourney_suffix.
         image_prompt = re.sub(r"\s*--\w[\w\d]*.*$", "", image_prompt).strip()
         suffix = config.Z_IMAGE_PROMPT_SUFFIX
         if suffix:

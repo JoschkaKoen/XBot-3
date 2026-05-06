@@ -129,25 +129,9 @@ def build_motion_prompt(
             "animation, atmospheric effects. Still avoid fast or erratic movement."
         )
 
-    # Style-specific tone guidance
-    if image_style == "disney":
-        style_note = (
-            "The image is a 3D CGI / Pixar-Disney animated scene. "
-            "Motion should feel like a held frame from an animated feature: "
-            "slightly exaggerated but smooth character motion (a slow blink, "
-            "a gentle head tilt, a soft smile forming), with lush environmental "
-            "animation (leaves drifting, light rays shifting, dust motes floating). "
-            "Keep the storybook warmth — nothing jarring."
-        )
-    else:
-        style_note = (
-            "The image is photorealistic / editorial photography. "
-            "Motion should feel like a locked-off cinema camera that barely moves: "
-            "a very slow push-in or static shot with shallow depth-of-field rack. "
-            "Subject motion is restrained and lifelike (breathing, a micro-expression, "
-            "weight shift). Environmental motion is naturalistic (wind in foliage, "
-            "steam rising, light flicker through clouds)."
-        )
+    # Style-specific tone guidance — pulled from styles/<image_style>.py
+    from styles import get_style
+    style_note = get_style(image_style).motion_guidance
 
     user_msg = (
         f"IMAGE DESCRIPTION:\n{midjourney_prompt}\n\n"
