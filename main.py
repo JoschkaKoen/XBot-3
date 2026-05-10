@@ -47,8 +47,6 @@ from utils.errors import FatalProviderError
 from utils.ui import (
     startup_banner,
     cycle_banner,
-    cycle_cost_summary,
-    cycle_summary,
     err,
     format_elapsed,
     warn,
@@ -223,6 +221,9 @@ def main():
         t_cycle = time.perf_counter()
 
         try:
+            # Pass cycle start time in state so wait_node can compute elapsed.
+            state["_cycle_start_time"] = t_cycle
+            state["cycle"] = cycle
             result = graph.invoke(state, config=config)
 
             consecutive_failures = 0
@@ -231,31 +232,8 @@ def main():
                 "strategy": result.get("strategy", state["strategy"]),
                 "error":    None,
             }
-
-            tweet_url = result.get("tweet_url", "n/a")
-            score     = result.get("engagement_score", 0.0)
-            elapsed = time.perf_counter() - t_cycle
-            cycle_summary(cycle, tweet_url, score, elapsed_sec=elapsed)
-            logger.info(
-                "Cycle %d complete in %s (%.1fs). url=%s score=%.2f",
-                cycle,
-                format_elapsed(elapsed),
-                elapsed,
-                tweet_url,
-                score,
-            )
-
-            # AI-cost report — must come after cycle_summary so the box stays
-            # visually distinct. Logs the total to bot.log for queryability.
-            from services.cost_report import compute_cost
-            from services.usage import get_run_usage
-            usage = get_run_usage()
-            total_rmb, breakdown = compute_cost(usage)
-            cycle_cost_summary(usage, breakdown, total_rmb)
-            logger.info(
-                "Cycle %d AI cost: ¥%.4f across %d model(s)",
-                cycle, total_rmb, len(usage),
-            )
+            # cycle_summary and cycle_cost_summary are printed inside wait_node
+            # so they survive os.execv() restarts triggered by _check_for_update().
 
         except KeyboardInterrupt:
             warn("Interrupted — stopping.")

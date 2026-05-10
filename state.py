@@ -50,3 +50,6 @@ class BotState(TypedDict, total=False):
 
     # ── Error handling ────────────────────────────────────────────────────────
     error: Optional[str]              # last error message (if any)
+
+    # ── Internal timing (not persisted between outer cycles) ──────────────────
+    _cycle_start_time: Optional[float]  # time.perf_counter() value from main.py loop start

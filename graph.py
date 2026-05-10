@@ -131,11 +131,12 @@ def _check_for_update() -> None:
 def wait_node(state: dict) -> dict:
     """
     Wait before the next cycle.  Runs (in order):
-      1. Self-improvement (if ENABLE_SELF_IMPROVEMENT and cycle % N == 0)
-      2. Countdown sleep for POST_INTERVAL_SECONDS (minus improvement time)
-      3. _check_for_update() — if origin/main has new commits, pull and restart
+      1. Cycle summary + AI cost report (printed here so they survive os.execv restarts)
+      2. Self-improvement (if ENABLE_SELF_IMPROVEMENT and cycle % N == 0)
+      3. Countdown sleep for POST_INTERVAL_SECONDS (minus improvement time)
+      4. _check_for_update() — if origin/main has new commits, pull and restart
     """
-    from utils.ui import stage_banner, wait_countdown
+    from utils.ui import stage_banner, wait_countdown, cycle_summary, cycle_cost_summary, format_elapsed
 
     # Single-cycle mode: skip wait and auto-update
     if "--single-cycle" in sys.argv:
@@ -143,6 +144,32 @@ def wait_node(state: dict) -> dict:
         return state
 
     stage_banner(10)
+
+    # ── Cycle summary + AI cost report ────────────────────────────────────────
+    # Printed here (inside the graph) rather than after graph.invoke() in
+    # main.py, because _check_for_update() may call os.execv() to restart the
+    # process — if it does, graph.invoke() never returns and the post-invoke
+    # code in main.py is never reached.
+    _cycle_num   = state.get("cycle", 0)
+    _tweet_url   = state.get("tweet_url", "n/a")
+    _score       = state.get("engagement_score", 0.0)
+    _t0          = state.get("_cycle_start_time")
+    _elapsed_sec = (time.perf_counter() - _t0) if _t0 is not None else None
+    cycle_summary(_cycle_num, _tweet_url, _score, elapsed_sec=_elapsed_sec)
+    logger.info(
+        "Cycle %d complete. url=%s score=%.2f",
+        _cycle_num, _tweet_url, _score,
+    )
+
+    from services.cost_report import compute_cost
+    from services.usage import get_run_usage
+    _usage = get_run_usage()
+    _total_rmb, _breakdown = compute_cost(_usage)
+    cycle_cost_summary(_usage, _breakdown, _total_rmb)
+    logger.info(
+        "Cycle %d AI cost: ¥%.4f across %d model(s)",
+        _cycle_num, _total_rmb, len(_usage),
+    )
 
     improvement_duration = 0
 

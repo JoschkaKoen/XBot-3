@@ -733,6 +733,7 @@ def generate_content(state: dict) -> dict:
         )
 
     # ── 1. Pick a source-language word + determine its CEFR level ─────────────
+    src = config.SOURCE_LANGUAGE
     german_word: Optional[str] = None
     avoid_words: list = []
     word_from_trends: bool = False
@@ -770,7 +771,6 @@ def generate_content(state: dict) -> dict:
         avoid_words = list(dict.fromkeys(history_words + strategy.get("avoid_words", [])))
         strategy = {**strategy, "avoid_words": avoid_words}
         word_prompt = _build_word_prompt(strategy)
-        src = config.SOURCE_LANGUAGE
         avoid_sys_str = ", ".join(f'"{w}"' for w in avoid_words[-20:]) if avoid_words else "none"
         raw_word = get_ai_response(
             config.WORD_PICK_MODEL,
