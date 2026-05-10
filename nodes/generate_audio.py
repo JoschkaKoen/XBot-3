@@ -44,7 +44,7 @@ from datetime import datetime
 
 import config
 from config import VOICES_DIR, ELEVENLABS_API_KEY
-from utils.retry import with_retry, retry_call
+from utils.retry import with_retry
 from utils.ui import stage_banner, ok, warn as ui_warn, info as ui_info
 from services.ai_client import get_ai_response
 
@@ -69,12 +69,6 @@ def _voice_settings(speed: float) -> VoiceSettings:
     # stability      — 0 = expressive/varied, 1 = robotic/consistent.  0.75 is a good middle ground.
     # similarity_boost — how closely the model adheres to the original voice clone.  0.85 = high fidelity.
     return VoiceSettings(stability=0.75, similarity_boost=0.85, speed=speed)
-
-
-def _get_voice_picker_ai():
-    """Return the AI function to use for voice selection."""
-    from nodes.generate_content import _model_to_ai_fn
-    return _model_to_ai_fn(config.VOICE_PICKER_MODEL)
 
 
 def _parse_subject_gender(raw: str) -> str:
@@ -108,15 +102,13 @@ def _infer_subject_gender_from_prompt(image_prompt: str) -> str:
     )
     system = "Reply with exactly one word: male, female, or neutral. No punctuation or explanation."
     try:
-        raw = retry_call(
-            get_ai_response,
+        raw = get_ai_response(
+            config.SUBJECT_GENDER_MODEL,
             user_msg,
             system,
-            max_attempts=3,
-            base_delay=1.5,
-            label="subject_gender",
             max_tokens=15,
             temperature=0.0,
+            retry_label="subject_gender",
         ).strip()
         g = _parse_subject_gender(raw)
         logger.info("Image subject gender for TTS: %s (model raw: %r)", g, raw[:120])
@@ -197,13 +189,13 @@ def _pick_voice_by_ai(full_tweet: str, pool: list, subject_gender: str = "neutra
         "Reply with only the number of the best-matching voice -- no explanation."
     )
     try:
-        raw = retry_call(
-            _get_voice_picker_ai(),
+        raw = get_ai_response(
+            config.VOICE_PICKER_MODEL,
             prompt,
             system,
             max_tokens=10,
             temperature=0.0,
-            label="voice_pick",
+            retry_label="voice_pick",
         ).strip()
         m = _re.search(r'\b(\d+)\b', raw)
         if m:

@@ -48,7 +48,9 @@ Most settings are read from settings.env (git-tracked) and .env (gitignored, API
 
   AI MODELS (advanced)
     TWEET_MODEL, STRATEGY_MODEL, WORD_PICK_MODEL, etc.
-    Valid values: "flagship", "reasoning", "non-reasoning"
+    Format: "<model>[, <thinking_tokens>][, <max_output_tokens>]"
+    Provider auto-detected by name prefix (grok-/gemini-/qwen-/kimi-).
+    Available models live in AI API costs.xlsx.
 
 ================================================================================
 """
@@ -131,8 +133,10 @@ def resolve_language_config() -> None:
     TARGET_FLAG_COLORS   = derived.get("target_flag_colors",   TARGET_FLAG_COLORS)
 
 
-# ── AI provider ──────────────────────────────────────────────────────────────
-AI_PROVIDER: str = os.getenv("AI_PROVIDER", "grok").lower().strip()
+# ── AI cost spreadsheet path ────────────────────────────────────────────────
+# Shared with eXercise. services/cost_report.py searches this path first,
+# then ~/Programming/eXercise/AI API costs.xlsx, then this repo's root.
+AI_COSTS_XLSX: str = os.getenv("AI_COSTS_XLSX", "")
 
 # ── Twitter / X ──────────────────────────────────────────────────────────────
 X_BEARER_TOKEN: str = os.getenv("X_BEARER_TOKEN", "")
@@ -243,7 +247,7 @@ def reload_settings() -> None:
     load_dotenv("settings.env", override=True)
     load_dotenv(override=True)  # .env (API keys) always wins
 
-    global AI_PROVIDER
+    global AI_COSTS_XLSX
     global USE_TRENDS, USE_TRENDS_CYCLE, USE_TRENDS_MODE_CYCLE, TREND_CANDIDATE_LIMIT, CEFR_ROTATION, METRICS_FETCH_PER_CYCLE
     global IMAGE_STYLE_CYCLE, IMAGE_STYLE
     global TWEET_STYLE_CYCLE, TWEET_STYLE
@@ -262,8 +266,9 @@ def reload_settings() -> None:
     global COMFYUI_ARGS
     global TWEET_MODEL, TWEET_PICKER_MODEL, STRATEGY_MODEL
     global TREND_FILTER_MODEL, WORD_PICK_MODEL, SIMILARITY_MODEL, VOICE_PICKER_MODEL
+    global IMAGE_PROMPT_MODEL, VIDEO_PROMPT_MODEL, SUBJECT_GENDER_MODEL
 
-    AI_PROVIDER                    = os.getenv("AI_PROVIDER", "grok").lower().strip()
+    AI_COSTS_XLSX                  = os.getenv("AI_COSTS_XLSX", "")
     USE_TRENDS_MODE_CYCLE          = _parse_use_trends_mode_cycle(os.getenv("USE_TRENDS"))
     USE_TRENDS_CYCLE               = [m == "trends" for m in USE_TRENDS_MODE_CYCLE]
     USE_TRENDS                     = USE_TRENDS_CYCLE[0]
@@ -330,13 +335,16 @@ def reload_settings() -> None:
     STRATEGY_METRICS_UPDATES_ENABLED, STRATEGY_UPDATE_INTERVAL_HOURS = _parse_strategy_update_interval(
         os.getenv("STRATEGY_UPDATE_INTERVAL_HOURS", "24")
     )
-    TWEET_MODEL                    = os.getenv("TWEET_MODEL", "flagship").lower().strip()
-    TWEET_PICKER_MODEL             = os.getenv("TWEET_PICKER_MODEL", "flagship").lower().strip()
-    STRATEGY_MODEL                 = os.getenv("STRATEGY_MODEL", "reasoning").lower().strip()
-    TREND_FILTER_MODEL             = os.getenv("TREND_FILTER_MODEL", "non-reasoning").lower().strip()
-    WORD_PICK_MODEL                = os.getenv("WORD_PICK_MODEL", "non-reasoning").lower().strip()
-    SIMILARITY_MODEL               = os.getenv("SIMILARITY_MODEL", "non-reasoning").lower().strip()
-    VOICE_PICKER_MODEL             = os.getenv("VOICE_PICKER_MODEL", "non-reasoning").lower().strip()
+    TWEET_MODEL                    = os.getenv("TWEET_MODEL", "grok-4.3").strip()
+    TWEET_PICKER_MODEL             = os.getenv("TWEET_PICKER_MODEL", "grok-4-1-fast-reasoning").strip()
+    STRATEGY_MODEL                 = os.getenv("STRATEGY_MODEL", "grok-4-1-fast-reasoning").strip()
+    TREND_FILTER_MODEL             = os.getenv("TREND_FILTER_MODEL", "grok-4-1-fast-non-reasoning").strip()
+    WORD_PICK_MODEL                = os.getenv("WORD_PICK_MODEL", "grok-4-1-fast-reasoning").strip()
+    SIMILARITY_MODEL               = os.getenv("SIMILARITY_MODEL", "grok-4-1-fast-non-reasoning").strip()
+    VOICE_PICKER_MODEL             = os.getenv("VOICE_PICKER_MODEL", "grok-4-1-fast-non-reasoning").strip()
+    IMAGE_PROMPT_MODEL             = os.getenv("IMAGE_PROMPT_MODEL", "grok-4-1-fast-non-reasoning").strip()
+    VIDEO_PROMPT_MODEL             = os.getenv("VIDEO_PROMPT_MODEL", "grok-4-1-fast-non-reasoning").strip()
+    SUBJECT_GENDER_MODEL           = os.getenv("SUBJECT_GENDER_MODEL", "grok-4-1-fast-non-reasoning").strip()
     COMFYUI_ARGS                   = os.getenv("COMFYUI_ARGS", "--normalvram --fp16-vae").strip()
 
 # ── Image generation provider ────────────────────────────────────────────────
@@ -544,51 +552,23 @@ KTV_FONT_SIZE: int = _parse_ktv_font_size(os.getenv("KTV_FONT_SIZE"))
 # each generated image, reinforcing the language-learning branding.
 FLAG_OVERLAY: bool = os.getenv("FLAG_OVERLAY", "true").lower().strip() == "true"
 
-# Model used for strategy analysis ("reasoning" = grok-4-1-fast, "non-reasoning" = grok-4-1-fast-non-reasoning).
-# Only applies when AI_PROVIDER=grok. Scaleway always uses llama-3.3-70b.
-STRATEGY_MODEL: str = os.getenv("STRATEGY_MODEL", "reasoning").lower().strip()
+# ── AI Models ────────────────────────────────────────────────────────────────
+# Each variable holds the literal model name (no aliases). Format is:
+#     <model>[, <thinking_tokens>][, <max_output_tokens>]
+# Provider is auto-detected by name prefix (grok-/gemini-/qwen-/kimi-/moonshot-).
+# Available models and prices live in AI API costs.xlsx.
 
-# Model used for tweet generation:
-#   "flagship"      = grok-4          (best language quality, ~$0.003/tweet)
-#   "reasoning"     = grok-4-1-fast   (reasoning variant, same price as fast)
-#   "non-reasoning" = grok-4-1-fast-non-reasoning  (default fast model)
-# Only applies when AI_PROVIDER=grok.
-TWEET_MODEL: str = os.getenv("TWEET_MODEL", "flagship").lower().strip()
-
-# Model used to pick the best tweet from the generated candidates:
-#   "flagship"      = grok-4  (default — highest judgement quality)
-#   "reasoning"     = grok-4-1-fast
-#   "non-reasoning" = grok-4-1-fast-non-reasoning
-# Only applies when AI_PROVIDER=grok.
-TWEET_PICKER_MODEL: str = os.getenv("TWEET_PICKER_MODEL", "flagship").lower().strip()
-
-# Model used to filter trend keywords and rank them by German learning value:
-#   "flagship"      = grok-4
-#   "reasoning"     = grok-4-1-fast
-#   "non-reasoning" = grok-4-1-fast-non-reasoning  (default — fast and cheap)
-# Only applies when AI_PROVIDER=grok.
-TREND_FILTER_MODEL: str = os.getenv("TREND_FILTER_MODEL", "non-reasoning").lower().strip()
-
-# Model used for free-form word selection (when trends are off this cycle or trends yield nothing):
-#   "flagship"      = grok-4
-#   "reasoning"     = grok-4-1-fast
-#   "non-reasoning" = grok-4-1-fast-non-reasoning  (default)
-# Only applies when AI_PROVIDER=grok.
-WORD_PICK_MODEL: str = os.getenv("WORD_PICK_MODEL", "non-reasoning").lower().strip()
-
-# Model used for the semantic duplicate / similarity check:
-#   "flagship"      = grok-4
-#   "reasoning"     = grok-4-1-fast
-#   "non-reasoning" = grok-4-1-fast-non-reasoning  (default)
-# Only applies when AI_PROVIDER=grok.
-SIMILARITY_MODEL: str = os.getenv("SIMILARITY_MODEL", "non-reasoning").lower().strip()
-
-# Model used to pick the best TTS voice for the tweet:
-#   "flagship"      = grok-4
-#   "reasoning"     = grok-4-1-fast
-#   "non-reasoning" = grok-4-1-fast-non-reasoning  (default — fast and cheap)
-# Only applies when AI_PROVIDER=grok.
-VOICE_PICKER_MODEL: str = os.getenv("VOICE_PICKER_MODEL", "non-reasoning").lower().strip()
+STRATEGY_MODEL: str       = os.getenv("STRATEGY_MODEL",       "grok-4-1-fast-reasoning").strip()
+TWEET_MODEL: str          = os.getenv("TWEET_MODEL",          "grok-4.3").strip()
+TWEET_PICKER_MODEL: str   = os.getenv("TWEET_PICKER_MODEL",   "grok-4-1-fast-reasoning").strip()
+TREND_FILTER_MODEL: str   = os.getenv("TREND_FILTER_MODEL",   "grok-4-1-fast-non-reasoning").strip()
+WORD_PICK_MODEL: str      = os.getenv("WORD_PICK_MODEL",      "grok-4-1-fast-reasoning").strip()
+SIMILARITY_MODEL: str     = os.getenv("SIMILARITY_MODEL",     "grok-4-1-fast-non-reasoning").strip()
+VOICE_PICKER_MODEL: str   = os.getenv("VOICE_PICKER_MODEL",   "grok-4-1-fast-non-reasoning").strip()
+# Internal tooling — short cheap calls; usually leave on the cheapest fast Grok.
+IMAGE_PROMPT_MODEL: str   = os.getenv("IMAGE_PROMPT_MODEL",   "grok-4-1-fast-non-reasoning").strip()
+VIDEO_PROMPT_MODEL: str   = os.getenv("VIDEO_PROMPT_MODEL",   "grok-4-1-fast-non-reasoning").strip()
+SUBJECT_GENDER_MODEL: str = os.getenv("SUBJECT_GENDER_MODEL", "grok-4-1-fast-non-reasoning").strip()
 
 # How many hours must pass before metrics are refreshed and strategy is re-analysed.
 # Set STRATEGY_UPDATE_INTERVAL_HOURS=false (or off/never/disabled) to never refresh

@@ -23,7 +23,7 @@ updated by the analyze node after each cycle.
   - nodes.analyze:     Provides strategy via load_strategy()
   - services.history:  Provides load_history() for avoid_words
   - services.x_trends: Provides get_trends() for trend-based word selection
-  - services.grok_ai:  AI functions for different model tiers
+  - services.ai_client: get_ai_response(model_spec, …) — multi-provider chat
   - scaffolds:         Provides next_scaffold() for tweet format templates
 ================================================================================
 
@@ -45,55 +45,8 @@ from typing import Optional
 import config
 from services.ai_client import get_ai_response
 from services.x_trends import get_trends
-from utils.retry import retry_call
 from utils.text import truncate_emoji_pairs as _truncate_emoji_pairs
 from utils.ui import stage_banner, ok, tweet_box, info, warn as ui_warn
-
-
-def _get_tweet_ai() -> callable:
-    """Return the AI function to use for tweet generation."""
-    if config.AI_PROVIDER == "grok":
-        if config.TWEET_MODEL == "flagship":
-            from services.grok_ai import get_grok_flagship_response
-            return get_grok_flagship_response
-        if config.TWEET_MODEL == "reasoning":
-            from services.grok_ai import get_grok_reasoning_response
-            return get_grok_reasoning_response
-    return get_ai_response
-
-
-def _get_tweet_picker_ai() -> callable:
-    """Return the AI function to use for picking the best tweet candidate (TWEET_PICKER_MODEL)."""
-    return _model_to_ai_fn(config.TWEET_PICKER_MODEL)
-
-
-def _model_to_ai_fn(model: str) -> callable:
-    """Resolve a model name string to the corresponding Grok AI function."""
-    if config.AI_PROVIDER == "grok":
-        if model == "flagship":
-            from services.grok_ai import get_grok_flagship_response
-            return get_grok_flagship_response
-        if model == "reasoning":
-            from services.grok_ai import get_grok_reasoning_response
-            return get_grok_reasoning_response
-        from services.grok_ai import get_grok_response
-        return get_grok_response
-    return get_ai_response
-
-
-def _get_trend_filter_ai() -> callable:
-    """AI function for filtering trend keywords (TREND_FILTER_MODEL)."""
-    return _model_to_ai_fn(config.TREND_FILTER_MODEL)
-
-
-def _get_word_pick_ai() -> callable:
-    """AI function for free-form word selection (WORD_PICK_MODEL)."""
-    return _model_to_ai_fn(config.WORD_PICK_MODEL)
-
-
-def _get_similarity_ai() -> callable:
-    """AI function for semantic duplicate / similarity check (SIMILARITY_MODEL)."""
-    return _model_to_ai_fn(config.SIMILARITY_MODEL)
 
 
 def _load_strategy_from_file() -> dict:
@@ -283,7 +236,7 @@ def _call_tweet_ai(
     scaffold: str,
     strategy: dict,
     top_tweets: list,
-    tweet_ai: callable,
+    tweet_model: str,
     cefr_level: str = "",
     extra_instruction: str = "",
     word_from_trends: bool = False,
@@ -291,17 +244,17 @@ def _call_tweet_ai(
 ) -> list:
     """
     Fire 3 parallel API calls, each generating one tweet candidate.
-    
+
     Uses ThreadPoolExecutor to generate candidates concurrently, reducing
     total latency from ~15s (sequential) to ~5s (parallel). Each candidate
     is printed to the terminal as soon as it arrives for real-time feedback.
-    
+
     Args:
         trending_word: The source-language word to build the tweet around.
         scaffold: The tweet format template with placeholders.
         strategy: Current strategy dict (topic, style, avoid_words).
         top_tweets: Past successful tweets for in-context learning (currently disabled).
-        tweet_ai: The AI function to call (flagship/reasoning/default).
+        tweet_model: Model spec string (e.g. "grok-4.3" or "qwen3.6-flash, 1024, 8192").
         cefr_level: Pre-determined CEFR level for the word, or empty.
         extra_instruction: Additional constraint to append to the prompt.
         word_from_trends: If True, skip topic/style from strategy (trend already sets topic).
@@ -344,13 +297,13 @@ def _call_tweet_ai(
     lock = threading.Lock()
 
     def _single_call(idx: int) -> dict:
-        raw = retry_call(
-            tweet_ai,
+        raw = get_ai_response(
+            tweet_model,
             prompt,
             system_prompt,
             max_tokens=700,
             temperature=0.9,
-            label=f"generate_tweet_{idx}",
+            retry_label=f"generate_tweet_{idx}",
         )
         raw = raw.strip()
         if raw.startswith("```"):
@@ -463,13 +416,13 @@ def _select_best_tweet(candidates: list, source_word: str, cefr_level: str, funn
     reason = ""
     try:
         import re as _re
-        raw = retry_call(
-            _get_tweet_picker_ai(),
+        raw = get_ai_response(
+            config.TWEET_PICKER_MODEL,
             selection_prompt,
             system_prompt_selector,
             max_tokens=60,
             temperature=0.0,
-            label="select_tweet",
+            retry_label="select_tweet",
         )
         raw = raw.strip()
         m = _re.search(r'\b([123])\b', raw)
@@ -577,13 +530,13 @@ def _pick_word_from_trends(avoid_words: list) -> Optional[tuple[str, str, str]]:
     )
 
     try:
-        raw = retry_call(
-            _get_trend_filter_ai(),
+        raw = get_ai_response(
+            config.TREND_FILTER_MODEL,
             pick_req,
             f"You are an experienced {src} teacher. Your only goal is to select words that are maximally useful for {tgt}-speaking {src} learners in real everyday life. Trend relevance is secondary — learning value has absolute priority. Reply exclusively with valid JSON.",
             max_tokens=1200,
             temperature=0.3,
-            label="trend_pick",
+            retry_label="trend_pick",
         )
         text = raw.strip()
         lines = text.splitlines()
@@ -727,14 +680,14 @@ def _is_word_too_similar(word: str, avoid_words: list) -> tuple[bool, str]:
     )
 
     try:
-        raw = retry_call(
-            _get_similarity_ai(),
+        raw = get_ai_response(
+            config.SIMILARITY_MODEL,
             prompt,
             f"You check whether a {src} word is too similar to a list of already used words. "
             "Reply exclusively with valid JSON.",
             max_tokens=60,
             temperature=0.0,
-            label="similarity_check",
+            retry_label="similarity_check",
         ).strip()
         if raw.startswith("```"):
             lines = raw.split("\n")
@@ -819,8 +772,8 @@ def generate_content(state: dict) -> dict:
         word_prompt = _build_word_prompt(strategy)
         src = config.SOURCE_LANGUAGE
         avoid_sys_str = ", ".join(f'"{w}"' for w in avoid_words[-20:]) if avoid_words else "none"
-        raw_word = retry_call(
-            _get_word_pick_ai(),
+        raw_word = get_ai_response(
+            config.WORD_PICK_MODEL,
             word_prompt,
             f"You are a {src} teacher creating vocabulary content for social media. "
             "You select exclusively common, widely-used words with positive or neutral meaning — no rare, negative, or depressing words. "
@@ -828,7 +781,7 @@ def generate_content(state: dict) -> dict:
             "You reply exclusively with valid JSON.",
             max_tokens=40,
             temperature=0.9,
-            label="pick_word",
+            retry_label="pick_word",
         ).strip()
         try:
             # Strip markdown fences if present
@@ -879,8 +832,8 @@ def generate_content(state: dict) -> dict:
             f"they were all just rejected because they are already used: {rejected_str}. "
             f"You MUST pick a completely different word."
         )
-        raw_word = retry_call(
-            _get_word_pick_ai(),
+        raw_word = get_ai_response(
+            config.WORD_PICK_MODEL,
             word_prompt,
             f"You are a {src} teacher creating vocabulary content for social media. "
             "You select exclusively common, widely-used words with positive or neutral meaning — no rare, negative, or depressing words. "
@@ -888,7 +841,7 @@ def generate_content(state: dict) -> dict:
             "You reply exclusively with valid JSON.",
             max_tokens=40,
             temperature=0.9,
-            label="pick_word_retry",
+            retry_label="pick_word_retry",
         ).strip()
         try:
             lines = raw_word.splitlines()
@@ -920,11 +873,11 @@ def generate_content(state: dict) -> dict:
     top_tweets: list = []  # disabled — past examples caused topic echo-chamber (food/pizza bias)
     logger.info("Past tweet examples disabled — no in-context examples passed to tweet AI.")
 
-    tweet_ai = _get_tweet_ai()
+    tweet_model = config.TWEET_MODEL
 
     # ── 3. Generate 3 candidates → pick best ──────────────────────────────────
     funny = tweet_style == "funny"
-    candidates = _call_tweet_ai(german_word, scaffold, strategy, top_tweets, tweet_ai, cefr_level=word_cefr, word_from_trends=word_from_trends, funny=funny)
+    candidates = _call_tweet_ai(german_word, scaffold, strategy, top_tweets, tweet_model, cefr_level=word_cefr, word_from_trends=word_from_trends, funny=funny)
     logger.info("Generated %d tweet candidate(s).", len(candidates))
     result = _select_best_tweet(candidates, german_word, word_cefr, funny=funny)
 
@@ -951,7 +904,7 @@ def generate_content(state: dict) -> dict:
             )
             ui_warn(f"Tweet too long ({tweet_len} chars) — retrying with length constraint …")
             retry_candidates = _call_tweet_ai(
-                german_word, scaffold, strategy, top_tweets, tweet_ai,
+                german_word, scaffold, strategy, top_tweets, tweet_model,
                 cefr_level=word_cefr,
                 extra_instruction=f"Keep total length under {config.MAX_TWEET_LENGTH - 20} characters",
                 word_from_trends=word_from_trends,

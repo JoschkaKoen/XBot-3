@@ -43,16 +43,7 @@ from config import HISTORY_FILE, STRATEGY_FILE, STRATEGY_HISTORY_FILE
 from services.ai_client import get_ai_response
 from services.history import load_history
 from utils.io import atomic_json_write, safe_json_read
-from utils.retry import retry_call
 from utils.ui import stage_banner, ok, info as ui_info, warn as ui_warn
-
-
-def _get_strategy_ai() -> callable:
-    """Return the AI function to use for strategy analysis."""
-    if config.AI_PROVIDER == "grok" and config.STRATEGY_MODEL == "reasoning":
-        from services.grok_ai import get_grok_reasoning_response
-        return get_grok_reasoning_response
-    return get_ai_response
 
 
 logger = logging.getLogger("xbot.analyze")
@@ -364,17 +355,15 @@ def analyze_and_improve(state: dict) -> dict:
     frozen, cefr_counts_pre = _cefr_frozen(history)
     prompt = _build_analysis_prompt(history_slice, current_scaffold, funny_mode="funny" in config.TWEET_STYLE_CYCLE, cefr_frozen=frozen)
 
-    strategy_ai = _get_strategy_ai()
-    model_label = "grok-reasoning" if (config.AI_PROVIDER == "grok" and config.STRATEGY_MODEL == "reasoning") else "default"
-    logger.info("Running strategy analysis with model: %s", model_label)
+    logger.info("Running strategy analysis with model: %s", config.STRATEGY_MODEL)
 
-    raw_strategy: str = retry_call(
-        strategy_ai,
+    raw_strategy: str = get_ai_response(
+        config.STRATEGY_MODEL,
         prompt,
         _system_prompt(),
         max_tokens=1200,
         temperature=0.4,
-        label="analyze_strategy",
+        retry_label="analyze_strategy",
     )
     logger.debug("Raw strategy response: %s", raw_strategy)
 

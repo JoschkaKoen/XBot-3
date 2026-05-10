@@ -47,6 +47,7 @@ from utils.errors import FatalProviderError
 from utils.ui import (
     startup_banner,
     cycle_banner,
+    cycle_cost_summary,
     cycle_summary,
     err,
     format_elapsed,
@@ -56,18 +57,10 @@ from utils.ui import (
 
 def _model_lines() -> list:
     """Build (label, model-name) pairs for the startup banner (reads live config)."""
-    if _config.AI_PROVIDER == "grok":
-        _model_names = {
-            "flagship":      "grok-4  (flagship)",
-            "reasoning":     "grok-4-1-fast  (reasoning)",
-            "non-reasoning": "grok-4-1-fast-non-reasoning",
-        }
-        tweet_model    = _model_names.get(_config.TWEET_MODEL, _config.TWEET_MODEL)
-        strategy_model = _model_names.get(_config.STRATEGY_MODEL, _config.STRATEGY_MODEL)
-        trend_model    = "grok-4-1-fast  (reasoning)"
-        word_model     = "grok-4-1-fast-non-reasoning"
-    else:
-        tweet_model = strategy_model = trend_model = word_model = f"{_config.AI_PROVIDER} (default)"
+    tweet_model    = _config.TWEET_MODEL
+    strategy_model = _config.STRATEGY_MODEL
+    trend_model    = _config.TREND_FILTER_MODEL
+    word_model     = _config.WORD_PICK_MODEL
 
     lines = [
         # ── Language pair ──────────────────────────────────────────────────────
@@ -225,6 +218,8 @@ def main():
         cycle += 1
         cycle_banner(cycle)
         logger.info("Starting cycle %d …", cycle)
+        from services.usage import reset_run_usage
+        reset_run_usage()
         t_cycle = time.perf_counter()
 
         try:
@@ -248,6 +243,18 @@ def main():
                 elapsed,
                 tweet_url,
                 score,
+            )
+
+            # AI-cost report — must come after cycle_summary so the box stays
+            # visually distinct. Logs the total to bot.log for queryability.
+            from services.cost_report import compute_cost
+            from services.usage import get_run_usage
+            usage = get_run_usage()
+            total_rmb, breakdown = compute_cost(usage)
+            cycle_cost_summary(usage, breakdown, total_rmb)
+            logger.info(
+                "Cycle %d AI cost: ¥%.4f across %d model(s)",
+                cycle, total_rmb, len(usage),
             )
 
         except KeyboardInterrupt:

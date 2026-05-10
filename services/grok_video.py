@@ -110,6 +110,7 @@ def build_motion_prompt(
     *image_style* (photographic vs disney) so the motion feels natural for
     the source material and stays within each engine's strengths.
     """
+    import config
     from services.ai_client import get_ai_response
 
     # Engine-specific constraints
@@ -143,7 +144,9 @@ def build_motion_prompt(
     )
 
     prompt = get_ai_response(
-        user_msg, _SYSTEM_PROMPT, max_tokens=180, temperature=0.6
+        config.VIDEO_PROMPT_MODEL, user_msg, _SYSTEM_PROMPT,
+        max_tokens=180, temperature=0.6,
+        retry_label="video_motion_prompt",
     ).strip()
 
     # Strip stray labels/quotes the LLM may have added despite instructions

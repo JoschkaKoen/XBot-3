@@ -221,3 +221,73 @@ def cycle_summary(cycle: int, tweet_url: str, score: float, *, elapsed_sec: floa
     print(f"{_GREEN}  📈  Engagement score: {score:.2f}{_R}")
     print(f"{_GREEN}{_BOLD}{'═' * w}{_R}")
     print()
+
+
+def cycle_cost_summary(
+    token_usage: dict[str, dict[str, int]],
+    breakdown: dict[str, dict],
+    total_rmb: float,
+) -> None:
+    """Print the per-cycle AI cost table (model × tokens × ¥).
+
+    Skips printing entirely when *token_usage* is empty (cycle made no AI
+    calls). Adds a footer hint when any model resolves to ¥0.00 — i.e.
+    the model name was missing from AI API costs.xlsx.
+    """
+    if not token_usage:
+        return
+
+    total_input    = sum(v.get("input", 0)    for v in token_usage.values())
+    total_output   = sum(v.get("output", 0)   for v in token_usage.values())
+    total_thinking = sum(v.get("thinking", 0) for v in token_usage.values())
+
+    # Column widths
+    mw = max([len(m) for m in breakdown] + [len("Model"), len("Total")])
+    iw = max(
+        [len(f"{d['input_tokens']:,}") for d in breakdown.values()] +
+        [len("Input"), len(f"{total_input:,}")]
+    )
+    ow = max(
+        [len(f"{d['output_tokens']:,}") for d in breakdown.values()] +
+        [len("Output"), len(f"{total_output:,}")]
+    )
+    tw = max(
+        [len(f"{d.get('thinking_tokens', 0):,}") for d in breakdown.values()] +
+        [len("Thinking"), len(f"{total_thinking:,}")]
+    )
+    cost_strs = [f"¥{d['cost_rmb']:.2f}" for d in breakdown.values()] + [f"¥{total_rmb:.2f}", "Cost"]
+    cw = max(len(s) for s in cost_strs)
+
+    sep = "  " + "─" * (mw + 3 + iw + 3 + ow + 3 + tw + 3 + cw)
+    n_models = len(token_usage)
+
+    print()
+    print(f"{_CYAN}{_BOLD}  💰  AI cost: ¥{total_rmb:.2f}  ({n_models} model{'s' if n_models != 1 else ''}){_R}")
+    print()
+    print(
+        f"{_DIM}  {'Model':<{mw}}   {'Input':>{iw}}   {'Output':>{ow}}"
+        f"   {'Thinking':>{tw}}   {'Cost':>{cw}}{_R}"
+    )
+    print(f"{_DIM}{sep}{_R}")
+    for model, d in breakdown.items():
+        cs = f"¥{d['cost_rmb']:.2f}"
+        print(
+            f"  {model:<{mw}}   {d['input_tokens']:>{iw},}"
+            f"   {d['output_tokens']:>{ow},}"
+            f"   {d.get('thinking_tokens', 0):>{tw},}"
+            f"   {cs:>{cw}}"
+        )
+    print(f"{_DIM}{sep}{_R}")
+    ts = f"¥{total_rmb:.2f}"
+    print(
+        f"{_BOLD}  {'Total':<{mw}}   {total_input:>{iw},}"
+        f"   {total_output:>{ow},}   {total_thinking:>{tw},}"
+        f"   {ts:>{cw}}{_R}"
+    )
+
+    if total_rmb == 0.0 or any(d["cost_rmb"] == 0.0 for d in breakdown.values()):
+        print(
+            f"{_GRAY}  (one or more models missing from AI API costs.xlsx — "
+            f"add a row to fix){_R}"
+        )
+    print()

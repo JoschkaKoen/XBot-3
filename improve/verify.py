@@ -61,7 +61,7 @@ def verify_tweet_text(tweet_text: str) -> dict:
     """LLM-rated tweet-quality check. Returns {pass, score, issues}."""
     if not tweet_text:
         return {"pass": False, "score": 0, "issues": ["no tweet text"]}
-    from services.grok_ai import get_grok_response
+    from services.ai_client import get_ai_response
     prompt = f"""Evaluate this German-learning tweet:
 ---
 {tweet_text}
@@ -80,11 +80,13 @@ Respond in JSON only: {{"pass": true/false, "score": 1-10, "issues": [...]}}
 Pass if score >= 7.
 """
     try:
-        raw = get_grok_response(
+        raw = get_ai_response(
+            "grok-4-1-fast-non-reasoning",
             prompt,
             "You are a strict quality reviewer for German learning social media content. Respond only with JSON.",
             max_tokens=300,
             temperature=0.1,
+            retry_label="verify_tweet_text",
         )
         result = _parse_json_response(raw)
         result.setdefault("pass", result.get("score", 0) >= 7)
@@ -114,7 +116,7 @@ def verify_image_quality(image_path: str, midjourney_prompt: str) -> dict:
 
 def verify_terminal_output(terminal_output: str) -> dict:
     """LLM check that every cycle stage ran and no errors fired."""
-    from services.grok_ai import get_grok_response
+    from services.ai_client import get_ai_response
     if len(terminal_output) > 5000:
         head = terminal_output[:2500]
         tail = terminal_output[-2500:]
@@ -149,11 +151,13 @@ Respond in JSON only:
 Pass if score >= 7 AND all_stages_present is true AND no unhandled exceptions.
 """
     try:
-        raw = get_grok_response(
+        raw = get_ai_response(
+            "grok-4-1-fast-non-reasoning",
             prompt,
             "You are a strict quality reviewer for bot terminal output. Respond only with JSON.",
             max_tokens=400,
             temperature=0.1,
+            retry_label="verify_terminal_output",
         )
         result = _parse_json_response(raw)
         result.setdefault("score", 0)

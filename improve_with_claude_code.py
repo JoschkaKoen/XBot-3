@@ -255,7 +255,7 @@ Everything else is fair game, including:
 - nodes/generate_image.py       — Midjourney prompt construction
 - nodes/analyze.py              — strategy analysis prompts
 - nodes/score.py                — engagement score weighting formula
-- services/grok_ai.py           — model name constants, call parameters
+- services/ai_client.py         — multi-provider chat client, model dispatch
 - services/image_ranker.py      — image scoring and selection logic
 - data/strategy.json            — strategy parameters
 - Any other file where you see a genuine improvement opportunity

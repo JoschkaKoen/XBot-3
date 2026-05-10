@@ -124,13 +124,13 @@ def _build_image_prompt(
 
     max_tokens = 700 if is_zit else 400
 
-    image_prompt: str = retry_call(
-        get_ai_response,
+    image_prompt: str = get_ai_response(
+        config.IMAGE_PROMPT_MODEL,
         img_req,
         system_prompt,
         max_tokens=max_tokens,
         temperature=0.8,
-        label="img_prompt",
+        retry_label="img_prompt",
     ).strip()
 
     image_prompt = image_prompt.replace("\u2018", "'").replace("\u2019", "'").replace("\u201c", "").replace("\u201d", "")
