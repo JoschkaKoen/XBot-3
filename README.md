@@ -36,7 +36,7 @@ Every cycle the bot:
 3. **Determines CEFR level** (A1–C2) and looks up the grammatical article (der/die/das for German nouns).
 4. **Generates an image** — via Grok Imagine, Midjourney, or local **Z-Image-Turbo** (ComfyUI), matching the example sentence. For Z-Image-Turbo you can generate several candidates (`GENERATED_IMAGE_COUNT`); optionally each PNG is passed through **[InstructIR](https://github.com/mv-lab/InstructIR)** for instruction-guided restoration **before** [ImageReward](https://github.com/THUDM/ImageReward) picks the best file. Resolution is unchanged (same width × height as ComfyUI output).
 5. **Animates the image** — optionally via Grok Imagine I2V or a local Wan2.1/2.2 model, producing a short MP4.
-6. **Generates TTS audio** — via ElevenLabs. Voice is selected per-tweet by the LLM based on the sentence mood.
+6. **Generates TTS audio** — via xAI (Grok) Voice. Voice is selected per-tweet by the LLM based on the sentence mood.
 7. **Optionally mixes background music** onto the voice track (`ENABLE_BACKGROUND_MUSIC=on` in `settings.env`; default off).
 8. **Renders a KTV video** — karaoke-style word-by-word highlighting synced to the audio, overlaid on the animated image.
 9. **Posts the tweet** with the video attached to X.
@@ -106,12 +106,11 @@ nano .env
 
 | Variable | Description |
 |---|---|
-| `XAI_API_KEY` | xAI API key — used for Grok LLM, Grok Imagine image generation, and Grok I2V |
+| `XAI_API_KEY` | xAI API key — used for Grok LLM, Grok Imagine image generation, Grok I2V, and Grok Voice (TTS) |
 | `TWITTER_CONSUMER_KEY` | X Developer App Consumer Key |
 | `TWITTER_CONSUMER_SECRET` | X Developer App Consumer Secret |
 | `TWITTER_ACCESS_TOKEN` | X OAuth 1.0a Access Token |
 | `TWITTER_ACCESS_TOKEN_SECRET` | X OAuth 1.0a Access Token Secret |
-| `ELEVENLABS_API_KEY` | ElevenLabs API key for TTS |
 | `TT_API_KEY` | TTAPI.io key for Midjourney access (only if `IMAGE_PROVIDER=midjourney`) |
 | `SCW_SECRET_KEY` | Scaleway secret key (only if `AI_PROVIDER=scaleway`) |
 | `SCW_DEFAULT_PROJECT_ID` | Scaleway project ID (only if `AI_PROVIDER=scaleway`) |
@@ -340,7 +339,7 @@ XBot 3/
 ├── nodes/
 │   ├── generate_content.py        # Word selection, sentence, translation, tweet assembly
 │   ├── generate_image.py          # Image generation (Grok / Midjourney / Z-Image-Turbo), optional InstructIR, ImageReward ranking
-│   ├── generate_audio.py          # ElevenLabs TTS — voice selection + karaoke timings
+│   ├── generate_audio.py          # xAI (Grok) TTS — voice selection + karaoke timings
 │   ├── create_video.py            # Audio mix, video animation, KTV overlay
 │   ├── publish.py                 # Post tweet with video to X
 │   ├── fetch_metrics.py           # Fetch engagement metrics via Tweepy v2
@@ -355,7 +354,7 @@ XBot 3/
 │   ├── zit_image.py               # Z-Image-Turbo via ComfyUI (IMAGE_PROVIDER=z-image-turbo)
 │   ├── instructir_enhance.py      # Optional InstructIR pass after Z-Image-Turbo (ENABLE_INSTRUCTIR_ENHANCE)
 │   ├── image_ranker.py            # ImageReward scoring for image selection
-│   ├── voice_pool.py              # ElevenLabs voice management
+│   ├── xai_tts.py                 # xAI (Grok) TTS client — voice library + synthesis
 │   ├── language_config.py         # AI-derived language pair config + caching
 │   └── x_trends.py                # Google Trends integration
 ├── utils/
@@ -365,7 +364,7 @@ XBot 3/
 ├── Screenshots/                   # README images (tracked in git)
 ├── Background Music/              # Place music.mp3 here
 ├── Images/                        # Generated images saved here
-├── Voices/                        # ElevenLabs audio saved here
+├── Voices/                        # TTS audio saved here
 ├── Voices with Background Music/  # Mixed audio saved here
 └── Videos/                        # Final MP4 videos saved here
 ```

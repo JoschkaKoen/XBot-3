@@ -31,7 +31,7 @@ AUDIO_PATH = "Voices/german_ktv_20260225_113142.mp3"
 
 GERMAN_TEXT = "Er schaut die Pizza an und lächelt selig."
 
-# Fake word timings (no real ElevenLabs data needed for the visual test)
+# Fake word timings (no real xAI TTS data needed for the visual test)
 WORD_TIMINGS = [
     {"word": "Er",       "start": 0.0,  "end": 0.4},
     {"word": "schaut",   "start": 0.4,  "end": 0.9},

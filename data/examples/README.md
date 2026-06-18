@@ -1,7 +1,7 @@
 # Example runtime data (public repo)
 
 These files are **templates** for the JSON files the bot writes under `data/`.  
-The real files are **gitignored** (they contain tweet URLs, engagement history, your voice pool, etc.).
+The real files are **gitignored** (they contain tweet URLs, engagement history, etc.).
 
 ## Do I need to copy these?
 
@@ -9,7 +9,6 @@ Usually **no**. On first run the bot creates empty or default state as needed:
 
 - Missing `post_history.json` → first scored tweet creates it  
 - Missing `strategy.json` → in-code defaults from `nodes/analyze.py`  
-- Missing `voice_pool.json` → empty pool; voices are discovered on run  
 - Missing `theme_recent.json` → created when the first **pool** theme is picked (`USE_TRENDS` cycle includes `pool`)
 
 `post_history.json` rows may include:

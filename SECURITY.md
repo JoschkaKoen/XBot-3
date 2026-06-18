@@ -8,9 +8,9 @@
 
 ## Local runtime data
 
-The following files under `data/` are **ignored** because they can contain tweet URLs, engagement metrics, strategy text, and ElevenLabs voice metadata:
+The following files under `data/` are **ignored** because they can contain tweet URLs, engagement metrics, and strategy text:
 
-`post_history.json`, `strategy.json`, `strategy_history.json`, `metrics_refresh.json`, `video_state.json`, `voice_pool.json`, `scaffold_state.json`
+`post_history.json`, `strategy.json`, `strategy_history.json`, `metrics_refresh.json`, `video_state.json`, `scaffold_state.json`
 
 Use `data/examples/` for empty templates if you need them. Do not push real history to a public repo.
 

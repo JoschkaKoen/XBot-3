@@ -145,8 +145,17 @@ TWITTER_CONSUMER_SECRET: str = os.getenv("TWITTER_CONSUMER_SECRET", "")
 TWITTER_ACCESS_TOKEN: str = os.getenv("TWITTER_ACCESS_TOKEN", "")
 TWITTER_ACCESS_TOKEN_SECRET: str = os.getenv("TWITTER_ACCESS_TOKEN_SECRET", "")
 
-# ── ElevenLabs ───────────────────────────────────────────────────────────────
-ELEVENLABS_API_KEY: str = os.getenv("ELEVENLABS_API_KEY", "")
+# ── xAI TTS (text-to-speech) ─────────────────────────────────────────────────
+# Voice synthesis runs on xAI's TTS API (POST /v1/tts), reusing XAI_API_KEY.
+XAI_API_KEY: str = os.getenv("XAI_API_KEY", "")
+# Playback speed (xAI accepts 0.7–1.5; 0.70 ≈ 30 % slower — deliberate pacing
+# for language learners). Honored directly by the REST endpoint.
+try:
+    TTS_SPEED: float = float(os.getenv("TTS_SPEED", "0.70"))
+except ValueError:
+    TTS_SPEED = 0.70
+TTS_SAMPLE_RATE: int = int(os.getenv("TTS_SAMPLE_RATE", "44100") or "44100")
+TTS_BIT_RATE: int = int(os.getenv("TTS_BIT_RATE", "128000") or "128000")
 
 # ── Midjourney via TTAPI ─────────────────────────────────────────────────────
 TT_API_KEY: str = os.getenv("TT_API_KEY", "")

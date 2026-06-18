@@ -1,30 +1,27 @@
 """
 Node: generate_audio
 
-Generates TTS audio via ElevenLabs for the source-language example sentence.
-Uses generate_source_audio_with_timings() (ktv mode, returns word timing data)
-or generate_source_audio() (simple mode, audio only).
+Generates TTS audio via the xAI (Grok) Voice API for the source-language
+example sentence. Uses generate_source_audio_with_timings() (ktv mode, returns
+word timing data) or generate_source_audio() (simple mode, audio only).
 
 ================================================================================
  TUNABLE CONSTANTS
 ================================================================================
-  _DEFAULT_SPEED   — TTS playback speed (0.70 = 30 % slower than normal,
-                      readable for language learners; 1.0 = native speed)
-
-  _voice_settings() — stability (0–1, higher = less expressive but more
-                      consistent), similarity_boost (how closely the model
-                      matches the original voice clone)
+  config.TTS_SPEED  — TTS playback speed (xAI accepts 0.7–1.5; 0.70 = ~30 %
+                      slower than normal, readable for language learners).
+                      Honored directly by the xAI REST endpoint.
 
 ================================================================================
- VOICE POOL
+ VOICES
 ================================================================================
-  data/voice_pool.json  — cached list of ElevenLabs shared voices.
-  services/voice_pool.py — grows the pool automatically on each run up to
-                            TARGET_POOL_SIZE voices for the configured language.
-  The AI picks the best voice from the pool for each tweet based on the
-  tweet's mood, topic, and language. When the image prompt depicts a clearly
-  male or female subject, the pool is restricted to that gender first so TTS
-  matches the image.
+  xAI exposes a built-in voice library (GET /v1/tts/voices): named, native
+  per-language voices (with gender + age) plus 5 expressive multilingual voices
+  (eve, ara, rex, sal, leo). services/xai_tts.list_voices() fetches that library
+  and filters it to the configured source language. The AI picks the best voice
+  for each tweet based on the tweet's mood and topic; when the image prompt
+  depicts a clearly male or female subject, the list is restricted to that
+  gender first so TTS matches the image.
 ================================================================================
 
 ================================================================================
@@ -32,43 +29,24 @@ or generate_source_audio() (simple mode, audio only).
 ================================================================================
   Reads from state:   example_sentence_source, full_tweet, midjourney_prompt
   Writes to state:    clean_audio_path, word_timings, image_subject_gender
-  Side effects:       writes MP3 to Voices/, may grow data/voice_pool.json
+  Side effects:       writes MP3 to Voices/
 ================================================================================
 """
 
 import os
 import re
-import base64
 import logging
 from datetime import datetime
 
 import config
-from config import VOICES_DIR, ELEVENLABS_API_KEY
-from utils.retry import with_retry
+from config import VOICES_DIR
 from utils.ui import stage_banner, ok, warn as ui_warn, info as ui_info
 from services.ai_client import get_ai_response
-
-from elevenlabs.client import ElevenLabs
-from elevenlabs import save
-from elevenlabs.types import VoiceSettings
+from services.xai_tts import tts_to_file, list_voices
 
 logger = logging.getLogger("xbot.generate_audio")
 
-_DEFAULT_SPEED = 0.70   # 0.70 = 30 % slower — deliberate pacing for language learners
-
 os.makedirs(VOICES_DIR, exist_ok=True)
-
-
-def _get_client() -> ElevenLabs:
-    if not ELEVENLABS_API_KEY:
-        raise ValueError("ELEVENLABS_API_KEY not found in .env!")
-    return ElevenLabs(api_key=ELEVENLABS_API_KEY)
-
-
-def _voice_settings(speed: float) -> VoiceSettings:
-    # stability      — 0 = expressive/varied, 1 = robotic/consistent.  0.75 is a good middle ground.
-    # similarity_boost — how closely the model adheres to the original voice clone.  0.85 = high fidelity.
-    return VoiceSettings(stability=0.75, similarity_boost=0.85, speed=speed)
 
 
 def _parse_subject_gender(raw: str) -> str:
@@ -84,7 +62,7 @@ def _parse_subject_gender(raw: str) -> str:
 def _infer_subject_gender_from_prompt(image_prompt: str) -> str:
     """
     Infer whether the focal subject in the image prompt is male, female, or neutral
-    (no clear person / objects only), so TTS can match ElevenLabs voice gender.
+    (no clear person / objects only), so TTS can match the voice gender.
     """
     if not image_prompt or not str(image_prompt).strip():
         return "neutral"
@@ -120,21 +98,21 @@ def _infer_subject_gender_from_prompt(image_prompt: str) -> str:
 
 
 def _filter_pool_for_subject_gender(pool: list, subject_gender: str) -> list:
-    """Restrict voice pool to male or female when the image subject is clearly gendered."""
+    """Restrict the voice list to male or female when the image subject is clearly gendered."""
     g = (subject_gender or "neutral").lower().strip()
     if g not in ("male", "female"):
         return pool
     filtered = [v for v in pool if (v.get("gender") or "").lower().strip() == g]
     if not filtered:
         logger.warning(
-            "No %s voices in pool (%d total) — using full pool for voice selection.",
+            "No %s voices available (%d total) — using full voice list for selection.",
             g,
             len(pool),
         )
-        ui_warn(f"No {g} voices in pool — using full voice list.")
+        ui_warn(f"No {g} voices available — using full voice list.")
         return pool
     logger.info(
-        "Voice pool filtered to %s voices: %d of %d.",
+        "Voice list filtered to %s voices: %d of %d.",
         g,
         len(filtered),
         len(pool),
@@ -143,7 +121,7 @@ def _filter_pool_for_subject_gender(pool: list, subject_gender: str) -> list:
 
 
 def _pick_random_voice(pool: list) -> tuple:
-    """Return a random (name, voice_id) from the pool."""
+    """Return a random (name, voice_id) from the voice list."""
     import random
     v = random.choice(pool)
     return v["name"], v["voice_id"]
@@ -152,7 +130,7 @@ def _pick_random_voice(pool: list) -> tuple:
 def _pick_voice_by_ai(full_tweet: str, pool: list, subject_gender: str = "neutral") -> tuple:
     """
     Use AI to pick the most suitable voice for the given tweet.
-    Returns (name, voice_id). Falls back to a random pool entry on any error.
+    Returns (name, voice_id). Falls back to a random entry on any error.
     """
     import re as _re
     voice_list = "\n".join(
@@ -215,82 +193,73 @@ def _pick_voice_by_ai(full_tweet: str, pool: list, subject_gender: str = "neutra
     return name, voice_id
 
 
-@with_retry(max_attempts=4, base_delay=3.0, label="elevenlabs_simple")
 def generate_source_audio(
     text: str,
     output_file: str = None,
     voice_id: str = None,
-    speed: float = _DEFAULT_SPEED,
+    speed: float = None,
 ) -> str:
     """Generate TTS audio. Returns path to saved MP3."""
-    client = _get_client()
-    if not (0.7 <= speed <= 1.2):
-        logger.warning("Speed %.2f out of range, clamping to 0.70.", speed)
-        speed = 0.70
+    if speed is None:
+        speed = config.TTS_SPEED
 
     if output_file is None:
         ts = datetime.now().strftime("%Y%m%d_%H%M%S")
         output_file = os.path.join(VOICES_DIR, f"{config.SOURCE_LANGUAGE_CODE}_{ts}.mp3")
 
-    logger.info("ElevenLabs TTS | voice_id=%s speed=%.2f | %.60s", voice_id, speed, text)
-    audio = client.text_to_speech.convert(
-        text=text,
-        voice_id=voice_id,
-        model_id="eleven_multilingual_v2",
-        output_format="mp3_44100_128",
-        voice_settings=_voice_settings(speed),
+    logger.info("xAI TTS | voice_id=%s speed=%.2f | %.60s", voice_id, speed, text)
+    path, _ = tts_to_file(
+        text,
+        voice_id,
+        language=config.SOURCE_LANGUAGE_CODE or "auto",
+        out_path=output_file,
+        with_timestamps=False,
+        speed=speed,
     )
-    save(audio, output_file)
-    logger.info("Audio saved -> %s", output_file)
-    return output_file
+    logger.info("Audio saved -> %s", path)
+    return path
 
 
-@with_retry(max_attempts=4, base_delay=3.0, label="elevenlabs_timings")
 def generate_source_audio_with_timings(
     text: str,
     output_file: str = None,
     voice_id: str = None,
-    speed: float = 0.70,
+    speed: float = None,
 ) -> tuple:
     """
     Generate TTS audio with word-level timings.
     Returns (audio_path, word_timings).
     word_timings = [{'word': str, 'start': float, 'end': float}, ...]
     """
-    client = _get_client()
+    if speed is None:
+        speed = config.TTS_SPEED
 
     if output_file is None:
         ts = datetime.now().strftime("%Y%m%d_%H%M%S")
         output_file = os.path.join(VOICES_DIR, f"{config.SOURCE_LANGUAGE_CODE}_ktv_{ts}.mp3")
 
-    logger.info("ElevenLabs TTS (timings) | voice_id=%s speed=%.2f | %.60s", voice_id, speed, text)
-    result = client.text_to_speech.convert_with_timestamps(
-        text=text,
-        voice_id=voice_id,
-        model_id="eleven_multilingual_v2",
-        output_format="mp3_44100_128",
-        voice_settings=_voice_settings(speed),
+    logger.info("xAI TTS (timings) | voice_id=%s speed=%.2f | %.60s", voice_id, speed, text)
+    path, alignment = tts_to_file(
+        text,
+        voice_id,
+        language=config.SOURCE_LANGUAGE_CODE or "auto",
+        out_path=output_file,
+        with_timestamps=True,
+        speed=speed,
     )
-    # SDK >= 2.x returns audio_base_64 (str); older versions returned .audio (bytes)
-    if hasattr(result, "audio_base_64") and result.audio_base_64:
-        audio_bytes = base64.b64decode(result.audio_base_64)
-        with open(output_file, "wb") as f:
-            f.write(audio_bytes)
-    else:
-        save(result.audio, output_file)
-    logger.info("Audio (with timings) saved -> %s", output_file)
+    logger.info("Audio (with timings) saved -> %s", path)
 
-    word_timings = _character_alignment_to_word_timings(text, result.alignment)
-    return output_file, word_timings
+    word_timings = _character_alignment_to_word_timings(text, alignment)
+    return path, word_timings
 
 
 def _character_alignment_to_word_timings(original_text: str, alignment) -> list:
-    """Convert ElevenLabs character alignment -> clean word timings."""
+    """Convert per-character alignment -> clean word timings."""
     if not alignment:
         return _fallback_timings(original_text)
 
-    # SDK >= 2.x: alignment is a CharacterAlignmentResponseModel object with direct attributes
-    # Older SDK: alignment is a plain dict -- handle both
+    # xAI normalizes to a dict {"characters": [...], "character_start_times_seconds": [...]};
+    # also accept an attribute-style object defensively.
     if hasattr(alignment, "characters"):
         chars  = list(alignment.characters or [])
         starts = list(alignment.character_start_times_seconds or [])
@@ -346,16 +315,8 @@ def generate_audio(state: dict) -> dict:
     full_tweet: str = state.get("full_tweet", "")
     style: str      = config.VIDEO_STYLE
 
-    # Grow the voice pool passively (no-op once it reaches TARGET_POOL_SIZE)
-    from services.voice_pool import grow_pool, TARGET_POOL_SIZE
-    pool = grow_pool(language=config.SOURCE_LANGUAGE_CODE, target_size=TARGET_POOL_SIZE)
-    ui_info(f"Voice pool: {len(pool)} voices available.")
-
-    if not pool:
-        raise RuntimeError(
-            "Voice pool is empty and could not be populated. "
-            "Check ELEVENLABS_API_KEY and network connectivity."
-        )
+    pool = list_voices(config.SOURCE_LANGUAGE_CODE)
+    ui_info(f"Voice library: {len(pool)} voices for {config.SOURCE_LANGUAGE}.")
 
     image_prompt = state.get("midjourney_prompt", "") or ""
     subject_gender = _infer_subject_gender_from_prompt(image_prompt)
@@ -391,6 +352,6 @@ def generate_audio(state: dict) -> dict:
             }
 
     except Exception as exc:
-        logger.warning("ElevenLabs failed (%s) — no fallback audio used; re-raising.", exc)
-        ui_warn(f"ElevenLabs unavailable ({exc}) — skipping this cycle (no audio generated).")
+        logger.warning("xAI TTS failed (%s) — no fallback audio used; re-raising.", exc)
+        ui_warn(f"xAI TTS unavailable ({exc}) — skipping this cycle (no audio generated).")
         raise

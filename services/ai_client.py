@@ -14,7 +14,7 @@ eXercise's default.env convention). Examples::
 
     get_ai_response("grok-4.3", "say hi")
     get_ai_response("qwen3.6-flash, 1024, 8192", "say hi")
-    get_ai_response("gemini-3-flash-preview, 0, 4096", "say hi")
+    get_ai_response("gemini-3.5-flash, 0, 4096", "say hi")
 
 Token usage is recorded into ``services.usage`` after every successful call
 (including streamed ones — usage is read from the final chunk via
