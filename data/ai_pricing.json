@@ -1,0 +1,8 @@
+{
+  "_comment": "Fallback AI token prices, RMB per 1,000,000 tokens. Used by services/cost_report.py so cost reports work on any machine even without the shared 'AI API costs.xlsx'. If that spreadsheet is present (via AI_COSTS_XLSX or the default search paths) it OVERRIDES these per model, and these bundled values fill in any model the spreadsheet lacks. Rates below are xAI USD list prices (grok-4.3 $1.25 in / $2.50 out; grok-4.1-fast $0.20 in / $0.50 out per 1M tokens) converted at ~7.2 CNY/USD — ESTIMATES; replace with your own rates as needed. Add a model by copying a block with its exact recorded name.",
+  "rmb_per_1m_tokens": {
+    "grok-4.3": { "input": 9.0, "output": 18.0 },
+    "grok-4-1-fast-reasoning": { "input": 1.44, "output": 3.6 },
+    "grok-4-1-fast-non-reasoning": { "input": 1.44, "output": 3.6 }
+  }
+}

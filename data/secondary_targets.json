@@ -1,0 +1,18 @@
+[
+  {
+    "id": "zh",
+    "enabled": true,
+    "source_language": "English",
+    "target_language": "Chinese",
+    "source_language_code": "en",
+    "target_language_code": "zh",
+    "source_flag": "🇬🇧",
+    "target_flag": "🇨🇳",
+    "source_flag_colors": "012169,FFFFFF,C8102E",
+    "target_flag_colors": "EE1C25,FFFF00,EE1C25",
+    "script": "simplified",
+    "tts_speed": 0.70,
+    "max_tweet_length": 280,
+    "account_env_prefix": "ZH"
+  }
+]

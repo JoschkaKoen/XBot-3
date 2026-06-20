@@ -231,8 +231,8 @@ def cycle_cost_summary(
     """Print the per-cycle AI cost table (model × tokens × ¥).
 
     Skips printing entirely when *token_usage* is empty (cycle made no AI
-    calls). Adds a footer hint when any model resolves to ¥0.00 — i.e.
-    the model name was missing from AI API costs.xlsx.
+    calls). Adds a footer hint listing any model that has no price in either
+    pricing source (data/ai_pricing.json or AI API costs.xlsx).
     """
     if not token_usage:
         return
@@ -285,9 +285,10 @@ def cycle_cost_summary(
         f"   {ts:>{cw}}{_R}"
     )
 
-    if total_rmb == 0.0 or any(d["cost_rmb"] == 0.0 for d in breakdown.values()):
+    unpriced = [m for m, d in breakdown.items() if not d.get("priced", True)]
+    if unpriced:
         print(
-            f"{_GRAY}  (one or more models missing from AI API costs.xlsx — "
-            f"add a row to fix){_R}"
+            f"{_GRAY}  (no price for: {', '.join(unpriced)} — add to "
+            f"data/ai_pricing.json or AI API costs.xlsx){_R}"
         )
     print()

@@ -7,6 +7,7 @@ from .create_video import create_video
 from .interpolate_video import interpolate_video
 from .publish import publish
 from .score import score_and_store
+from .fanout_targets import fanout_targets
 
 __all__ = [
     "fetch_all_metrics",
@@ -18,4 +19,5 @@ __all__ = [
     "interpolate_video",
     "publish",
     "score_and_store",
+    "fanout_targets",
 ]

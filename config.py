@@ -270,6 +270,7 @@ def reload_settings() -> None:
     global ENABLE_REALESRGAN, REALESRGAN_DIR, REALESRGAN_MODEL, REALESRGAN_OUTSCALE, REALESRGAN_TILE
     global ENABLE_SELF_IMPROVEMENT, IMPROVEMENT_INTERVAL_CYCLES, IMPROVEMENT_SCORE_THRESHOLD
     global MAX_CONSECUTIVE_FAILURES
+    global TRANSCREATION_MODEL, FANOUT_DRY_RUN, SECONDARY_TARGETS
     global STRATEGY_METRICS_UPDATES_ENABLED, STRATEGY_UPDATE_INTERVAL_HOURS
     global METRICS_FETCH_MAX_TWEETS
     global COMFYUI_ARGS
@@ -355,6 +356,9 @@ def reload_settings() -> None:
     VIDEO_PROMPT_MODEL             = os.getenv("VIDEO_PROMPT_MODEL", "grok-4-1-fast-non-reasoning").strip()
     SUBJECT_GENDER_MODEL           = os.getenv("SUBJECT_GENDER_MODEL", "grok-4-1-fast-non-reasoning").strip()
     COMFYUI_ARGS                   = os.getenv("COMFYUI_ARGS", "--normalvram --fp16-vae").strip()
+    TRANSCREATION_MODEL            = os.getenv("TRANSCREATION_MODEL", "grok-4.3").strip()
+    FANOUT_DRY_RUN                 = _parse_on_off_env("FANOUT_DRY_RUN", default=False)
+    SECONDARY_TARGETS              = _load_secondary_targets()
 
 # ── Image generation provider ────────────────────────────────────────────────
 # "midjourney"    = Midjourney via TTAPI (default, requires TT_API_KEY)
@@ -640,3 +644,26 @@ def setup_logging() -> logging.Logger:
 
 
 logger = setup_logging()
+
+# ── Secondary language targets (in-cycle fan-out) ─────────────────────────────
+# After the base German→English tweet+image are made, nodes/fanout_targets re-uses
+# the SAME image to transcreate + post additional language pairs (e.g. English→
+# Chinese) to their own X accounts. Targets are declared in data/secondary_targets.json;
+# per-account creds come from TWITTER_*_<PREFIX> in .env (gitignored).
+TRANSCREATION_MODEL: str = os.getenv("TRANSCREATION_MODEL", "grok-4.3").strip()
+# When True, the fan-out builds the transcreated audio/video locally but does NOT
+# post — used to verify quality without tweeting.
+FANOUT_DRY_RUN: bool = _parse_on_off_env("FANOUT_DRY_RUN", default=False)
+
+
+def _load_secondary_targets() -> list:
+    """Load secondary targets, never letting a bad file break startup."""
+    try:
+        from services.targets import load_targets
+        return load_targets()
+    except Exception as exc:
+        logger.warning("Could not load secondary targets (%s) — fan-out disabled.", exc)
+        return []
+
+
+SECONDARY_TARGETS: list = _load_secondary_targets()

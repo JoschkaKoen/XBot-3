@@ -3,7 +3,12 @@ LangGraph graph definition for the German Learning Bot.
 
 New cycle order (metrics-first):
   fetch_all_metrics → analyze_and_improve → generate_content → generate_image
-  → generate_audio → create_video → interpolate_video → publish → score_and_store → wait → END
+  → generate_audio → create_video → interpolate_video → publish → score_and_store
+  → fanout_targets → wait → END
+
+  fanout_targets re-uses the same image to transcreate + post additional language
+  pairs (e.g. English→Chinese) to their own X accounts; it never raises (a
+  secondary failure must not stop the base bot). No-op when no secondary targets.
 
 main.py runs this graph in a while-True loop, carrying strategy + cycle counter
 forward between iterations via the state dict. SqliteSaver checkpointing means
@@ -35,6 +40,7 @@ from nodes import (
     interpolate_video,
     publish,
     score_and_store,
+    fanout_targets,
 )
 
 logger = logging.getLogger("xbot.graph")
@@ -161,6 +167,12 @@ def wait_node(state: dict) -> dict:
         _cycle_num, _tweet_url, _score,
     )
 
+    # Secondary-language fan-out results (if any)
+    for _r in (state.get("secondary_results") or []):
+        _u = _r.get("tweet_url") or ("(dry-run)" if _r.get("dry_run") else "(failed)")
+        print(f"   ↳ [{_r.get('target_id')}]  {_u}", flush=True)
+        logger.info("Cycle %d secondary [%s]: %s", _cycle_num, _r.get("target_id"), _u)
+
     from services.cost_report import compute_cost
     from services.usage import get_run_usage
     _usage = get_run_usage()
@@ -223,6 +235,7 @@ def build_graph(checkpointer=None):
     builder.add_node("interpolate_video",   interpolate_video)
     builder.add_node("publish",             publish)
     builder.add_node("score_and_store",     score_and_store)
+    builder.add_node("fanout_targets",      fanout_targets)
     builder.add_node("wait",                wait_node)
 
     builder.set_entry_point("fetch_all_metrics")
@@ -234,7 +247,8 @@ def build_graph(checkpointer=None):
     builder.add_edge("create_video",        "interpolate_video")
     builder.add_edge("interpolate_video",   "publish")
     builder.add_edge("publish",             "score_and_store")
-    builder.add_edge("score_and_store",     "wait")
+    builder.add_edge("score_and_store",     "fanout_targets")
+    builder.add_edge("fanout_targets",      "wait")
     builder.add_edge("wait",                END)
 
     kwargs = {"checkpointer": checkpointer} if checkpointer else {}

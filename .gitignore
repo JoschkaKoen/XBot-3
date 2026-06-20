@@ -29,6 +29,7 @@ data/new_bot_branch.txt
 
 # Private / machine-specific runtime JSON (tweet URLs, strategy, voice cache — not for public repo)
 data/post_history.json
+data/post_history.*.json
 data/strategy.json
 data/strategy_history.json
 data/metrics_refresh.json

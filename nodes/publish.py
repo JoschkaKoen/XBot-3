@@ -44,25 +44,32 @@ from utils.ui import stage_banner, ok
 logger = logging.getLogger("xbot.publish")
 
 
-def _build_clients():
-    if not all([
-        TWITTER_CONSUMER_KEY, TWITTER_CONSUMER_SECRET,
-        TWITTER_ACCESS_TOKEN, TWITTER_ACCESS_TOKEN_SECRET,
-    ]):
-        raise ValueError("❌ Missing Twitter/X API keys in .env!")
+def _build_clients(creds=None):
+    """Build (api_v1, client_v2) for the default account, or for *creds* (an
+    AccountCreds-like object with consumer_key/secret + access_token/secret) when
+    posting to a secondary account."""
+    if creds is not None:
+        ck, cs = creds.consumer_key, creds.consumer_secret
+        at, ats = creds.access_token, creds.access_token_secret
+    else:
+        ck, cs = TWITTER_CONSUMER_KEY, TWITTER_CONSUMER_SECRET
+        at, ats = TWITTER_ACCESS_TOKEN, TWITTER_ACCESS_TOKEN_SECRET
+
+    if not all([ck, cs, at, ats]):
+        raise ValueError("❌ Missing Twitter/X API keys!")
 
     auth = tweepy.OAuth1UserHandler(
-        consumer_key=TWITTER_CONSUMER_KEY,
-        consumer_secret=TWITTER_CONSUMER_SECRET,
-        access_token=TWITTER_ACCESS_TOKEN,
-        access_token_secret=TWITTER_ACCESS_TOKEN_SECRET,
+        consumer_key=ck,
+        consumer_secret=cs,
+        access_token=at,
+        access_token_secret=ats,
     )
     api_v1 = tweepy.API(auth)
     client_v2 = tweepy.Client(
-        consumer_key=TWITTER_CONSUMER_KEY,
-        consumer_secret=TWITTER_CONSUMER_SECRET,
-        access_token=TWITTER_ACCESS_TOKEN,
-        access_token_secret=TWITTER_ACCESS_TOKEN_SECRET,
+        consumer_key=ck,
+        consumer_secret=cs,
+        access_token=at,
+        access_token_secret=ats,
     )
     return api_v1, client_v2
 
@@ -86,12 +93,13 @@ def _create_tweet(client_v2, text: str, media_id: int) -> tuple:
     return tweet_id, tweet_url
 
 
-def post_tweet_with_video(text: str, video_path: str) -> tuple:
+def post_tweet_with_video(text: str, video_path: str, creds=None) -> tuple:
     """
-    Upload video and post tweet.
+    Upload video and post tweet. Pass *creds* (AccountCreds-like) to post to a
+    secondary account; omit it to use the default account's .env keys.
     Returns (tweet_id, tweet_url).
     """
-    api_v1, client_v2 = _build_clients()
+    api_v1, client_v2 = _build_clients(creds)
 
     media_id = _upload_video(api_v1, video_path)
 

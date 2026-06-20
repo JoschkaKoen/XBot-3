@@ -319,7 +319,9 @@ def generate_audio(state: dict) -> dict:
     ui_info(f"Voice library: {len(pool)} voices for {config.SOURCE_LANGUAGE}.")
 
     image_prompt = state.get("midjourney_prompt", "") or ""
-    subject_gender = _infer_subject_gender_from_prompt(image_prompt)
+    # Reuse a precomputed gender if the caller supplied one (the secondary-target
+    # fan-out passes the base cycle's value to skip a redundant inference call).
+    subject_gender = state.get("image_subject_gender") or _infer_subject_gender_from_prompt(image_prompt)
     ui_info(f"Image subject gender (voice match): {subject_gender}")
     pool_for_voice = _filter_pool_for_subject_gender(pool, subject_gender)
 

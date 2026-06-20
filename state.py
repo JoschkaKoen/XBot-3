@@ -37,6 +37,9 @@ class BotState(TypedDict, total=False):
     tweet_id: str                     # ID of the posted tweet
     tweet_url: str                    # URL of the posted tweet
 
+    # ── Secondary-language fan-out ──────────────────────────────────────────────
+    secondary_results: list           # [{target_id, tweet_id, tweet_url}] from fanout_targets
+
     # ── Metrics ───────────────────────────────────────────────────────────────
     metrics: dict                     # raw tweepy metrics dict
     engagement_score: float           # weighted engagement score
