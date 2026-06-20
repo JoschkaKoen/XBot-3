@@ -169,7 +169,14 @@ def wait_node(state: dict) -> dict:
 
     # Secondary-language fan-out results (if any)
     for _r in (state.get("secondary_results") or []):
-        _u = _r.get("tweet_url") or ("(dry-run)" if _r.get("dry_run") else "(failed)")
+        if _r.get("tweet_url"):
+            _u = _r["tweet_url"]
+        elif _r.get("dry_run"):
+            _u = "(dry-run)"
+        elif _r.get("status") in ("blocked", "unverified"):
+            _u = f"({_r['status']}: {(_r.get('reason') or '')[:50]})"
+        else:
+            _u = "(failed)"
         print(f"   ↳ [{_r.get('target_id')}]  {_u}", flush=True)
         logger.info("Cycle %d secondary [%s]: %s", _cycle_num, _r.get("target_id"), _u)
 

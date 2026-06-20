@@ -92,6 +92,22 @@ def _run_one_target(spec, state: dict) -> dict:
     )
     tc = transcreate(spec, base, cycle=cycle)   # prints candidates, pick, EN/ZH breakdown, tweet_box
 
+    # Content-compliance gate (fail-closed): publish only on a positive verdict.
+    # Runs before any media so a block/unverified wastes no TTS/video. On a
+    # technical failure it retries; if it can't verify, it skips this cycle (the
+    # next loop generates fresh content and re-checks) — never posts unverified.
+    if getattr(spec, "content_policy", ""):
+        from services.content_safety import check_compliance
+        ok_to_post, status, reason = check_compliance(tc["full_tweet"], spec.content_policy)
+        if not ok_to_post:
+            if status == "blocked":
+                ui_warn(f"[{spec.id}] BLOCKED by {spec.content_policy} compliance: {reason} — not posting")
+            else:
+                ui_warn(f"[{spec.id}] compliance UNVERIFIED ({reason}) — skipping; next loop will retry")
+            return {"target_id": spec.id, "tweet_id": "", "tweet_url": "",
+                    "status": status, "reason": reason}
+        ui_info(f"[{spec.id}] {spec.content_policy} compliance: OK")
+
     # Sub-state: NEVER merged into the shared state (keeps base artifacts intact).
     # The taught-language sentence becomes example_sentence_source → spoken + KTV-subtitled.
     sub = {
@@ -145,6 +161,7 @@ def fanout_targets(state: dict) -> dict:
     }
     cycle = state.get("cycle", 0)
 
+    this_cycle: list = []
     for spec in targets:
         if spec.id in handled:
             ui_info(f"[{spec.id}] already handled this cycle — skipping.")
@@ -153,12 +170,30 @@ def fanout_targets(state: dict) -> dict:
             ui_info(f"[{spec.id}] already posted for cycle {cycle} (resume) — skipping.")
             continue
         try:
-            results.append(_run_one_target(spec, state))
+            res = _run_one_target(spec, state)
+            results.append(res)
+            this_cycle.append((spec, res))
         except Exception as exc:
             # Includes FatalProviderError (RuntimeError subclass). Must NOT bubble
             # up — the base cycle has already posted; a secondary failure must not
             # stop the bot or trip the consecutive-failure / fatal-error paths.
             logger.exception("Fan-out target '%s' failed: %s", spec.id, exc)
             ui_warn(f"[{spec.id}] fan-out failed ({exc}) — base bot continues.")
+            this_cycle.append((spec, {"target_id": spec.id, "error": str(exc)}))
+
+    # Compliance watchdog for content_policy targets. Runs OUTSIDE the per-target
+    # try/except so it CAN stop the bot: if the China check is UNVERIFIED (couldn't
+    # run) too many cycles in a row, register_cycle raises FatalProviderError →
+    # main.py stops the bot. A "blocked" verdict counts as verified (resets it).
+    china = [(s, r) for s, r in this_cycle if getattr(s, "content_policy", "")]
+    if china:
+        from services.content_safety import register_cycle
+        register_cycle(
+            unverified=any(r.get("status") == "unverified" for _, r in china),
+            verified=any(
+                r.get("status") == "blocked" or r.get("tweet_id") or r.get("dry_run")
+                for _, r in china
+            ),
+        )
 
     return {**state, "secondary_results": results}

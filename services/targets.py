@@ -71,6 +71,7 @@ class TargetSpec:
     videos_dir: str
     voices_music_dir: str
     history_file: str
+    content_policy: str = ""       # e.g. "china" → screen each post before publishing
     enabled: bool = True
 
     def hashtags(self) -> str:
@@ -114,6 +115,7 @@ def _spec_from_dict(t: dict) -> TargetSpec:
         videos_dir=t.get("videos_dir", f"Videos/{tid}"),
         voices_music_dir=t.get("voices_music_dir", f"Voices with Background Music/{tid}"),
         history_file=t.get("history_file", f"data/post_history.{tid}.json"),
+        content_policy=str(t.get("content_policy", "")).strip(),
         enabled=bool(t.get("enabled", True)),
     )
 

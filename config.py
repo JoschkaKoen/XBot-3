@@ -271,6 +271,7 @@ def reload_settings() -> None:
     global ENABLE_SELF_IMPROVEMENT, IMPROVEMENT_INTERVAL_CYCLES, IMPROVEMENT_SCORE_THRESHOLD
     global MAX_CONSECUTIVE_FAILURES
     global TRANSCREATION_MODEL, TRANSCREATION_CANDIDATES, FANOUT_DRY_RUN, SECONDARY_TARGETS
+    global CONTENT_SAFETY_MODEL, CONTENT_SAFETY_MAX_ATTEMPTS, CONTENT_SAFETY_STOP_AFTER_UNVERIFIED
     global STRATEGY_METRICS_UPDATES_ENABLED, STRATEGY_UPDATE_INTERVAL_HOURS
     global METRICS_FETCH_MAX_TWEETS
     global COMFYUI_ARGS
@@ -358,6 +359,9 @@ def reload_settings() -> None:
     COMFYUI_ARGS                   = os.getenv("COMFYUI_ARGS", "--normalvram --fp16-vae").strip()
     TRANSCREATION_MODEL            = os.getenv("TRANSCREATION_MODEL", "grok-4.3").strip()
     TRANSCREATION_CANDIDATES       = int(os.getenv("TRANSCREATION_CANDIDATES", "3") or "3")
+    CONTENT_SAFETY_MODEL           = os.getenv("CONTENT_SAFETY_MODEL", "qwen3.7-plus").strip()
+    CONTENT_SAFETY_MAX_ATTEMPTS    = int(os.getenv("CONTENT_SAFETY_MAX_ATTEMPTS", "3") or "3")
+    CONTENT_SAFETY_STOP_AFTER_UNVERIFIED = int(os.getenv("CONTENT_SAFETY_STOP_AFTER_UNVERIFIED", "2") or "2")
     FANOUT_DRY_RUN                 = _parse_on_off_env("FANOUT_DRY_RUN", default=False)
     SECONDARY_TARGETS              = _load_secondary_targets()
 
@@ -655,6 +659,15 @@ TRANSCREATION_MODEL: str = os.getenv("TRANSCREATION_MODEL", "grok-4.3").strip()
 # How many funny candidate sentences to generate per secondary target, then pick the
 # funniest (mirrors the German bot's 3-candidate flow). Set 1 to disable best-of-N.
 TRANSCREATION_CANDIDATES: int = int(os.getenv("TRANSCREATION_CANDIDATES", "3") or "3")
+# Cheap Chinese model that screens each secondary post for China content-compliance
+# (fail-closed: a post is published only on a positive verdict). Needs DASHSCOPE_API_KEY.
+CONTENT_SAFETY_MODEL: str = os.getenv("CONTENT_SAFETY_MODEL", "qwen3.7-plus").strip()
+# Compliance-check attempts on a TECHNICAL failure before skipping the post this cycle.
+CONTENT_SAFETY_MAX_ATTEMPTS: int = int(os.getenv("CONTENT_SAFETY_MAX_ATTEMPTS", "3") or "3")
+# Stop the whole bot if the compliance check is UNVERIFIED (couldn't run) this many
+# cycles in a row — signals a sustained provider/key outage. "blocked" (content judged
+# non-compliant) does NOT count. Set 0 to disable the watchdog.
+CONTENT_SAFETY_STOP_AFTER_UNVERIFIED: int = int(os.getenv("CONTENT_SAFETY_STOP_AFTER_UNVERIFIED", "2") or "2")
 # When True, the fan-out builds the transcreated audio/video locally but does NOT
 # post — used to verify quality without tweeting.
 FANOUT_DRY_RUN: bool = _parse_on_off_env("FANOUT_DRY_RUN", default=False)
