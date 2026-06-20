@@ -272,6 +272,7 @@ def reload_settings() -> None:
     global MAX_CONSECUTIVE_FAILURES
     global TRANSCREATION_MODEL, TRANSCREATION_CANDIDATES, FANOUT_DRY_RUN, SECONDARY_TARGETS
     global CONTENT_SAFETY_MODEL, CONTENT_SAFETY_MAX_ATTEMPTS, CONTENT_SAFETY_STOP_AFTER_UNVERIFIED
+    global EXERCISE_INGEST_URL, EXERCISE_INGEST_TOKEN, EXERCISE_INGEST_DIRECT
     global STRATEGY_METRICS_UPDATES_ENABLED, STRATEGY_UPDATE_INTERVAL_HOURS
     global METRICS_FETCH_MAX_TWEETS
     global COMFYUI_ARGS
@@ -363,6 +364,9 @@ def reload_settings() -> None:
     CONTENT_SAFETY_MAX_ATTEMPTS    = int(os.getenv("CONTENT_SAFETY_MAX_ATTEMPTS", "3") or "3")
     CONTENT_SAFETY_STOP_AFTER_UNVERIFIED = int(os.getenv("CONTENT_SAFETY_STOP_AFTER_UNVERIFIED", "2") or "2")
     FANOUT_DRY_RUN                 = _parse_on_off_env("FANOUT_DRY_RUN", default=False)
+    EXERCISE_INGEST_URL            = os.getenv("EXERCISE_INGEST_URL", "").strip()
+    EXERCISE_INGEST_TOKEN          = os.getenv("EXERCISE_INGEST_TOKEN", "").strip()
+    EXERCISE_INGEST_DIRECT         = _parse_on_off_env("EXERCISE_INGEST_DIRECT", default=True)
     SECONDARY_TARGETS              = _load_secondary_targets()
 
 # ── Image generation provider ────────────────────────────────────────────────
@@ -671,6 +675,16 @@ CONTENT_SAFETY_STOP_AFTER_UNVERIFIED: int = int(os.getenv("CONTENT_SAFETY_STOP_A
 # When True, the fan-out builds the transcreated audio/video locally but does NOT
 # post — used to verify quality without tweeting.
 FANOUT_DRY_RUN: bool = _parse_on_off_env("FANOUT_DRY_RUN", default=False)
+
+# eXercise website integration: after each compliant secondary post, the fan-out
+# pushes the tweet text + video to the eXercise site (self-hosted, no X embeds —
+# X is blocked in mainland China). Unset URL/token → the website push is skipped.
+EXERCISE_INGEST_URL: str = os.getenv("EXERCISE_INGEST_URL", "").strip()
+EXERCISE_INGEST_TOKEN: str = os.getenv("EXERCISE_INGEST_TOKEN", "").strip()
+# Push DIRECT (bypass HTTP(S)_PROXY): exercises.lol is NOT GFW-blocked, so the
+# local proxy (used only for blocked sites like X) must be bypassed. Set off to
+# push via the env proxy instead, should a machine's direct path prove unreliable.
+EXERCISE_INGEST_DIRECT: bool = _parse_on_off_env("EXERCISE_INGEST_DIRECT", default=True)
 
 
 def _load_secondary_targets() -> list:

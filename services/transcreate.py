@@ -7,15 +7,19 @@ translation, and — crucially — it must keep the humor/grit of the base Germa
 English tweet, not flatten it into an image description.
 
 How it stays funny (mirrors the German bot, which is funny *because* it generates
-several candidates and picks the funniest):
-  Stage 1 — TAUGHT language (e.g. English): generate N funny candidate sentences
-    that PRESERVE the original joke (driven by the base funny tweet, NOT the image
-    scene), then pick the funniest via TWEET_PICKER_MODEL.
+several DIVERSE candidates and picks the funniest):
+  Stage 1 — TAUGHT language (e.g. English): generate N candidates that are genuinely
+    DIFFERENT from each other — each driven by the image SCENE (the only hard
+    constraint, since the image is shared) and pushed toward a distinct comedic angle,
+    with the base joke as loose inspiration ("don't translate it"). Pick the funniest
+    via TWEET_PICKER_MODEL.
   Stage 2 — AUDIENCE language (e.g. Simplified Chinese): render it into natural,
     colloquial, still-funny text and assemble the tweet.
 
-The image scene (midjourney_prompt) is only a *guardrail* ("don't contradict the
-picture"), never the creative driver.
+Earlier versions seeded every candidate with the base English sentence ("keep the
+exact joke"), which collapsed them into near-identical paraphrases — so best-of-N
+had nothing to choose from. The image scene is now the creative DRIVER (it still
+must not be contradicted), which restores real candidate diversity.
 
 Reuses services.ai_client.get_ai_response (token usage auto-recorded → shows up in
 the cost report) and config.{TRANSCREATION_MODEL, TRANSCREATION_CANDIDATES,
@@ -40,8 +44,21 @@ _FUNNY_TONE = (
     "and stay positive and uplifting, not cynical. CRITICAL: it must be REALISTIC and make "
     "logical sense — the humor comes from a relatable everyday situation, an ironic twist, or "
     "a witty observation, NEVER from surreal nonsense. A native speaker should read it and "
-    "think 'ha, that's so true'. Keep the SPECIFIC, concrete funny detail of the original — "
-    "do not generalise it into a bland description."
+    "think 'ha, that's so true'. Use a SPECIFIC, concrete, vivid detail — never a bland, "
+    "generic description."
+)
+
+# Distinct comedic angles handed one-per-candidate so the N takes actually diverge.
+# (Unlike the German bot — which gets variety for free from an open-ended "write a
+# joke for this WORD" prompt — our scene is fixed by the shared image, so we must
+# actively push each candidate toward a different KIND of joke or they collapse into
+# paraphrases of the same line.)
+_ANGLES = (
+    "an ironic twist — the outcome is the opposite of what you'd expect",
+    "playful exaggeration / hyperbole, pushed just far enough to stay believable",
+    "a relatable everyday struggle or small failure the reader has definitely lived",
+    "a witty, deadpan observation with an understated punch",
+    "a surprise punchline saved for the very last few words",
 )
 
 
@@ -85,59 +102,86 @@ def _parse_json(raw: str) -> dict:
 # ── Stage 1: taught language — N funny candidates, preserve the joke ───────────
 
 def _stage1_candidates(spec, base: dict, funny: bool, n: int, verbose: bool) -> list:
-    src = spec.source_language
+    """Generate N DIVERSE funny candidates, the way the German bot does.
+
+    The variety comes from generating fresh takes — NOT paraphrasing the base
+    sentence. The shared image is the only hard constraint, so each candidate is
+    driven by the image SCENE and pushed toward a different comedic angle; the
+    base joke is loose inspiration, explicitly "don't translate it". Calls run in
+    parallel (like nodes/generate_content), each independent at high temperature.
+    """
+    import threading
+    from concurrent.futures import ThreadPoolExecutor
+
+    src, tgt = spec.source_language, spec.target_language
     scene = (base.get("midjourney_prompt") or "").strip()
-    funny_src = (base.get("example_sentence_target") or "").strip()  # base TARGET == our taught lang
+    base_en = (base.get("example_sentence_target") or "").strip()  # base TARGET == our taught lang
     base_tweet = (base.get("full_tweet") or "").strip()
+    picture = scene or base_en          # what the shared image shows (must fit)
+    inspiration = base_tweet or base_en  # the original take (loose inspiration only)
 
     system = (
-        f"You are a {src} language teacher and comedy writer running a very popular X account "
-        f"that teaches {src} to {spec.target_language} speakers. "
+        f"You are a {src} language teacher and stand-up comedy writer running a hugely popular X "
+        f"account that teaches {src} to {tgt} speakers. "
         + (_FUNNY_TONE + " " if funny else "")
         + "You always respond with valid JSON only."
     )
-    scene_line = (
-        f"\nThe post has an image (do NOT just describe it — only avoid contradicting it):\n{scene}\n"
-        if scene else ""
-    )
-    user = (
-        f"Here is a popular, FUNNY language-learning post. Carry its humor across into a {src} "
-        f"vocabulary post for {spec.target_language} speakers — keep the joke, the irony and the "
-        f"punch.\n\n"
-        f"Original funny post (for its voice + the exact joke to preserve):\n{base_tweet}\n\n"
-        f"The {src} line of that post — already funny, and already matches the image, so use it "
-        f"as your starting point:\n{funny_src}\n"
-        f"{scene_line}\n"
-        f"Task:\n"
-        f"1. Write a natural, idiomatic{' and genuinely funny' if funny else ''} {src} example "
-        f"sentence (≤ {config.MAX_EXAMPLE_WORDS} words) that KEEPS the original joke's specific, "
-        f"concrete punch. Do not turn it into a generic description.\n"
-        f"2. Pick ONE useful {src} headword that APPEARS in your sentence and is worth teaching "
-        f"(common noun/verb/adjective/phrase; not 'the/a/is/and', not a proper noun).\n"
-        + (f"\n{_FUNNY_TONE}\n" if funny else "")
-        + '\nReturn ONLY this JSON object:\n'
-        '{"word": "<headword>", "sentence": "<the example sentence>", "cefr": "<A1|A2|B1|B2|C1|C2>"}'
-    )
 
-    cands: list = []
-    for i in range(n):
+    def _one(i: int):
+        angle = _ANGLES[i % len(_ANGLES)] if funny else ""
+        picture_line = (
+            "The post reuses an existing image, so your sentence MUST fit that picture (don't "
+            "contradict it) — but a single picture supports many different jokes, so find a FRESH "
+            f"one.\nWhat the picture shows:\n{picture}\n\n" if picture else ""
+        )
+        inspiration_line = (
+            "For inspiration ONLY — the original post's angle. Do NOT translate or paraphrase it; "
+            f"invent your OWN, different joke that fits the same picture:\n{inspiration}\n\n"
+            if inspiration else ""
+        )
+        user = (
+            picture_line
+            + inspiration_line
+            + f"Write ONE natural, idiomatic{' and genuinely funny' if funny else ''} {src} example "
+            f"sentence (≤ {config.MAX_EXAMPLE_WORDS} words) that fits the picture above.\n"
+            + (f"- Build the humor on: {angle}\n" if angle else "")
+            + f"- It must contain ONE useful {src} headword worth teaching (common noun/verb/"
+            "adjective/phrase; not 'the/a/is/and', not a proper noun).\n"
+            + (f"\n{_FUNNY_TONE}\n" if funny else "")
+            + '\nReturn ONLY this JSON object:\n'
+            '{"word": "<headword>", "sentence": "<the example sentence>", "cefr": "<A1|A2|B1|B2|C1|C2>"}'
+        )
         try:
             raw = get_ai_response(
                 config.TRANSCREATION_MODEL, user, system,
-                max_tokens=400, temperature=0.9,
+                max_tokens=400, temperature=0.95,
                 retry_label=f"transcreate_{spec.id}_src_{i + 1}",
             )
             d = _parse_json(raw)
         except Exception as exc:
             logger.warning("transcreate[%s] candidate %d failed: %s", spec.id, i + 1, exc)
-            continue
+            return None
         word = (d.get("word") or "").strip()
         sentence = (d.get("sentence") or "").strip()
         if not word or not sentence:
-            continue
-        cands.append({"word": word, "sentence": sentence, "cefr": (d.get("cefr") or "").strip().upper()})
-        if verbose:
-            ui_info(f"cand {i + 1}/{n}: {sentence}  [{word}]")
+            return None
+        return {"word": word, "sentence": sentence, "cefr": (d.get("cefr") or "").strip().upper()}
+
+    cands: list = []
+    lock = threading.Lock()
+    arrived = [0]
+
+    def _run(i: int):
+        c = _one(i)
+        if c and verbose:
+            with lock:
+                arrived[0] += 1
+                ui_info(f"cand {arrived[0]}/{n}: {c['sentence']}  [{c['word']}]")
+        return c
+
+    with ThreadPoolExecutor(max_workers=min(n, 4)) as pool:
+        cands = [c for c in pool.map(_run, range(n)) if c]
+
     if not cands:
         raise ValueError("stage 1 produced no usable candidates")
     return cands

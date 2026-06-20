@@ -163,6 +163,15 @@ def _model_lines() -> list:
         lines.append(("Transcreation model:", _config.TRANSCREATION_MODEL))
         if any(getattr(s, "content_policy", "") for s in _secondary):
             lines.append(("Compliance model:", _config.CONTENT_SAFETY_MODEL))
+        _ingest = (getattr(_config, "EXERCISE_INGEST_URL", "") or "").strip()
+        if not _ingest:
+            _web = "→ disabled (EXERCISE_INGEST_URL unset)"
+        else:
+            from urllib.parse import urlparse
+            _host = urlparse(_ingest).netloc or _ingest
+            _web = (f"→ DRY-RUN: not mirrored ({_host})" if _config.FANOUT_DRY_RUN
+                    else f"→ mirrored to {_host}")
+        lines.append(("eXercise website:", _web, "🌐"))
     return lines
 
 setup_logging()

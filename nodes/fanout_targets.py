@@ -20,13 +20,16 @@ Chinese-side post can never take down the working German bot.
   Reads from state:   source_word, example_sentence_source, example_sentence_target,
                       cefr_level, full_tweet, midjourney_prompt, image_path,
                       image_subject_gender, cycle
-  Writes to state:    secondary_results [{target_id, tweet_id, tweet_url}]
+  Writes to state:    secondary_results [{target_id, tweet_id, tweet_url, id, status}]
   Side effects:       posts tweets on secondary X accounts; writes per-target
-                      audio/video + data/post_history.<id>.json
+                      audio/video + data/post_history.<id>.json; mirrors compliant
+                      posts to the eXercise website (services/website_publish)
 ================================================================================
 """
 
 import logging
+import os
+import uuid
 from datetime import datetime, timezone
 
 import config
@@ -37,29 +40,52 @@ logger = logging.getLogger("xbot.fanout")
 
 
 def _already_posted_this_cycle(spec, cycle: int) -> bool:
-    """Resume-safety: True if this target already has a posted record for *cycle*."""
+    """Resume-safety: True if this target already has ANY record for *cycle*.
+
+    Records are now written even when the X post fails (the website is the primary
+    China channel), so the resume guard keys on the record's existence — not on a
+    tweet_id — to avoid re-running (and double-mirroring) a cycle after a crash.
+    """
     hist = safe_json_read(spec.history_file, default=[], logger=logger)
     if not isinstance(hist, list):
         return False
-    return any(r.get("cycle") == cycle and r.get("tweet_id") for r in hist)
+    return any(r.get("cycle") == cycle for r in hist)
 
 
-def _record_history(spec, state: dict, tc: dict, tweet_id: str, tweet_url: str) -> None:
+def _record_history(spec, state: dict, tc: dict, tweet_id: str, tweet_url: str,
+                    video_path: str, image_path: str) -> dict:
+    """Append a structured record (everything the website needs) and return it.
+
+    ``id`` is stable: the X tweet_id when present, else a uuid4 — so re-pushes /
+    catch-ups overwrite the same eXercise entry (idempotent). ``website_pushed``
+    starts False; services/website_publish flips it once the site has the post.
+    """
+    stable_id = (str(tweet_id).strip() or uuid.uuid4().hex)
     rec = {
+        "id": stable_id,
         "timestamp": datetime.now(timezone.utc).isoformat(),
         "target_id": spec.id,
         "tweet_id": tweet_id,
         "tweet_url": tweet_url,
         "full_tweet": tc["full_tweet"],
-        "source_word": tc["source_word"],
+        "source_word": tc.get("source_word", ""),
+        "source_sentence": tc.get("source_sentence", ""),
+        "audience_word": tc.get("audience_word", ""),
+        "audience_sentence": tc.get("audience_sentence", ""),
         "cefr_level": tc.get("cefr", ""),
+        "video_file": os.path.basename(video_path) if video_path else "",
+        "video_path": video_path or "",
+        "image_file": os.path.basename(image_path) if image_path else "",
+        "image_path": image_path or "",
         "cycle": state.get("cycle", 0),
+        "website_pushed": False,
     }
     hist = safe_json_read(spec.history_file, default=[], logger=logger)
     if not isinstance(hist, list):
         hist = []
     hist.append(rec)
     atomic_json_write(spec.history_file, hist, ensure_ascii=False, indent=2)
+    return rec
 
 
 def _run_one_target(spec, state: dict) -> dict:
@@ -96,6 +122,7 @@ def _run_one_target(spec, state: dict) -> dict:
     # Runs before any media so a block/unverified wastes no TTS/video. On a
     # technical failure it retries; if it can't verify, it skips this cycle (the
     # next loop generates fresh content and re-checks) — never posts unverified.
+    compliance_status = ""   # "" (no policy) | "ok" — surfaced to the China watchdog as "verified"
     if getattr(spec, "content_policy", ""):
         from services.content_safety import check_compliance
         ui_info(f"[{spec.id}] checking {spec.content_policy} compliance ({config.CONTENT_SAFETY_MODEL}) …")
@@ -108,6 +135,7 @@ def _run_one_target(spec, state: dict) -> dict:
             return {"target_id": spec.id, "tweet_id": "", "tweet_url": "",
                     "status": status, "reason": reason}
         ui_info(f"[{spec.id}] {spec.content_policy} compliance: OK")
+        compliance_status = "ok"
 
     # Sub-state: NEVER merged into the shared state (keeps base artifacts intact).
     # The taught-language sentence becomes example_sentence_source → spoken + KTV-subtitled.
@@ -126,23 +154,33 @@ def _run_one_target(spec, state: dict) -> dict:
     video_path = sub.get("video_path")
     if not video_path:
         raise RuntimeError("secondary video was not produced")
+    image_path = state.get("image_path", "")     # shared, flag-free base image → website poster
 
     if config.FANOUT_DRY_RUN:
         ui_info(f"   [{spec.id}] DRY RUN — not posting. video={video_path}")
         return {"target_id": spec.id, "tweet_id": "", "tweet_url": "",
-                "video_path": video_path, "dry_run": True}
+                "video_path": video_path, "status": compliance_status, "dry_run": True}
 
+    # X post and website mirror are DECOUPLED. The eXercise website is the PRIMARY
+    # channel for China (X is blocked there), so a failed/absent X post must NOT stop
+    # the (already compliance-passed) content from being recorded + later mirrored.
+    tweet_id, tweet_url = "", ""
     if not spec.account.is_complete():
-        raise RuntimeError(
-            f"account creds for '{spec.id}' incomplete — set "
-            f"TWITTER_CONSUMER_KEY/SECRET + TWITTER_ACCESS_TOKEN/SECRET with suffix "
-            f"_{spec.account_env_prefix} in .env"
+        ui_warn(
+            f"[{spec.id}] X creds incomplete (TWITTER_*_{spec.account_env_prefix}) — "
+            f"skipping X post; content is still recorded + mirrored to the website."
         )
+    else:
+        try:
+            tweet_id, tweet_url = post_tweet_with_video(tc["full_tweet"], video_path, creds=spec.account)
+            ok(f"[{spec.id}] posted → {tweet_url}")
+        except Exception as exc:
+            logger.exception("X post failed for '%s': %s", spec.id, exc)
+            ui_warn(f"[{spec.id}] X post failed ({exc}) — content still recorded + mirrored to website.")
 
-    tweet_id, tweet_url = post_tweet_with_video(tc["full_tweet"], video_path, creds=spec.account)
-    ok(f"[{spec.id}] posted → {tweet_url}")
-    _record_history(spec, state, tc, tweet_id, tweet_url)
-    return {"target_id": spec.id, "tweet_id": tweet_id, "tweet_url": tweet_url, "dry_run": False}
+    rec = _record_history(spec, state, tc, tweet_id, tweet_url, video_path, image_path)
+    return {"target_id": spec.id, "tweet_id": tweet_id, "tweet_url": tweet_url,
+            "id": rec["id"], "status": compliance_status, "dry_run": False}
 
 
 def fanout_targets(state: dict) -> dict:
@@ -192,9 +230,22 @@ def fanout_targets(state: dict) -> dict:
         register_cycle(
             unverified=any(r.get("status") == "unverified" for _, r in china),
             verified=any(
-                r.get("status") == "blocked" or r.get("tweet_id") or r.get("dry_run")
+                r.get("status") in ("blocked", "ok") or r.get("tweet_id") or r.get("dry_run")
                 for _, r in china
             ),
         )
+
+    # ── Mirror compliant posts to the eXercise website (China-facing channel) ──
+    # The website is the primary channel for China (X is blocked there). sync pushes
+    # this cycle's record plus any earlier un-pushed backlog whose local video still
+    # exists, so a website outage self-heals next cycle. Failure-isolated (never
+    # raises). Skipped in dry-run and when EXERCISE_INGEST_URL is unset.
+    if not config.FANOUT_DRY_RUN and (getattr(config, "EXERCISE_INGEST_URL", "") or "").strip():
+        from services.website_publish import sync as website_sync
+        ui_info("🌐 eXercise website mirror:")
+        for spec in targets:
+            res = website_sync(spec)               # prints ✓/✗ per pushed record
+            if not res.get("error") and not res.get("pending"):
+                ui_info(f"   [{spec.id}] up to date")
 
     return {**state, "secondary_results": results}
