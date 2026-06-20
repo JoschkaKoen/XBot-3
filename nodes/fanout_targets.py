@@ -134,7 +134,12 @@ def fanout_targets(state: dict) -> dict:
     ui_info(f"🌐 Secondary targets: {len(targets)}")
 
     results = list(state.get("secondary_results", []) or [])
-    handled = {r.get("target_id") for r in results if r.get("tweet_id") or r.get("dry_run")}
+    # A prior dry-run result only counts as "handled" if dry-run is still on.
+    # If FANOUT_DRY_RUN was turned off, we must re-run those targets for real.
+    handled = {
+        r.get("target_id") for r in results
+        if r.get("tweet_id") or (r.get("dry_run") and config.FANOUT_DRY_RUN)
+    }
     cycle = state.get("cycle", 0)
 
     for spec in targets:

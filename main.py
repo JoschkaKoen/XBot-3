@@ -222,8 +222,11 @@ def main():
 
         try:
             # Pass cycle start time in state so wait_node can compute elapsed.
+            # Reset secondary_results so stale checkpoint data from a prior
+            # dry-run or a different cycle never blocks the fan-out.
             state["_cycle_start_time"] = t_cycle
             state["cycle"] = cycle
+            state["secondary_results"] = []
             result = graph.invoke(state, config=config)
 
             consecutive_failures = 0
