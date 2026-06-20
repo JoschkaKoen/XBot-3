@@ -154,6 +154,18 @@ signal.signal(signal.SIGINT,  _handle_signal)
 signal.signal(signal.SIGTERM, _handle_signal)
 
 
+def _last_posted_cycle() -> int:
+    """Return the highest cycle number recorded in data/post_history.json, or 0."""
+    from utils.io import safe_json_read
+    hist = safe_json_read("data/post_history.json", default=[])
+    if not isinstance(hist, list) or not hist:
+        return 0
+    try:
+        return max(int(r.get("cycle", 0)) for r in hist if isinstance(r, dict))
+    except (ValueError, TypeError):
+        return 0
+
+
 def _initial_state() -> dict:
     """
     Build the initial state for the first cycle.
@@ -194,7 +206,9 @@ def main():
     config = {"configurable": {"thread_id": thread_id}}
 
     state = _initial_state()
-    cycle = 0
+    cycle = _last_posted_cycle()
+    if cycle:
+        logger.info("Resuming from last posted cycle %d — next cycle will be %d.", cycle, cycle + 1)
     consecutive_failures = 0
 
     while not _shutdown:
