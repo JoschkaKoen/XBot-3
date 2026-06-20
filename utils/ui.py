@@ -103,6 +103,18 @@ def stage_banner(step: int):
     print(f"{_CYAN}{'─' * w}{_R}")
 
 
+def section_banner(icon: str, title: str, subtitle: str = ""):
+    """Banner for a sub-section outside the fixed 10-step pipeline (e.g. the
+    secondary-language fan-out). Mirrors stage_banner's look without a step number."""
+    w = _w()
+    print()
+    print(f"{_CYAN}{'─' * w}{_R}")
+    print(f"{_CYAN}{_BOLD}  {icon}  {title}{_R}")
+    if subtitle:
+        print(f"{_CYAN}  {subtitle}{_R}")
+    print(f"{_CYAN}{'─' * w}{_R}")
+
+
 def tweet_box(tweet_text: str):
     """Print the assembled tweet inside a bordered box, with no added indentation
     so spacing and emojis appear exactly as they will be posted."""

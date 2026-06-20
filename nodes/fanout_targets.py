@@ -31,7 +31,7 @@ from datetime import datetime, timezone
 
 import config
 from utils.io import safe_json_read, atomic_json_write
-from utils.ui import ok, info as ui_info, warn as ui_warn
+from utils.ui import ok, info as ui_info, warn as ui_warn, section_banner
 
 logger = logging.getLogger("xbot.fanout")
 
@@ -85,9 +85,12 @@ def _run_one_target(spec, state: dict) -> dict:
         raise RuntimeError("base has no target-language sentence to transcreate from")
 
     cycle = state.get("cycle", 0)
-    ui_info(f"🌐 [{spec.id}] transcreating {spec.source_language} → {spec.target_language} …")
-    tc = transcreate(spec, base, cycle=cycle)
-    ui_info(f"   [{spec.id}] {tc['source_word']}  |  {tc['source_sentence']}")
+    section_banner(
+        "🌐",
+        f"SECONDARY POST — {spec.source_language} → {spec.target_language}",
+        f"target: {spec.id}",
+    )
+    tc = transcreate(spec, base, cycle=cycle)   # prints candidates, pick, EN/ZH breakdown, tweet_box
 
     # Sub-state: NEVER merged into the shared state (keeps base artifacts intact).
     # The taught-language sentence becomes example_sentence_source → spoken + KTV-subtitled.

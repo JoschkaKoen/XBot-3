@@ -270,7 +270,7 @@ def reload_settings() -> None:
     global ENABLE_REALESRGAN, REALESRGAN_DIR, REALESRGAN_MODEL, REALESRGAN_OUTSCALE, REALESRGAN_TILE
     global ENABLE_SELF_IMPROVEMENT, IMPROVEMENT_INTERVAL_CYCLES, IMPROVEMENT_SCORE_THRESHOLD
     global MAX_CONSECUTIVE_FAILURES
-    global TRANSCREATION_MODEL, FANOUT_DRY_RUN, SECONDARY_TARGETS
+    global TRANSCREATION_MODEL, TRANSCREATION_CANDIDATES, FANOUT_DRY_RUN, SECONDARY_TARGETS
     global STRATEGY_METRICS_UPDATES_ENABLED, STRATEGY_UPDATE_INTERVAL_HOURS
     global METRICS_FETCH_MAX_TWEETS
     global COMFYUI_ARGS
@@ -357,6 +357,7 @@ def reload_settings() -> None:
     SUBJECT_GENDER_MODEL           = os.getenv("SUBJECT_GENDER_MODEL", "grok-4-1-fast-non-reasoning").strip()
     COMFYUI_ARGS                   = os.getenv("COMFYUI_ARGS", "--normalvram --fp16-vae").strip()
     TRANSCREATION_MODEL            = os.getenv("TRANSCREATION_MODEL", "grok-4.3").strip()
+    TRANSCREATION_CANDIDATES       = int(os.getenv("TRANSCREATION_CANDIDATES", "3") or "3")
     FANOUT_DRY_RUN                 = _parse_on_off_env("FANOUT_DRY_RUN", default=False)
     SECONDARY_TARGETS              = _load_secondary_targets()
 
@@ -651,6 +652,9 @@ logger = setup_logging()
 # Chinese) to their own X accounts. Targets are declared in data/secondary_targets.json;
 # per-account creds come from TWITTER_*_<PREFIX> in .env (gitignored).
 TRANSCREATION_MODEL: str = os.getenv("TRANSCREATION_MODEL", "grok-4.3").strip()
+# How many funny candidate sentences to generate per secondary target, then pick the
+# funniest (mirrors the German bot's 3-candidate flow). Set 1 to disable best-of-N.
+TRANSCREATION_CANDIDATES: int = int(os.getenv("TRANSCREATION_CANDIDATES", "3") or "3")
 # When True, the fan-out builds the transcreated audio/video locally but does NOT
 # post — used to verify quality without tweeting.
 FANOUT_DRY_RUN: bool = _parse_on_off_env("FANOUT_DRY_RUN", default=False)
