@@ -14,6 +14,7 @@
     "tts_speed": 0.70,
     "max_tweet_length": 280,
     "account_env_prefix": "ZH",
-    "content_policy": "china"
+    "content_policy": "china",
+    "handle": "@learnZEnglish"
   }
 ]

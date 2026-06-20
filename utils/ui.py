@@ -93,10 +93,22 @@ def cycle_banner(cycle: int):
     print()
 
 
+# When set (e.g. during a secondary-target fan-out), stage_banner shows this tag
+# instead of the "[step/10]" number, since those steps aren't part of the main
+# 10-step pipeline. Set via set_substep("zh"); clear with set_substep(None).
+_substep_label: str | None = None
+
+
+def set_substep(label: str | None) -> None:
+    global _substep_label
+    _substep_label = label
+
+
 def stage_banner(step: int):
     icon, name = _stages().get(step, ("▶", f"Step {step}"))
     w = _w()
-    label = f"  {icon}  [{step}/{_TOTAL}]  {name.upper()}"
+    tag = f"[{_substep_label}]" if _substep_label else f"[{step}/{_TOTAL}]"
+    label = f"  {icon}  {tag}  {name.upper()}"
     print()
     print(f"{_CYAN}{'─' * w}{_R}")
     print(f"{_CYAN}{_BOLD}{label}{_R}")

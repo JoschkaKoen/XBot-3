@@ -135,6 +135,34 @@ def _model_lines() -> list:
         lines.append(("Video (I2V):", f"ON  ({freq_label} via {engine_display})"))
     else:
         lines.append(("Video (I2V):", "off"))
+
+    # ── Output each cycle: which pairs, and exactly what happens to each tweet ──
+    _secondary = list(getattr(_config, "SECONDARY_TARGETS", []) or [])
+    lines.append(("─" * 22, "─" * 30))
+    lines.append(("Output each cycle:", f"{1 + len(_secondary)} tweet(s)", "📤"))
+    lines.append((
+        f"  {_config.SOURCE_FLAG} {_config.SOURCE_LANGUAGE}→{_config.TARGET_LANGUAGE}:",
+        "→ posted to X (primary account)",
+        "🐦",
+    ))
+    for _s in _secondary:
+        if _config.FANOUT_DRY_RUN:
+            _dest = "→ DRY-RUN: built locally, NOT posted"
+        elif not _s.account.is_complete():
+            _dest = "→ ⚠ NOT posted (missing API keys)"
+        else:
+            _dest = f"→ posted to {getattr(_s, 'handle', '') or ('2nd account [' + _s.id + ']')}"
+        if getattr(_s, "content_policy", ""):
+            _dest += "  (China-compliance checked)"
+        lines.append((
+            f"  {_s.source_flag} {_s.source_language}→{_s.target_language}:",
+            _dest,
+            "🌐",
+        ))
+    if _secondary:
+        lines.append(("Transcreation model:", _config.TRANSCREATION_MODEL))
+        if any(getattr(s, "content_policy", "") for s in _secondary):
+            lines.append(("Compliance model:", _config.CONTENT_SAFETY_MODEL))
     return lines
 
 setup_logging()

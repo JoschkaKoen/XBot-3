@@ -72,6 +72,7 @@ class TargetSpec:
     voices_music_dir: str
     history_file: str
     content_policy: str = ""       # e.g. "china" → screen each post before publishing
+    handle: str = ""              # e.g. "@learnZEnglish" — display only (startup banner/logs)
     enabled: bool = True
 
     def hashtags(self) -> str:
@@ -116,6 +117,7 @@ def _spec_from_dict(t: dict) -> TargetSpec:
         voices_music_dir=t.get("voices_music_dir", f"Voices with Background Music/{tid}"),
         history_file=t.get("history_file", f"data/post_history.{tid}.json"),
         content_policy=str(t.get("content_policy", "")).strip(),
+        handle=str(t.get("handle", "")).strip(),
         enabled=bool(t.get("enabled", True)),
     )
 
@@ -159,6 +161,7 @@ def target_config(spec: TargetSpec):
     # import_module to get the actual module objects whose globals we patch.
     _ga = importlib.import_module("nodes.generate_audio")
     _cv = importlib.import_module("nodes.create_video")
+    from utils import ui as _ui
 
     for d in (spec.voices_dir, spec.videos_dir, spec.voices_music_dir):
         os.makedirs(d, exist_ok=True)
@@ -182,8 +185,10 @@ def target_config(spec: TargetSpec):
     try:
         for obj, attr, val in overrides:
             setattr(obj, attr, val)
+        _ui.set_substep(spec.id)   # TTS/video stage banners show "[zh]" not "[5/10]"
         yield
     finally:
+        _ui.set_substep(None)
         for obj, attr, old in saved:
             if old is _SENTINEL:
                 continue

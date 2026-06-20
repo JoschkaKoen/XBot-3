@@ -98,6 +98,7 @@ def _run_one_target(spec, state: dict) -> dict:
     # next loop generates fresh content and re-checks) — never posts unverified.
     if getattr(spec, "content_policy", ""):
         from services.content_safety import check_compliance
+        ui_info(f"[{spec.id}] checking {spec.content_policy} compliance ({config.CONTENT_SAFETY_MODEL}) …")
         ok_to_post, status, reason = check_compliance(tc["full_tweet"], spec.content_policy)
         if not ok_to_post:
             if status == "blocked":
