@@ -43,6 +43,10 @@ logger = logging.getLogger("xbot.website")
 _TIMEOUT = (10, 60)                       # (connect, read) seconds — generous for the high-RTT link
 _RETRY_STATUS = {425, 500, 502, 503, 504}  # 425 = early-data (nginx ssl_early_data); transient 5xx
 _MAX_ATTEMPTS = 3
+# Poster MIME by extension. The base image is usually PNG, but z-image-turbo can
+# preserve a ComfyUI .jpg/.webp output — accept those instead of silently
+# dropping the poster (which a .png-only check would do).
+_POSTER_MIME = {".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".webp": "image/webp"}
 
 
 def _meta_for(rec: dict) -> str:
@@ -70,7 +74,8 @@ def _push_record(session: requests.Session, url: str, token: str, rec: dict) -> 
         return False, "local video missing"          # can't push without media (e.g. legacy record)
 
     image_path = rec.get("image_path") or ""
-    has_poster = bool(image_path) and os.path.isfile(image_path) and image_path.lower().endswith(".png")
+    poster_ext = os.path.splitext(image_path)[1].lower()
+    has_poster = bool(image_path) and os.path.isfile(image_path) and poster_ext in _POSTER_MIME
     meta = _meta_for(rec)
     headers = {"Authorization": f"Bearer {token}"}
 
@@ -85,7 +90,7 @@ def _push_record(session: requests.Session, url: str, token: str, rec: dict) -> 
             if has_poster:
                 pf = open(image_path, "rb")
                 handles.append(pf)
-                files["poster"] = (os.path.basename(image_path), pf, "image/png")
+                files["poster"] = (os.path.basename(image_path), pf, _POSTER_MIME[poster_ext])
             resp = session.post(url, headers=headers, data={"meta": meta}, files=files, timeout=_TIMEOUT)
             if resp.status_code == 200:
                 return True, "ok"

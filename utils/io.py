@@ -39,6 +39,34 @@ def atomic_json_write(path: str, data, **json_kwargs) -> None:
         raise
 
 
+def stream_to_file(resp, path: str, chunk_size: int = 8192) -> int:
+    """
+    Write a streamed HTTP response body to *path*, returning bytes written.
+
+    *resp* is any object exposing ``.headers`` and ``.iter_content(size)`` (a
+    ``requests.Response`` created with ``stream=True``). When the response
+    advertises a ``Content-Length``, the written size is checked against it and a
+    short/truncated download raises ``IOError`` — so the caller's retry/fallback
+    fires instead of silently posting a corrupt MP4/PNG from a dropped connection.
+    """
+    expected = resp.headers.get("Content-Length") if getattr(resp, "headers", None) else None
+    try:
+        expected = int(expected) if expected is not None else None
+    except (TypeError, ValueError):
+        expected = None
+
+    written = 0
+    with open(path, "wb") as f:
+        for chunk in resp.iter_content(chunk_size):
+            if chunk:
+                f.write(chunk)
+                written += len(chunk)
+
+    if expected is not None and written < expected:
+        raise IOError(f"Truncated download: wrote {written} of {expected} bytes to {path}")
+    return written
+
+
 def safe_json_read(
     path: str,
     default: Any = None,

@@ -39,14 +39,13 @@ class GrokImagineClient:
 
     @with_retry(max_attempts=3, base_delay=2.0, label="grok_download")
     def _download_image(self, img_url: str, idx: int) -> str:
+        from utils.io import stream_to_file
         resp = requests.get(img_url, stream=True, timeout=60)
         resp.raise_for_status()
         ts = datetime.now().strftime("%Y%m%d_%H%M%S")
         filename = f"grok_{ts}_{idx}.png"
         path = os.path.join(IMAGES_DIR, filename)
-        with open(path, "wb") as f:
-            for chunk in resp.iter_content(8192):
-                f.write(chunk)
+        stream_to_file(resp, path)   # raises on truncation → retried by @with_retry
         logger.debug("Downloaded Grok image → %s", path)
         return path
 

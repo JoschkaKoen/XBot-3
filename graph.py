@@ -29,7 +29,7 @@ from langgraph.checkpoint.sqlite import SqliteSaver
 
 from state import BotState
 import config
-from config import CHECKPOINT_DB, logger as root_logger
+from config import CHECKPOINT_DB
 from nodes import (
     fetch_all_metrics,
     analyze_and_improve,
@@ -63,6 +63,21 @@ def _check_for_update() -> None:
 
     try:
         from utils.ui import ok, warn as ui_warn
+
+        # Auto-update only makes sense on `main` — it pulls origin/main. On any
+        # other branch (e.g. a self-improvement auto-improve/* branch the bot was
+        # just swapped onto), pulling main would clobber or revert that branch, so
+        # skip entirely.
+        current_branch = subprocess.run(
+            ["git", "rev-parse", "--abbrev-ref", "HEAD"],
+            cwd=str(_PROJECT_DIR),
+            capture_output=True,
+            text=True,
+            timeout=10,
+        ).stdout.strip()
+        if current_branch != "main":
+            logger.info("Auto-update: on branch %r (not main) — skipping.", current_branch)
+            return
 
         # Skip auto-update if there are uncommitted local changes — pulling on
         # a dirty tree fails messily and may stash work the user didn't expect.
@@ -142,7 +157,7 @@ def wait_node(state: dict) -> dict:
       3. Countdown sleep for POST_INTERVAL_SECONDS (minus improvement time)
       4. _check_for_update() — if origin/main has new commits, pull and restart
     """
-    from utils.ui import stage_banner, wait_countdown, cycle_summary, cycle_cost_summary, format_elapsed
+    from utils.ui import stage_banner, wait_countdown, cycle_summary, cycle_cost_summary
 
     # Single-cycle mode: skip wait and auto-update
     if "--single-cycle" in sys.argv:

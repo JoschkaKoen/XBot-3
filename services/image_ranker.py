@@ -40,12 +40,23 @@ def _load_model():
 
     try:
         import ImageReward as ir
+    except ImportError as exc:
+        # Package genuinely unavailable → latch so we don't retry the import
+        # every cycle. (Installing it requires a restart anyway.)
+        logger.warning("ImageReward not installed (%s) — ranking disabled; using first image.", exc)
+        _model_load_failed = True
+        return
+
+    try:
         logger.info("ImageReward: loading model from cache …")
         _model = ir.load("ImageReward-v1.0", device="cpu")
         logger.info("ImageReward: model ready.")
     except Exception as exc:
-        logger.warning("ImageReward: could not load model (%s). Will fall back to first image.", exc)
-        _model_load_failed = True
+        # Transient load failure (IO blip, partial HF download, momentary OOM):
+        # do NOT latch — leave _model None so the next cycle retries instead of
+        # permanently degrading image selection to "first image" for the whole
+        # process lifetime.
+        logger.warning("ImageReward: model load failed (%s) — will retry next time.", exc)
 
 
 def warmup():

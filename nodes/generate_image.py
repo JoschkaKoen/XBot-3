@@ -31,14 +31,10 @@ IMAGE_PROVIDER (settings.env): "midjourney" (TT_API_KEY), "grok" (XAI_API_KEY), 
 
 import os
 import re
-import time
 import logging
-import requests
-from typing import List
-from datetime import datetime
 
 import config
-from config import TT_API_KEY, IMAGES_DIR, resolve_image_style
+from config import resolve_image_style
 from services.ai_client import get_ai_response
 from services.image_ranker import pick_best_image, score_image
 from services.image_clients import (
@@ -47,8 +43,7 @@ from services.image_clients import (
     ComfyUIUnavailableError,
 )
 from styles import get_style, PromptContext
-from utils.errors import FatalProviderError
-from utils.retry import retry_call, with_retry
+from utils.retry import retry_call
 from utils.ui import stage_banner, ok, info, warn as ui_warn
 
 logger = logging.getLogger("xbot.generate_image")
@@ -334,6 +329,14 @@ def generate_image(state: dict) -> dict:
         shutdown_comfyui()
 
     image_paths = [p for _, p in prompt_image_pairs]
+    if not image_paths:
+        # The provider returned no images without raising (e.g. an empty success
+        # response). Skip gracefully — same contract as the ComfyUI-unavailable
+        # path above — so create_video/publish skip cleanly instead of the cycle
+        # crashing on an empty-list .index()/scored[0].
+        ui_warn("No images were generated this cycle — skipping image and video.")
+        logger.warning("generate_image: provider returned no images — image_path=None.")
+        return {**state, "midjourney_prompt": image_prompt, "image_path": None}
     if len(set(image_paths)) != len(image_paths):
         logger.error(
             "Duplicate image paths in batch — files were likely overwritten; "
@@ -353,7 +356,7 @@ def generate_image(state: dict) -> dict:
         scored = [(score_image(prompt, path), prompt, path) for prompt, path in prompt_image_pairs]
         scored.sort(key=lambda x: x[0], reverse=True)
         best_score, best_prompt, chosen = scored[0]
-        idx = image_paths.index(chosen) + 1
+        idx = (image_paths.index(chosen) + 1) if chosen in image_paths else 0
         rank_summary = "  ".join(f"#{i+1} {s:.3f}" for i, (s, _, _) in enumerate(scored))
         ok(f"Best image: #{idx}/{len(image_paths)} (score {best_score:.3f}) → {os.path.basename(chosen)}")
         logger.info("ImageReward ranking (individual prompts): %s  →  best: %s (%.3f)", rank_summary, chosen, best_score)
@@ -361,7 +364,7 @@ def generate_image(state: dict) -> dict:
         image_prompt = best_prompt
     else:
         chosen = pick_best_image(image_prompt, image_paths)
-        idx = image_paths.index(chosen) + 1
+        idx = (image_paths.index(chosen) + 1) if chosen in image_paths else 0
         ok(f"Best image: #{idx}/{len(image_paths)} → {os.path.basename(chosen)}")
         logger.info("Best image selected: %s (from %d options)", chosen, len(image_paths))
 

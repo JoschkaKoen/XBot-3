@@ -34,6 +34,14 @@ import config
 
 logger = logging.getLogger("xbot.zimage_base")
 
+# Wall-clock cap for the Z-Image-Base generation subprocess (override with
+# ZIMAGE_BASE_TIMEOUT_SEC). Covers model load + a small batch of diffusion runs;
+# bounded only so a hung GPU can't stall the bot cycle forever.
+try:
+    _GEN_TIMEOUT_SEC = float(os.getenv("ZIMAGE_BASE_TIMEOUT_SEC", "") or 1800)
+except ValueError:
+    _GEN_TIMEOUT_SEC = 1800.0
+
 # Overlay venv that contains only transformers 5.x.
 # The subprocess still uses the shared venv's Python (torch / diffusers live
 # there), but we prepend this path so the newer transformers wins.
@@ -165,12 +173,19 @@ class ZImageBaseClient:
             existing_pp = env.get("PYTHONPATH", "")
             env["PYTHONPATH"] = _OVERLAY_SITE + (":" + existing_pp if existing_pp else "")
 
-            proc = subprocess.run(
-                cmd,
-                env=env,
-                capture_output=False,   # let stdout/stderr pass through to the terminal
-                text=True,
-            )
+            try:
+                proc = subprocess.run(
+                    cmd,
+                    env=env,
+                    capture_output=False,   # let stdout/stderr pass through to the terminal
+                    text=True,
+                    timeout=_GEN_TIMEOUT_SEC,
+                )
+            except subprocess.TimeoutExpired as exc:
+                raise RuntimeError(
+                    f"ZImageBase subprocess exceeded {_GEN_TIMEOUT_SEC:.0f}s — killed "
+                    "(GPU may be wedged)."
+                ) from exc
 
             if proc.returncode != 0:
                 raise RuntimeError(

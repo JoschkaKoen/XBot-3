@@ -79,7 +79,7 @@ def _get_resolution(video_path: str) -> tuple[int, int]:
             "-show_streams",
             video_path,
         ],
-        capture_output=True, text=True, check=True,
+        capture_output=True, text=True, check=True, timeout=60,
     )
     streams = json.loads(result.stdout).get("streams", [])
     for s in streams:
@@ -122,10 +122,16 @@ def interpolate(input_path: str) -> str:
         padded   = os.path.join(tmp, "padded.mp4")
         interped = os.path.join(tmp, "interped.mp4")
 
-        def _run(label: str, cmd: list, cwd=None):
-            """Run a subprocess, raising with stderr included on failure."""
+        def _run(label: str, cmd: list, cwd=None, timeout: float = 600):
+            """Run a subprocess, raising with stderr included on failure.
+
+            *timeout* bounds the call so a wedged ffmpeg/RIFE process can't hang
+            the cycle; the GPU interpolation step passes a larger value.
+            """
             try:
-                subprocess.run(cmd, check=True, capture_output=True, cwd=cwd)
+                subprocess.run(cmd, check=True, capture_output=True, cwd=cwd, timeout=timeout)
+            except subprocess.TimeoutExpired as exc:
+                raise RuntimeError(f"RIFE {label} exceeded {timeout:.0f}s — killed.") from exc
             except CalledProcessError as exc:
                 stderr = exc.stderr.decode(errors="replace").strip()
                 raise RuntimeError(
@@ -163,10 +169,10 @@ def interpolate(input_path: str) -> str:
             "--output", interped,
             "--model",  "train_log",
             "--scale",  "1.0",
-        ] + rife_fps_args, cwd=str(rife_dir))
+        ] + rife_fps_args, cwd=str(rife_dir), timeout=1800)
 
         # ── Step 3: crop back + re-attach audio + final encode ────────────────
-        print(f"  ⏳  RIFE step 3/3 — encoding final video …", flush=True)
+        print("  ⏳  RIFE step 3/3 — encoding final video …", flush=True)
         _run("step 3 (ffmpeg encode)", [
             "ffmpeg", "-y",
             "-i", interped,

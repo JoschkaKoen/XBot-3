@@ -270,7 +270,6 @@ def _call_tweet_ai(
 
     prompt = _build_tweet_prompt(trending_word, scaffold, strategy, top_tweets, cefr_level, extra_instruction, word_from_trends=word_from_trends, funny=funny)
     src = config.SOURCE_LANGUAGE
-    tgt = config.TARGET_LANGUAGE
     if funny:
         system_prompt = (
             f"You are a {src} language teacher and comedy writer creating funny tweets for X (Twitter). "
@@ -291,7 +290,6 @@ def _call_tweet_ai(
     _BOLD = "\033[1m"
     _CYAN = "\033[96m"
     _GRAY = "\033[90m"
-    _GREEN = "\033[92m"
 
     arrived = [0]
     lock = threading.Lock()
@@ -348,7 +346,6 @@ def _select_best_tweet(candidates: list, source_word: str, cefr_level: str, funn
 
     _R    = "\033[0m"
     _BOLD = "\033[1m"
-    _CYAN = "\033[96m"
     _GRAY = "\033[90m"
     _GREEN = "\033[92m"
 
@@ -628,8 +625,11 @@ def _pick_word_from_trends(avoid_words: list) -> Optional[tuple[str, str, str]]:
         )
         return None
 
-    except (json.JSONDecodeError, Exception) as exc:
-        logger.warning("Failed to parse trend-pick response (%s) — falling back.", exc)
+    except Exception as exc:
+        # Resilient by design — trend selection must never crash the cycle — but
+        # log the full traceback so a genuine bug here isn't silently masked as a
+        # routine "no trend word" fallback. (Exception already covers JSONDecodeError.)
+        logger.warning("Failed to parse trend-pick response (%s) — falling back.", exc, exc_info=True)
         ui_warn("Trend word selection failed — falling back to AI word selection.")
         return None
 
@@ -803,8 +803,11 @@ def generate_content(state: dict) -> dict:
                 word_cefr = ""
 
     # ── 1b. Semantic similarity gate (catches deutsch/deutsche etc.) ──────────
-    if not avoid_words:
-        avoid_words = strategy.get("avoid_words", [])
+    # Work on a PRIVATE copy: avoid_words may be the same list object as
+    # strategy["avoid_words"] (see the non-trends branch above), so the in-place
+    # append in the retry loop below would otherwise mutate the caller's strategy
+    # and leak transiently-rejected words into the persisted strategy.json.
+    avoid_words = list(avoid_words) if avoid_words else list(strategy.get("avoid_words", []))
 
     _MAX_SIMILARITY_RETRIES = 3
     rejected_words: list = []
@@ -887,9 +890,12 @@ def generate_content(state: dict) -> dict:
     # Safety-net: remove any literal "no known noun" the AI may have written in the tweet body
     result["full_tweet"] = result["full_tweet"].replace("no known noun ", "").replace("no known noun", "")
 
-    # Ensure cefr_level in result uses the pre-determined level if AI omitted it
-    if word_cefr and result.get("cefr_level", "") not in _VALID_CEFR:
-        result["cefr_level"] = word_cefr
+    # Normalize cefr_level to a known CEFR string: prefer the AI's value when it's
+    # valid, else fall back to the pre-determined level. str() coerces any non-string
+    # the AI might emit (list/number) so downstream .strip().upper() in history and
+    # CEFR rotation never crashes.
+    _ai_cefr = str(result.get("cefr_level", "")).strip().upper()
+    result["cefr_level"] = _ai_cefr if _ai_cefr in _VALID_CEFR else (word_cefr or "")
 
     # ── 5. Length check with retry ─────────────────────────────────────────────
     max_retries = 2

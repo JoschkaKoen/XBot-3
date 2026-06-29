@@ -16,7 +16,7 @@ Most settings are read from settings.env (git-tracked) and .env (gitignored, API
                          "disney"), or "random" to pick a random registered
                          style each cycle. Comma-separated to cycle (see
                          styles/ for the live registry).
-    TWEET_STYLE        → "funny" (jokes) or "educational" (plain)
+    TWEET_STYLE        → "funny" (jokes) or "normal" (plain)
     MAX_EXAMPLE_WORDS  → max words in example sentence (default: 13)
 
   VIDEO OPTIONS
@@ -66,7 +66,6 @@ from config_parsers import (
     parse_use_trends_mode_cycle as _parse_use_trends_mode_cycle,
     parse_on_off_env as _parse_on_off_env_value,
     parse_ktv_font_size as _parse_ktv_font_size,
-    parse_flag_colors as _parse_flag_colors,
 )
 
 _LOG = logging.getLogger(__name__)
@@ -75,6 +74,43 @@ _LOG = logging.getLogger(__name__)
 def _parse_on_off_env(key: str, default: bool = False) -> bool:
     """Convenience wrapper: read *key* from os.environ and parse as bool."""
     return _parse_on_off_env_value(os.getenv(key), default)
+
+
+def _int_env(key: str, default: int, fallback_key: str | None = None) -> int:
+    """
+    Read an integer setting from the environment, tolerating bad input.
+
+    A malformed value (e.g. ``GENERATED_IMAGE_COUNT=two``) logs a warning and
+    returns *default* instead of raising ``ValueError`` — which, for a bare
+    ``int(os.getenv(...))`` at module scope, would otherwise abort ``import
+    config`` and prevent the bot from starting at all (and mid-run, inside
+    ``reload_settings()``, would surface as a confusing "cycle failed").
+
+    *fallback_key* is consulted when *key* is unset (used for renamed/legacy
+    aliases like ``GROK_IMAGE_COUNT`` → ``GENERATED_IMAGE_COUNT``).
+    """
+    raw = os.getenv(key)
+    if (raw is None or raw.strip() == "") and fallback_key is not None:
+        raw = os.getenv(fallback_key)
+    if raw is None or raw.strip() == "":
+        return default
+    try:
+        return int(raw.strip())
+    except (ValueError, TypeError):
+        _LOG.warning("Invalid %s=%r — expected an integer; using default %s.", key, raw, default)
+        return default
+
+
+def _float_env(key: str, default: float) -> float:
+    """Float counterpart of :func:`_int_env` — warn and fall back on bad input."""
+    raw = os.getenv(key)
+    if raw is None or raw.strip() == "":
+        return default
+    try:
+        return float(raw.strip())
+    except (ValueError, TypeError):
+        _LOG.warning("Invalid %s=%r — expected a number; using default %s.", key, raw, default)
+        return default
 
 
 # Load public configuration first, then secret keys.
@@ -150,12 +186,9 @@ TWITTER_ACCESS_TOKEN_SECRET: str = os.getenv("TWITTER_ACCESS_TOKEN_SECRET", "")
 XAI_API_KEY: str = os.getenv("XAI_API_KEY", "")
 # Playback speed (xAI accepts 0.7–1.5; 0.70 ≈ 30 % slower — deliberate pacing
 # for language learners). Honored directly by the REST endpoint.
-try:
-    TTS_SPEED: float = float(os.getenv("TTS_SPEED", "0.70"))
-except ValueError:
-    TTS_SPEED = 0.70
-TTS_SAMPLE_RATE: int = int(os.getenv("TTS_SAMPLE_RATE", "44100") or "44100")
-TTS_BIT_RATE: int = int(os.getenv("TTS_BIT_RATE", "128000") or "128000")
+TTS_SPEED: float = _float_env("TTS_SPEED", 0.70)
+TTS_SAMPLE_RATE: int = _int_env("TTS_SAMPLE_RATE", 44100)
+TTS_BIT_RATE: int = _int_env("TTS_BIT_RATE", 128000)
 
 # ── Midjourney via TTAPI ─────────────────────────────────────────────────────
 TT_API_KEY: str = os.getenv("TT_API_KEY", "")
@@ -252,6 +285,12 @@ def reload_settings() -> None:
     Only the 'live' behavioural settings are updated — static things like file
     paths, API keys, and the KTV font *file* (KTV_FONT path) are left unchanged.
     KTV_FONT_SIZE reloads here so subtitle size can be tuned between cycles.
+
+    LIMITATION: python-dotenv only *adds/overwrites* keys into os.environ — it
+    never *removes* one. So editing a value in settings.env takes effect next
+    cycle, but DELETING a line does NOT revert that setting to its default while
+    the process is running (the old value persists in os.environ). To go back to
+    a default, set the line explicitly to the default value, or restart the bot.
     """
     load_dotenv("settings.env", override=True)
     load_dotenv(override=True)  # .env (API keys) always wins
@@ -284,9 +323,9 @@ def reload_settings() -> None:
     USE_TRENDS_MODE_CYCLE          = _parse_use_trends_mode_cycle(os.getenv("USE_TRENDS"))
     USE_TRENDS_CYCLE               = [m == "trends" for m in USE_TRENDS_MODE_CYCLE]
     USE_TRENDS                     = USE_TRENDS_CYCLE[0]
-    TREND_CANDIDATE_LIMIT          = int(os.getenv("TREND_CANDIDATE_LIMIT", "5"))
+    TREND_CANDIDATE_LIMIT          = _int_env("TREND_CANDIDATE_LIMIT", 5)
     CEFR_ROTATION                  = _parse_on_off_env("CEFR_ROTATION", default=False)
-    METRICS_FETCH_PER_CYCLE        = max(0, int(os.getenv("METRICS_FETCH_PER_CYCLE", "0")))
+    METRICS_FETCH_PER_CYCLE        = max(0, _int_env("METRICS_FETCH_PER_CYCLE", 0))
     _raw                           = os.getenv("IMAGE_STYLE", "photographic")
     IMAGE_STYLE_CYCLE              = [s.lower().strip() for s in _raw.split(",") if s.strip()] or ["photographic"]
     IMAGE_STYLE                    = IMAGE_STYLE_CYCLE[0]
@@ -294,17 +333,17 @@ def reload_settings() -> None:
     TWEET_STYLE_CYCLE              = [s.lower().strip() for s in _raw_tweet.split(",") if s.strip()] or ["funny"]
     TWEET_STYLE                    = TWEET_STYLE_CYCLE[0]
     IMAGE_PROVIDER                 = os.getenv("IMAGE_PROVIDER", "midjourney").lower().strip()
-    GENERATED_IMAGE_COUNT          = int(os.getenv("GENERATED_IMAGE_COUNT", os.getenv("GROK_IMAGE_COUNT", "1")))
+    GENERATED_IMAGE_COUNT          = _int_env("GENERATED_IMAGE_COUNT", 1, fallback_key="GROK_IMAGE_COUNT")
     INDIVIDUAL_IMAGE_PROMPTS       = os.getenv("INDIVIDUAL_IMAGE_PROMPTS", "false").lower().strip() == "true"
-    Z_IMAGE_TURBO_STEPS            = int(os.getenv("Z_IMAGE_TURBO_STEPS",  "8"))
-    Z_IMAGE_TURBO_WIDTH            = int(os.getenv("Z_IMAGE_TURBO_WIDTH",  "832"))
-    Z_IMAGE_TURBO_HEIGHT           = int(os.getenv("Z_IMAGE_TURBO_HEIGHT", "480"))
+    Z_IMAGE_TURBO_STEPS            = _int_env("Z_IMAGE_TURBO_STEPS", 8)
+    Z_IMAGE_TURBO_WIDTH            = _int_env("Z_IMAGE_TURBO_WIDTH", 832)
+    Z_IMAGE_TURBO_HEIGHT           = _int_env("Z_IMAGE_TURBO_HEIGHT", 480)
     Z_IMAGE_PROMPT_SUFFIX          = os.getenv("Z_IMAGE_PROMPT_SUFFIX", "").strip()
     Z_IMAGE_BASE_MODEL_ID          = os.getenv("Z_IMAGE_BASE_MODEL_ID", "Tongyi-MAI/Z-Image").strip()
-    Z_IMAGE_BASE_STEPS             = int(os.getenv("Z_IMAGE_BASE_STEPS", "30"))
-    Z_IMAGE_BASE_GUIDANCE_SCALE    = float(os.getenv("Z_IMAGE_BASE_GUIDANCE_SCALE", "5.0"))
-    Z_IMAGE_BASE_WIDTH             = int(os.getenv("Z_IMAGE_BASE_WIDTH",  "832"))
-    Z_IMAGE_BASE_HEIGHT            = int(os.getenv("Z_IMAGE_BASE_HEIGHT", "480"))
+    Z_IMAGE_BASE_STEPS             = _int_env("Z_IMAGE_BASE_STEPS", 30)
+    Z_IMAGE_BASE_GUIDANCE_SCALE    = _float_env("Z_IMAGE_BASE_GUIDANCE_SCALE", 5.0)
+    Z_IMAGE_BASE_WIDTH             = _int_env("Z_IMAGE_BASE_WIDTH", 832)
+    Z_IMAGE_BASE_HEIGHT            = _int_env("Z_IMAGE_BASE_HEIGHT", 480)
     Z_IMAGE_BASE_NEGATIVE_PROMPT   = os.getenv("Z_IMAGE_BASE_NEGATIVE_PROMPT", "").strip()
     ENABLE_INSTRUCTIR_ENHANCE      = _parse_on_off_env("ENABLE_INSTRUCTIR_ENHANCE", default=False)
     INSTRUCTIR_DIR                 = os.getenv("INSTRUCTIR_DIR", "").strip()
@@ -313,12 +352,12 @@ def reload_settings() -> None:
     VIDEO_INTERPOLATION            = os.getenv("VIDEO_INTERPOLATION", "false").lower().strip() == "true"
     RIFE_DIR                       = os.getenv("RIFE_DIR", os.path.join(os.path.expanduser("~"), "Programming", "Practical-RIFE"))
     RIFE_PYTHON                    = os.getenv("RIFE_PYTHON", os.path.join(os.path.expanduser("~"), "Programming", "Practical-RIFE", "venv", "bin", "python"))
-    VIDEO_UPLOAD_FPS               = int(os.getenv("VIDEO_UPLOAD_FPS", "32"))
-    MAX_TWEET_LENGTH               = int(os.getenv("MAX_TWEET_LENGTH", "280"))
-    MAX_EXAMPLE_WORDS              = int(os.getenv("MAX_EXAMPLE_WORDS", "13"))
-    POST_INTERVAL_SECONDS          = int(os.getenv("POST_INTERVAL_SECONDS", "18000"))
+    VIDEO_UPLOAD_FPS               = _int_env("VIDEO_UPLOAD_FPS", 32)
+    MAX_TWEET_LENGTH               = _int_env("MAX_TWEET_LENGTH", 280)
+    MAX_EXAMPLE_WORDS              = _int_env("MAX_EXAMPLE_WORDS", 13)
+    POST_INTERVAL_SECONDS          = _int_env("POST_INTERVAL_SECONDS", 18000)
     VIDEO_STYLE                    = os.getenv("VIDEO_STYLE", "ktv").lower().strip()
-    ANALYZE_LAST_N                 = int(os.getenv("ANALYZE_LAST_N", "10"))
+    ANALYZE_LAST_N                 = _int_env("ANALYZE_LAST_N", 10)
     METRICS_FETCH_MAX_TWEETS       = _parse_metrics_fetch_max(
         os.getenv("METRICS_FETCH_MAX_TWEETS"), ANALYZE_LAST_N
     )
@@ -327,23 +366,23 @@ def reload_settings() -> None:
     ENABLE_GROK_VIDEO              = ENABLE_VIDEO == "grok"
     ENABLE_KEN_BURNS               = os.getenv("ENABLE_KEN_BURNS", "false").lower().strip() == "true"
     ENABLE_BACKGROUND_MUSIC        = _parse_on_off_env("ENABLE_BACKGROUND_MUSIC", default=False)
-    VIDEO_FREQUENCY                = int(os.getenv("VIDEO_FREQUENCY", os.getenv("GROK_VIDEO_FREQUENCY", "1")))
+    VIDEO_FREQUENCY                = _int_env("VIDEO_FREQUENCY", 1, fallback_key="GROK_VIDEO_FREQUENCY")
     GROK_VIDEO_FREQUENCY           = VIDEO_FREQUENCY
     WAN_VIDEO_DIR                  = os.getenv("WAN_VIDEO_DIR", str(os.path.join(os.path.expanduser("~"), "Programming", "Wan2GP")))
-    WAN_VIDEO_STEPS                = int(os.getenv("WAN_VIDEO_STEPS", "10"))
-    WAN_VIDEO_FRAMES               = int(os.getenv("WAN_VIDEO_FRAMES", "81"))
+    WAN_VIDEO_STEPS                = _int_env("WAN_VIDEO_STEPS", 10)
+    WAN_VIDEO_FRAMES               = _int_env("WAN_VIDEO_FRAMES", 81)
     WAN_VIDEO_HISTORY_FILE         = os.getenv("WAN_VIDEO_HISTORY_FILE", "data/wan_video_history.jsonl")
-    VIDEO_FPS                      = int(os.getenv("WAN_VIDEO_FPS", "16"))
+    VIDEO_FPS                      = _int_env("WAN_VIDEO_FPS", 16)
     ENABLE_REALESRGAN              = _parse_on_off_env("ENABLE_REALESRGAN", default=False)
     REALESRGAN_DIR                 = os.getenv("REALESRGAN_DIR", os.path.join(os.path.expanduser("~"), "Programming", "Real-ESRGAN"))
     REALESRGAN_MODEL               = os.getenv("REALESRGAN_MODEL", "RealESRGAN_x4plus")
-    REALESRGAN_OUTSCALE            = float(os.getenv("REALESRGAN_OUTSCALE", "1.5"))
-    REALESRGAN_TILE                = int(os.getenv("REALESRGAN_TILE", "256"))
+    REALESRGAN_OUTSCALE            = _float_env("REALESRGAN_OUTSCALE", 1.5)
+    REALESRGAN_TILE                = _int_env("REALESRGAN_TILE", 256)
     KTV_FONT_SIZE                  = _parse_ktv_font_size(os.getenv("KTV_FONT_SIZE"))
     ENABLE_SELF_IMPROVEMENT        = os.getenv("ENABLE_SELF_IMPROVEMENT", "false").lower().strip() == "true"
-    IMPROVEMENT_INTERVAL_CYCLES    = int(os.getenv("IMPROVEMENT_INTERVAL_CYCLES", "5"))
-    IMPROVEMENT_SCORE_THRESHOLD    = float(os.getenv("IMPROVEMENT_SCORE_THRESHOLD", "9999"))
-    MAX_CONSECUTIVE_FAILURES       = int(os.getenv("MAX_CONSECUTIVE_FAILURES", "5"))
+    IMPROVEMENT_INTERVAL_CYCLES    = _int_env("IMPROVEMENT_INTERVAL_CYCLES", 5)
+    IMPROVEMENT_SCORE_THRESHOLD    = _float_env("IMPROVEMENT_SCORE_THRESHOLD", 9999)
+    MAX_CONSECUTIVE_FAILURES       = _int_env("MAX_CONSECUTIVE_FAILURES", 5)
     STRATEGY_METRICS_UPDATES_ENABLED, STRATEGY_UPDATE_INTERVAL_HOURS = _parse_strategy_update_interval(
         os.getenv("STRATEGY_UPDATE_INTERVAL_HOURS", "24")
     )
@@ -359,10 +398,10 @@ def reload_settings() -> None:
     SUBJECT_GENDER_MODEL           = os.getenv("SUBJECT_GENDER_MODEL", "grok-4-1-fast-non-reasoning").strip()
     COMFYUI_ARGS                   = os.getenv("COMFYUI_ARGS", "--normalvram --fp16-vae").strip()
     TRANSCREATION_MODEL            = os.getenv("TRANSCREATION_MODEL", "grok-4.3").strip()
-    TRANSCREATION_CANDIDATES       = int(os.getenv("TRANSCREATION_CANDIDATES", "3") or "3")
+    TRANSCREATION_CANDIDATES       = _int_env("TRANSCREATION_CANDIDATES", 3)
     CONTENT_SAFETY_MODEL           = os.getenv("CONTENT_SAFETY_MODEL", "qwen3.7-plus").strip()
-    CONTENT_SAFETY_MAX_ATTEMPTS    = int(os.getenv("CONTENT_SAFETY_MAX_ATTEMPTS", "3") or "3")
-    CONTENT_SAFETY_STOP_AFTER_UNVERIFIED = int(os.getenv("CONTENT_SAFETY_STOP_AFTER_UNVERIFIED", "2") or "2")
+    CONTENT_SAFETY_MAX_ATTEMPTS    = _int_env("CONTENT_SAFETY_MAX_ATTEMPTS", 3)
+    CONTENT_SAFETY_STOP_AFTER_UNVERIFIED = _int_env("CONTENT_SAFETY_STOP_AFTER_UNVERIFIED", 2)
     FANOUT_DRY_RUN                 = _parse_on_off_env("FANOUT_DRY_RUN", default=False)
     EXERCISE_INGEST_URL            = os.getenv("EXERCISE_INGEST_URL", "").strip()
     EXERCISE_INGEST_TOKEN          = os.getenv("EXERCISE_INGEST_TOKEN", "").strip()
@@ -379,7 +418,7 @@ IMAGE_PROVIDER: str = os.getenv("IMAGE_PROVIDER", "midjourney").lower().strip()
 # Number of images to generate per cycle.
 # Grok: requested in a single API call. z-image-turbo: sequential runs with different seeds.
 # All candidates are ranked by ImageReward and the best one is picked.
-GENERATED_IMAGE_COUNT: int = int(os.getenv("GENERATED_IMAGE_COUNT", os.getenv("GROK_IMAGE_COUNT", "1")))
+GENERATED_IMAGE_COUNT: int = _int_env("GENERATED_IMAGE_COUNT", 1, fallback_key="GROK_IMAGE_COUNT")
 
 # When True, the LLM is called once per image to generate a unique prompt variation for each.
 # Each image is scored against its own prompt; the best-scoring (prompt, image) pair wins.
@@ -388,10 +427,10 @@ INDIVIDUAL_IMAGE_PROMPTS: bool = os.getenv("INDIVIDUAL_IMAGE_PROMPTS", "false").
 
 # Denoising steps for Z-Image-Turbo (IMAGE_PROVIDER=z-image-turbo).
 # Model card recommendation: 8–9. CFG/sampler/scheduler are locked in the service.
-Z_IMAGE_TURBO_STEPS: int  = int(os.getenv("Z_IMAGE_TURBO_STEPS",  "8"))
+Z_IMAGE_TURBO_STEPS: int  = _int_env("Z_IMAGE_TURBO_STEPS", 8)
 # Output resolution (defaults match Wan2.1 I2V; override e.g. 3840×2160 for 4K image-only).
-Z_IMAGE_TURBO_WIDTH: int  = int(os.getenv("Z_IMAGE_TURBO_WIDTH",  "832"))
-Z_IMAGE_TURBO_HEIGHT: int = int(os.getenv("Z_IMAGE_TURBO_HEIGHT", "480"))
+Z_IMAGE_TURBO_WIDTH: int  = _int_env("Z_IMAGE_TURBO_WIDTH", 832)
+Z_IMAGE_TURBO_HEIGHT: int = _int_env("Z_IMAGE_TURBO_HEIGHT", 480)
 
 # Quality / anatomy suffix appended to every Z-Image prompt after the LLM output.
 # Applies to both z-image-turbo and z-image-base. Leave empty to disable.
@@ -401,12 +440,12 @@ Z_IMAGE_PROMPT_SUFFIX: str = os.getenv("Z_IMAGE_PROMPT_SUFFIX", "").strip()
 # HuggingFace model ID.  Change to a fine-tune if desired.
 Z_IMAGE_BASE_MODEL_ID: str  = os.getenv("Z_IMAGE_BASE_MODEL_ID", "Tongyi-MAI/Z-Image").strip()
 # Denoising steps (20–50 recommended; 30 is the sweet spot for quality/speed).
-Z_IMAGE_BASE_STEPS: int     = int(os.getenv("Z_IMAGE_BASE_STEPS", "30"))
+Z_IMAGE_BASE_STEPS: int     = _int_env("Z_IMAGE_BASE_STEPS", 30)
 # CFG scale (classifier-free guidance).  3.5–7.0 works well; 5.0 is a safe default.
-Z_IMAGE_BASE_GUIDANCE_SCALE: float = float(os.getenv("Z_IMAGE_BASE_GUIDANCE_SCALE", "5.0"))
+Z_IMAGE_BASE_GUIDANCE_SCALE: float = _float_env("Z_IMAGE_BASE_GUIDANCE_SCALE", 5.0)
 # Output resolution — keep at 832×480 to match WAN2.1 480p I2V input exactly.
-Z_IMAGE_BASE_WIDTH: int     = int(os.getenv("Z_IMAGE_BASE_WIDTH",  "832"))
-Z_IMAGE_BASE_HEIGHT: int    = int(os.getenv("Z_IMAGE_BASE_HEIGHT", "480"))
+Z_IMAGE_BASE_WIDTH: int     = _int_env("Z_IMAGE_BASE_WIDTH", 832)
+Z_IMAGE_BASE_HEIGHT: int    = _int_env("Z_IMAGE_BASE_HEIGHT", 480)
 # Optional negative prompt (base model supports full CFG unlike turbo).
 Z_IMAGE_BASE_NEGATIVE_PROMPT: str = os.getenv("Z_IMAGE_BASE_NEGATIVE_PROMPT", "").strip()
 
@@ -431,7 +470,7 @@ RIFE_DIR: str             = os.getenv("RIFE_DIR", os.path.join(os.path.expanduse
 # Python interpreter that runs inference_video.py — must have PyTorch with GPU support.
 RIFE_PYTHON: str          = os.getenv("RIFE_PYTHON", os.path.join(os.path.expanduser("~"), "Programming", "Practical-RIFE", "venv", "bin", "python"))
 # 32 = exact 2x from 16fps (cleanest). 30 = standard broadcast.
-VIDEO_UPLOAD_FPS: int     = int(os.getenv("VIDEO_UPLOAD_FPS", "32"))
+VIDEO_UPLOAD_FPS: int     = _int_env("VIDEO_UPLOAD_FPS", 32)
 
 # ComfyUI server URL and installation directory (used by IMAGE_PROVIDER=z-image-turbo
 # and the ComfyUI-based video / test scripts).
@@ -440,24 +479,24 @@ COMFYUI_DIR: str          = os.getenv("COMFYUI_DIR",   os.path.join(os.path.expa
 # CLI flags forwarded to ComfyUI main.py on auto-start (IMAGE_PROVIDER=z-image-turbo).
 COMFYUI_ARGS: str         = os.getenv("COMFYUI_ARGS",  "--normalvram --fp16-vae")
 # Seconds to wait for ComfyUI to become ready after auto-start.
-COMFYUI_START_TIMEOUT: int = int(os.getenv("COMFYUI_START_TIMEOUT", "120"))
+COMFYUI_START_TIMEOUT: int = _int_env("COMFYUI_START_TIMEOUT", 120)
 
 # ── Tweet constraints ────────────────────────────────────────────────────────
 # Maximum character length of a posted tweet. X's hard limit is 280 for free
 # accounts; Premium accounts support up to 25 000. Adjust if your account has
 # an extended limit.
-MAX_TWEET_LENGTH: int = int(os.getenv("MAX_TWEET_LENGTH", "280"))
+MAX_TWEET_LENGTH: int = _int_env("MAX_TWEET_LENGTH", 280)
 
 # Maximum number of words allowed in the source-language example sentence.
-MAX_EXAMPLE_WORDS: int = int(os.getenv("MAX_EXAMPLE_WORDS", "13"))
+MAX_EXAMPLE_WORDS: int = _int_env("MAX_EXAMPLE_WORDS", 13)
 
 # ── Bot behaviour ─────────────────────────────────────────────────────────────
-POST_INTERVAL_SECONDS: int = int(os.getenv("POST_INTERVAL_SECONDS", "18000"))
+POST_INTERVAL_SECONDS: int = _int_env("POST_INTERVAL_SECONDS", 18000)
 HISTORY_FILE: str = os.getenv("HISTORY_FILE", "data/post_history.json")
 METRICS_REFRESH_FILE: str = "data/metrics_refresh.json"
 LOG_FILE: str = os.getenv("LOG_FILE", "data/bot.log")
 VIDEO_STYLE: str = os.getenv("VIDEO_STYLE", "ktv").lower().strip()
-ANALYZE_LAST_N: int = int(os.getenv("ANALYZE_LAST_N", "10"))
+ANALYZE_LAST_N: int = _int_env("ANALYZE_LAST_N", 10)
 # Cap X API get_tweet calls per refresh: default max(ANALYZE_LAST_N, 30); 0 = unlimited.
 METRICS_FETCH_MAX_TWEETS: int = _parse_metrics_fetch_max(
     os.getenv("METRICS_FETCH_MAX_TWEETS"), ANALYZE_LAST_N
@@ -466,7 +505,7 @@ METRICS_FETCH_MAX_TWEETS: int = _parse_metrics_fetch_max(
 # Number of most-recent tweets to refresh metrics for at the start of every
 # cycle, independently of any strategy-update gate.  Deleted tweets are pruned
 # from history.  Set to 0 to disable.
-METRICS_FETCH_PER_CYCLE: int = max(0, int(os.getenv("METRICS_FETCH_PER_CYCLE", "0")))
+METRICS_FETCH_PER_CYCLE: int = max(0, _int_env("METRICS_FETCH_PER_CYCLE", 0))
 
 # Word selection: trends (X topics), pool (AI + random theme bank), or strategy (AI + strategy topic).
 # Comma-separated cycle (same index as TWEET_STYLE / IMAGE_STYLE).
@@ -480,7 +519,7 @@ USE_TRENDS: bool = USE_TRENDS_CYCLE[0]
 # How many of the AI's top-ranked trend word candidates to try before falling back to
 # pure AI word selection. Once the top N candidates are all already used, the bot gives
 # up on trends and lets the AI pick freely instead.
-TREND_CANDIDATE_LIMIT: int = int(os.getenv("TREND_CANDIDATE_LIMIT", "5"))
+TREND_CANDIDATE_LIMIT: int = _int_env("TREND_CANDIDATE_LIMIT", 5)
 
 # When True the bot cycles through CEFR levels (A1→A2→B1→B2→C1→C2→A1→…),
 # reading the last level used from post history and advancing by one each cycle.
@@ -492,16 +531,16 @@ CEFR_ROTATION: bool = _parse_on_off_env("CEFR_ROTATION", default=False)
 ENABLE_SELF_IMPROVEMENT: bool = os.getenv("ENABLE_SELF_IMPROVEMENT", "false").lower().strip() == "true"
 
 # Run improvement every N cycles (default: every 5 cycles).
-IMPROVEMENT_INTERVAL_CYCLES: int = int(os.getenv("IMPROVEMENT_INTERVAL_CYCLES", "5"))
+IMPROVEMENT_INTERVAL_CYCLES: int = _int_env("IMPROVEMENT_INTERVAL_CYCLES", 5)
 
 # Only run improvement if the average engagement score of recent posts is below
 # this threshold. Set high (e.g. 9999) to always run. Use --force to override.
-IMPROVEMENT_SCORE_THRESHOLD: float = float(os.getenv("IMPROVEMENT_SCORE_THRESHOLD", "9999"))
+IMPROVEMENT_SCORE_THRESHOLD: float = _float_env("IMPROVEMENT_SCORE_THRESHOLD", 9999)
 
 # Stop the bot after this many consecutive failed cycles (any non-fatal error in a row).
 # Prevents the bot from burning upstream API credits indefinitely when a provider is down.
 # Fatal billing/auth errors (HTTP 401/402/403) always stop the bot immediately regardless.
-MAX_CONSECUTIVE_FAILURES: int = int(os.getenv("MAX_CONSECUTIVE_FAILURES", "5"))
+MAX_CONSECUTIVE_FAILURES: int = _int_env("MAX_CONSECUTIVE_FAILURES", 5)
 
 
 # Which video engine to use for animating the generated image.
@@ -526,7 +565,7 @@ ENABLE_BACKGROUND_MUSIC: bool = _parse_on_off_env("ENABLE_BACKGROUND_MUSIC", def
 #   1 = every tweet  (default)
 #   2 = every 2nd tweet  …etc.
 # Applies to both "grok" and "wan" engines.
-VIDEO_FREQUENCY: int = int(os.getenv("VIDEO_FREQUENCY", os.getenv("GROK_VIDEO_FREQUENCY", "1")))
+VIDEO_FREQUENCY: int = _int_env("VIDEO_FREQUENCY", 1, fallback_key="GROK_VIDEO_FREQUENCY")
 
 # Backward-compat alias.
 GROK_VIDEO_FREQUENCY: int = VIDEO_FREQUENCY
@@ -537,15 +576,15 @@ WAN_VIDEO_DIR: str = os.getenv("WAN_VIDEO_DIR", str(os.path.join(os.path.expandu
 
 # Number of denoising steps for Wan video generation.
 # Lower = faster but lower quality. Higher = slower but better quality.
-WAN_VIDEO_STEPS: int = int(os.getenv("WAN_VIDEO_STEPS", "10"))
+WAN_VIDEO_STEPS: int = _int_env("WAN_VIDEO_STEPS", 10)
 
 # Number of video frames (only used when ENABLE_VIDEO=WAN2.1).
 # Must be 4k+1 (e.g. 49, 65, 81, 97, 121). At 16 fps: 81 ≈ 5s. At 24 fps: 121 ≈ 5s.
-WAN_VIDEO_FRAMES: int = int(os.getenv("WAN_VIDEO_FRAMES", "81"))
+WAN_VIDEO_FRAMES: int = _int_env("WAN_VIDEO_FRAMES", 81)
 
 # Frames per second for all video output — both Wan2.1 generation and MoviePy composition.
 # 16 = Wan2.1 native fps (no resampling). 24 = smoother (needs more frames for same duration).
-VIDEO_FPS: int = int(os.getenv("WAN_VIDEO_FPS", "16"))
+VIDEO_FPS: int = _int_env("WAN_VIDEO_FPS", 16)
 
 # Append-only JSONL file: generation params + video reward scores per Wan run.
 WAN_VIDEO_HISTORY_FILE: str = os.getenv("WAN_VIDEO_HISTORY_FILE", "data/wan_video_history.jsonl")
@@ -561,9 +600,9 @@ REALESRGAN_DIR: str      = os.getenv("REALESRGAN_DIR", os.path.join(os.path.expa
 # all-round model; realesr-general-x4v3 is slightly faster with similar quality.
 REALESRGAN_MODEL: str    = os.getenv("REALESRGAN_MODEL", "RealESRGAN_x4plus")
 # Scale factor: 1.5 → 480p × 1.5 = 720p (the exact target resolution).
-REALESRGAN_OUTSCALE: float = float(os.getenv("REALESRGAN_OUTSCALE", "1.5"))
+REALESRGAN_OUTSCALE: float = _float_env("REALESRGAN_OUTSCALE", 1.5)
 # Tile size for tiled inference — keeps VRAM under 4 GB even on longer clips.
-REALESRGAN_TILE: int     = int(os.getenv("REALESRGAN_TILE", "256"))
+REALESRGAN_TILE: int     = _int_env("REALESRGAN_TILE", 256)
 
 # KTV overlay subtitle font size in px at 720p (standard HD reference).
 # E.g. KTV_FONT_SIZE=80 → ~80px on 720p Grok video, ~53px on 480p Wan video.
@@ -662,16 +701,16 @@ logger = setup_logging()
 TRANSCREATION_MODEL: str = os.getenv("TRANSCREATION_MODEL", "grok-4.3").strip()
 # How many funny candidate sentences to generate per secondary target, then pick the
 # funniest (mirrors the German bot's 3-candidate flow). Set 1 to disable best-of-N.
-TRANSCREATION_CANDIDATES: int = int(os.getenv("TRANSCREATION_CANDIDATES", "3") or "3")
+TRANSCREATION_CANDIDATES: int = _int_env("TRANSCREATION_CANDIDATES", 3)
 # Cheap Chinese model that screens each secondary post for China content-compliance
 # (fail-closed: a post is published only on a positive verdict). Needs DASHSCOPE_API_KEY.
 CONTENT_SAFETY_MODEL: str = os.getenv("CONTENT_SAFETY_MODEL", "qwen3.7-plus").strip()
 # Compliance-check attempts on a TECHNICAL failure before skipping the post this cycle.
-CONTENT_SAFETY_MAX_ATTEMPTS: int = int(os.getenv("CONTENT_SAFETY_MAX_ATTEMPTS", "3") or "3")
+CONTENT_SAFETY_MAX_ATTEMPTS: int = _int_env("CONTENT_SAFETY_MAX_ATTEMPTS", 3)
 # Stop the whole bot if the compliance check is UNVERIFIED (couldn't run) this many
 # cycles in a row — signals a sustained provider/key outage. "blocked" (content judged
 # non-compliant) does NOT count. Set 0 to disable the watchdog.
-CONTENT_SAFETY_STOP_AFTER_UNVERIFIED: int = int(os.getenv("CONTENT_SAFETY_STOP_AFTER_UNVERIFIED", "2") or "2")
+CONTENT_SAFETY_STOP_AFTER_UNVERIFIED: int = _int_env("CONTENT_SAFETY_STOP_AFTER_UNVERIFIED", 2)
 # When True, the fan-out builds the transcreated audio/video locally but does NOT
 # post — used to verify quality without tweeting.
 FANOUT_DRY_RUN: bool = _parse_on_off_env("FANOUT_DRY_RUN", default=False)

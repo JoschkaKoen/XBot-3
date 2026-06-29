@@ -37,6 +37,14 @@ import config
 
 logger = logging.getLogger("xbot.wan_video")
 
+# Wall-clock cap for one wgp.py generation (override with WAN_VIDEO_TIMEOUT_SEC).
+# Default 1h: local Wan2.1 I2V is 7–40 min depending on GPU/steps/frames, so this
+# is pure headroom against a hung GPU, not a normal-case limit.
+try:
+    _WAN_GEN_TIMEOUT_SEC = float(os.getenv("WAN_VIDEO_TIMEOUT_SEC", "") or 3600)
+except ValueError:
+    _WAN_GEN_TIMEOUT_SEC = 3600.0
+
 # ── Video reward scorer ───────────────────────────────────────────────────────
 # Executed inside Wan2GP's venv (which has torch, av, open_clip installed).
 # Passed verbatim to `python -c`. Reads video_path and prompt from sys.argv.
@@ -268,12 +276,21 @@ def generate_video(image_path: str, motion_prompt: str) -> str:
 
     before = set(outputs_dir.glob("*.mp4"))
 
+    # Generous wall-clock cap: local Wan2.1 I2V runs ~7–40 min depending on GPU,
+    # steps and frames. The bound only exists so a deadlocked CUDA/driver state
+    # can't hang the bot cycle forever — on timeout subprocess.run kills wgp.py
+    # and we raise, so create_video falls back to the static KTV video.
     try:
         result = subprocess.run(
             cmd,
             cwd=str(wan_dir),
             env={**os.environ, "PYTHONUNBUFFERED": "1"},
+            timeout=_WAN_GEN_TIMEOUT_SEC,
         )
+    except subprocess.TimeoutExpired as exc:
+        raise RuntimeError(
+            f"wgp.py exceeded {_WAN_GEN_TIMEOUT_SEC:.0f}s — killed (GPU may be wedged)."
+        ) from exc
     finally:
         settings_file.unlink(missing_ok=True)
 
@@ -301,6 +318,7 @@ def generate_video(image_path: str, motion_prompt: str) -> str:
             cwd=str(wan_dir),
             capture_output=True,
             text=True,
+            timeout=300,
         )
         if score_proc.returncode == 0 and score_proc.stdout.strip():
             video_reward = json.loads(score_proc.stdout.strip())

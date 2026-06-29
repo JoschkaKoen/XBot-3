@@ -39,7 +39,7 @@ from config import (
     TWITTER_ACCESS_TOKEN_SECRET,
 )
 from utils.retry import with_retry
-from utils.ui import stage_banner, ok
+from utils.ui import stage_banner, ok, warn as ui_warn
 
 logger = logging.getLogger("xbot.publish")
 
@@ -115,8 +115,21 @@ def publish(state: dict) -> dict:
     stage_banner(8)
     logger.info("Node: publish")
 
-    text: str = state["full_tweet"]
-    video_path: str = state["video_path"]
+    text: str = state.get("full_tweet", "")
+    video_path = state.get("video_path")
+
+    # create_video returns video_path=None when image generation was skipped
+    # (e.g. ComfyUI unavailable, or the provider returned no images). That path
+    # is meant to degrade gracefully — posting None to tweepy's media_upload
+    # would crash the whole cycle, so skip publishing instead.
+    if not video_path:
+        ui_warn("No video available — skipping publish for this cycle (nothing posted).")
+        logger.warning("publish: video_path missing — tweet not posted this cycle.")
+        return {**state, "tweet_id": "", "tweet_url": ""}
+    if not text:
+        ui_warn("No tweet text available — skipping publish for this cycle (nothing posted).")
+        logger.warning("publish: full_tweet missing — tweet not posted this cycle.")
+        return {**state, "tweet_id": "", "tweet_url": ""}
 
     tweet_id, tweet_url = post_tweet_with_video(text, video_path)
     ok(f"Tweet posted → {tweet_url}")

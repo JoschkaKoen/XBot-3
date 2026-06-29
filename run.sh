@@ -24,7 +24,14 @@ if ! git diff --quiet; then
     STASHED=true
 fi
 
-git pull origin "$BRANCH"
+# Only pull if this branch actually exists on origin. auto-improve/* branches
+# (from the self-improvement engine) are local-only, and `git pull origin <branch>`
+# would fail with "couldn't find remote ref" — aborting the whole script under `set -e`.
+if git ls-remote --exit-code --heads origin "$BRANCH" >/dev/null 2>&1; then
+    git pull origin "$BRANCH"
+else
+    echo "ℹ️   Branch '$BRANCH' is local-only (not on origin) — skipping pull."
+fi
 
 # Restore stashed runtime data (merge favours the freshly-pulled version on conflict)
 if [ "$STASHED" = true ]; then

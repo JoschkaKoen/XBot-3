@@ -24,6 +24,14 @@ LM_MODEL = "lm_instructir-7d.pt"
 MODEL_NAME = "im_instructir-7d.pt"
 CONFIG_REL = Path("configs") / "eval5d.yml"
 
+# Wall-clock cap for a single-image enhancement subprocess. Generous (model
+# load + one forward pass), but bounded so a wedged CUDA context can never hang
+# the bot's cycle forever. Override with INSTRUCTIR_TIMEOUT_SEC if needed.
+try:
+    _ENHANCE_TIMEOUT_SEC = int(os.getenv("INSTRUCTIR_TIMEOUT_SEC", "600") or "600")
+except ValueError:
+    _ENHANCE_TIMEOUT_SEC = 600
+
 # ── subprocess script ─────────────────────────────────────────────────────────
 # Executed as:  python -c _ENHANCE_CODE <image_path> <ir_dir> <prompt>
 # The script lives entirely inside the child process; when it exits all GPU
@@ -50,7 +58,14 @@ def _torch_load(path):
     except TypeError:
         return torch.load(p, map_location="cpu")
     except (RuntimeError, OSError) as exc:
-        logger.warning("torch.load(weights_only=True) failed for %s (%s) — retrying with weights_only=False", p, exc)
+        # NOTE: this runs inside the `python -c` child process, which has no
+        # `logger` (the module-level logger lives only in the parent). Use
+        # stderr — the parent captures and logs it on a non-zero exit.
+        print(
+            f"[instructir-child] torch.load(weights_only=True) failed for {p} "
+            f"({exc}); retrying with weights_only=False",
+            file=sys.stderr, flush=True,
+        )
         return torch.load(p, map_location="cpu", weights_only=False)
 
 image_path  = sys.argv[1]
@@ -190,7 +205,14 @@ def enhance_image_path(path: str) -> str:
             [sys.executable, "-c", _ENHANCE_CODE, path, str(ir_dir), prompt, out_path],
             capture_output=True,
             text=True,
+            timeout=_ENHANCE_TIMEOUT_SEC,
         )
+    except subprocess.TimeoutExpired:
+        logger.warning(
+            "InstructIR: subprocess exceeded %ds — abandoning enhancement for %s.",
+            _ENHANCE_TIMEOUT_SEC, os.path.basename(path),
+        )
+        return path
     except Exception as exc:
         logger.warning("InstructIR: subprocess launch failed (%s).", exc)
         return path

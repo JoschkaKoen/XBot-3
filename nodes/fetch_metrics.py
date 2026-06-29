@@ -47,7 +47,7 @@ from config import (
 )
 from services.history import load_history, save_history, compute_score
 from utils.retry import with_retry
-from utils.ui import stage_banner, ok, info as ui_info, warn as ui_warn
+from utils.ui import stage_banner, ok, info as ui_info
 
 logger = logging.getLogger("xbot.fetch_metrics")
 
@@ -87,12 +87,21 @@ def _client() -> tweepy.Client:
 
 
 def _tweet_is_gone(exc: Exception) -> bool:
-    msg = str(exc).lower()
-    if "no data" in msg or "not found" in msg or "404" in msg:
+    """
+    True only when *exc* is a reliable "tweet no longer exists" signal.
+
+    Uses tweepy's typed 404 exception and structured API codes — NOT a substring
+    search for "404"/"not found" in the message, which would falsely prune a
+    *live* tweet from history whenever a rate-limit or network error happened to
+    mention those tokens (e.g. a "404" in a URL). Deletion via a 200-with-no-data
+    response is handled separately by _TweetGoneError.
+    """
+    if isinstance(exc, tweepy.NotFound):
         return True
-    if hasattr(exc, "api_codes") and any(c in _NOT_FOUND_CODES for c in exc.api_codes):
+    api_codes = getattr(exc, "api_codes", None)
+    if api_codes and any(c in _NOT_FOUND_CODES for c in api_codes):
         return True
-    if hasattr(exc, "response") and getattr(exc.response, "status_code", None) == 404:
+    if getattr(getattr(exc, "response", None), "status_code", None) == 404:
         return True
     return False
 
@@ -101,13 +110,23 @@ class _TweetGoneError(Exception):
     pass
 
 
-@with_retry(max_attempts=3, base_delay=0.0, label="fetch_metrics")
+# Retry only real API errors (rate limits, transient 5xx, network — all of which
+# tweepy wraps as TweepyException). The _TweetGoneError sentinel is deliberately
+# excluded so a deleted tweet propagates on the first call instead of burning two
+# extra get_tweet calls per dead row.
+@with_retry(max_attempts=3, base_delay=0.0, exceptions=(tweepy.TweepyException,), label="fetch_metrics")
 def _fetch_one(client: tweepy.Client, tweet_id: str) -> dict:
     """Fetch public metrics for a single tweet. Raises _TweetGoneError if deleted."""
-    response = client.get_tweet(
-        id=tweet_id,
-        tweet_fields=["public_metrics"],
-    )
+    try:
+        response = client.get_tweet(
+            id=tweet_id,
+            tweet_fields=["public_metrics"],
+        )
+    except tweepy.NotFound as exc:
+        # A 404 is a definitive deletion — convert to the sentinel so it (like the
+        # 200-with-no-data case below) propagates immediately instead of being
+        # retried as a TweepyException.
+        raise _TweetGoneError(f"Tweet {tweet_id} returned 404 (deleted).") from exc
     if response.data is None:
         raise _TweetGoneError(f"Tweet {tweet_id} returned no data (possibly deleted).")
     return response.data.get("public_metrics", {})
@@ -121,10 +140,9 @@ def _fetch_cycle_metrics(n: int) -> None:
 
     Runs unconditionally — no throttle gate, no strategy trigger.
     Deleted tweets are pruned from post_history.json.
-    Called at the start of fetch_all_metrics when METRICS_FETCH_PER_CYCLE > 0.
+    Called at the start of fetch_all_metrics when METRICS_FETCH_PER_CYCLE > 0
+    (the caller passes the live value as *n*).
     """
-    from config import METRICS_FETCH_PER_CYCLE  # re-read live value
-
     history = load_history()
     if not history:
         return

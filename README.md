@@ -203,6 +203,25 @@ The bot prints stage banners and progress lines to the **terminal** (image gener
 
 ---
 
+## Tests
+
+Fast regression tests for the pure-logic helpers (config parsing, retry, atomic JSON, engagement scoring, karaoke word-timing, deleted-tweet detection) live in **`tests/`**. They use the standard-library `unittest` — no extra dependency — and don't touch the network, the GPU, or the X API, so they run in well under a second:
+
+```bash
+source venv/bin/activate
+python -m unittest discover -s tests -v
+```
+
+See `tests/README.md` for what each module guards.
+
+For a one-shot pre-commit check (byte-compile + pipeline import + tests + optional pyflakes), run:
+
+```bash
+bash scripts/check.sh
+```
+
+---
+
 ## Video generation
 
 ### KTV overlay (karaoke)
@@ -327,11 +346,13 @@ XBot 3/
 ├── scaffolds.py                   # Tweet format templates
 ├── improve_with_claude_code.py    # Code self-improvement engine
 ├── scripts/
+│   ├── check.sh                   # Fast pre-commit check (compile + import + tests)
 │   ├── verify_quality.py          # Standalone quality checker
 │   ├── merge_improvement.sh       # Interactive branch review & merge helper
 │   ├── setup_comfyui.sh           # One-time ComfyUI setup
 │   ├── experiments/               # Standalone test/experiment drivers
 │   └── cursor/                    # Cursor IDE helper utilities
+├── tests/                         # Fast unittest regression tests (no network/GPU)
 ├── requirements.txt
 ├── settings.env                   # Public bot configuration (committed)
 ├── .env                           # Secret API keys (gitignored)

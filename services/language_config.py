@@ -25,9 +25,8 @@ def _load_cache() -> dict:
 
 
 def _save_cache(data: dict) -> None:
-    os.makedirs(os.path.dirname(_CACHE_FILE) or ".", exist_ok=True)
-    with open(_CACHE_FILE, "w", encoding="utf-8") as f:
-        json.dump(data, f, ensure_ascii=False, indent=2)
+    from utils.io import atomic_json_write
+    atomic_json_write(_CACHE_FILE, data, ensure_ascii=False, indent=2)
 
 
 def _call_ai(source_language: str, target_language: str) -> dict:
@@ -37,7 +36,10 @@ def _call_ai(source_language: str, target_language: str) -> dict:
     if not api_key:
         raise ValueError("XAI_API_KEY not set — cannot auto-derive language config.")
 
-    client = OpenAI(base_url=_GROK_BASE, api_key=api_key)
+    # Bounded timeout + a few automatic retries so a transient blip on this
+    # one-time derivation doesn't immediately fall back to built-in defaults
+    # (config.resolve_language_config catches failures and uses de/en).
+    client = OpenAI(base_url=_GROK_BASE, api_key=api_key, timeout=60.0, max_retries=3)
 
     prompt = (
         f"I am building a language learning X (Twitter) bot.\n"
@@ -71,7 +73,7 @@ def _call_ai(source_language: str, target_language: str) -> dict:
         max_tokens=300,
         temperature=0.0,
     )
-    raw = response.choices[0].message.content.strip()
+    raw = (response.choices[0].message.content or "").strip()
     if raw.startswith("```"):
         lines = raw.split("\n")
         raw = "\n".join(lines[1:-1] if lines[-1].strip() == "```" else lines[1:])

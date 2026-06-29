@@ -26,7 +26,6 @@ sequence survives restarts.
 
 import json
 import logging
-import os
 
 logger = logging.getLogger("xbot.scaffolds")
 
@@ -61,10 +60,9 @@ def _load_index() -> int:
 
 
 def _save_index(idx: int) -> None:
-    """Persist the current scaffold index to disk."""
-    os.makedirs(os.path.dirname(_STATE_FILE), exist_ok=True)
-    with open(_STATE_FILE, "w", encoding="utf-8") as f:
-        json.dump({"last_index": idx}, f)
+    """Persist the current scaffold index to disk (atomic write-then-rename)."""
+    from utils.io import atomic_json_write
+    atomic_json_write(_STATE_FILE, {"last_index": idx})
 
 
 def next_scaffold() -> tuple[str, str]:

@@ -297,16 +297,17 @@ def transcreate(spec, base: dict, cycle: int = 0, verbose: bool = True) -> dict:
     s2 = _stage2_audience(spec, s1, base)
 
     # Length guard: one retry shorter if over the weighted cap.
-    if x_weighted_len(s2["full_tweet"]) > spec.max_tweet_length:
-        logger.info("transcreate[%s]: tweet too long (%d) — retrying shorter.",
-                    spec.id, x_weighted_len(s2["full_tweet"]))
+    weighted = x_weighted_len(s2["full_tweet"])
+    if weighted > spec.max_tweet_length:
+        logger.info("transcreate[%s]: tweet too long (%d) — retrying shorter.", spec.id, weighted)
         s2 = _stage2_audience(spec, s1, base, extra=(
             f"⚠ The previous version was too long. Make both the {spec.target_language} meaning "
             f"and sentence noticeably shorter, well under {spec.max_tweet_length} weighted chars."
         ))
-        if x_weighted_len(s2["full_tweet"]) > spec.max_tweet_length:
+        weighted = x_weighted_len(s2["full_tweet"])
+        if weighted > spec.max_tweet_length:
             logger.warning("transcreate[%s]: still %d weighted chars — posting may be rejected.",
-                           spec.id, x_weighted_len(s2["full_tweet"]))
+                           spec.id, weighted)
 
     result = {
         "full_tweet": s2["full_tweet"],

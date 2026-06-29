@@ -7,7 +7,7 @@ generate_audio, create_video, publish, score_and_store, analyze_and_improve,
 fetch_all_metrics).
 """
 
-from typing import Optional, Any
+from typing import Optional
 from typing_extensions import TypedDict
 
 

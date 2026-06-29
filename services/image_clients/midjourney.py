@@ -64,9 +64,23 @@ class MidjourneyClient:
         start = time.time()
         dots = 0
         while time.time() - start < timeout_sec:
-            resp = requests.post(url, headers=self.HEADERS, json={"jobId": job_id}, timeout=30)
-            resp.raise_for_status()
-            result = resp.json()
+            # Tolerate transient network/5xx blips: a single failed poll must not
+            # abort a job that is still rendering. Auth/credit errors stay fatal.
+            try:
+                resp = requests.post(url, headers=self.HEADERS, json={"jobId": job_id}, timeout=30)
+                if resp.status_code in (401, 402, 403):
+                    raise FatalProviderError(
+                        f"TTAPI returned HTTP {resp.status_code} while polling — check your "
+                        f"subscription/credits at ttapi.io. Bot stopping to avoid further charges."
+                    )
+                resp.raise_for_status()
+                result = resp.json()
+            except FatalProviderError:
+                raise
+            except (requests.RequestException, ValueError) as exc:
+                logger.warning("Midjourney poll request failed (%s) — retrying.", exc)
+                time.sleep(interval)
+                continue
             status = result.get("status")
             logger.debug("Midjourney poll status: %s", status)
 
@@ -85,13 +99,12 @@ class MidjourneyClient:
 
     @with_retry(max_attempts=3, base_delay=2.0, label="mj_download")
     def _download_image(self, img_url: str, job_id: str, idx: int) -> str:
+        from utils.io import stream_to_file
         resp = requests.get(img_url, stream=True, timeout=60)
         resp.raise_for_status()
         filename = f"mj_{job_id}_{idx}.png"
         path = os.path.join(IMAGES_DIR, filename)
-        with open(path, "wb") as f:
-            for chunk in resp.iter_content(8192):
-                f.write(chunk)
+        stream_to_file(resp, path)   # raises on truncation → retried by @with_retry
         logger.debug("Downloaded image → %s", path)
         return path
 

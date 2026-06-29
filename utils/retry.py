@@ -44,13 +44,16 @@ def with_retry(
         def wrapper(*args, **kwargs):
             name = label or fn.__name__
             delay = base_delay
-            for attempt in range(1, max_attempts + 1):
+            # Always make at least one attempt — a misconfigured max_attempts<=0
+            # would otherwise skip the loop and silently return None.
+            attempts = max(1, max_attempts)
+            for attempt in range(1, attempts + 1):
                 try:
                     return fn(*args, **kwargs)
                 except exceptions as exc:
-                    if attempt == max_attempts:
+                    if attempt == attempts:
                         logger.error(
-                            "%s failed after %d attempts: %s", name, max_attempts, exc
+                            "%s failed after %d attempts: %s", name, attempts, exc
                         )
                         raise
                     exc_str = str(exc)
@@ -58,7 +61,7 @@ def with_retry(
                         exc_str = exc_str[:120] + " …"
                     logger.warning(
                         "%s attempt %d/%d failed (%s). Retrying in %.1fs …",
-                        name, attempt, max_attempts, exc_str, delay
+                        name, attempt, attempts, exc_str, delay
                     )
                     time.sleep(delay)
                     delay *= backoff

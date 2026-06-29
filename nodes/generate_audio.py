@@ -254,7 +254,17 @@ def generate_source_audio_with_timings(
 
 
 def _character_alignment_to_word_timings(original_text: str, alignment) -> list:
-    """Convert per-character alignment -> clean word timings."""
+    """Convert per-character alignment → clean word timings (one entry per word).
+
+    Each word is located in the alignment's character stream from a single
+    forward cursor, so repeated words ("die die") map to distinct spans and a
+    word that can't be located doesn't corrupt the words that follow it (the old
+    index-juggling version overshot its cursor on the first mismatch and silently
+    dropped every later word). Always returns one entry per word with
+    monotonically non-decreasing start times — the KTV renderer rebuilds the
+    highlight prefix from these words, so a missing or out-of-order entry would
+    desync the karaoke caption.
+    """
     if not alignment:
         return _fallback_timings(original_text)
 
@@ -266,37 +276,51 @@ def _character_alignment_to_word_timings(original_text: str, alignment) -> list:
     else:
         if hasattr(alignment, "__dict__"):
             alignment = alignment.__dict__
-        chars  = alignment.get("characters", [])
-        starts = alignment.get("character_start_times_seconds", [])
-
-    if not chars or not starts:
-        return _fallback_timings(original_text)
+        chars  = list(alignment.get("characters", []) or [])
+        starts = list(alignment.get("character_start_times_seconds", []) or [])
 
     words = original_text.split()
-    word_timings = []
-    char_idx = 0
+    if not chars or not starts or not words:
+        return _fallback_timings(original_text)
 
+    joined = "".join(chars)
+    total_dur = starts[min(len(chars), len(starts)) - 1]
+
+    # Locate each word's start time via a forward cursor (handles repeats/substrings).
+    located: list = []
+    cursor = 0
+    matched = 0
     for word in words:
-        word_start = None
-        word_end = None
-        for i in range(char_idx, len(chars)):
-            remaining = original_text[char_idx:].lstrip()
-            if remaining.startswith(word):
-                word_start = starts[i] if i < len(starts) else 0.0
-                for j in range(i + len(word), len(chars)):
-                    if chars[j].strip() == "" or chars[j] in ".,!?":
-                        word_end = starts[j] if j < len(starts) else starts[-1] + 0.4
-                        break
-                else:
-                    word_end = starts[-1] + 0.4 if starts else 3.0
-                break
-            char_idx += 1
+        pos = joined.find(word, cursor)
+        if pos != -1 and pos < len(starts):
+            located.append(starts[pos])
+            cursor = pos + len(word)
+            matched += 1
+        else:
+            located.append(None)
 
-        if word_start is not None:
-            word_timings.append({"word": word, "start": word_start, "end": word_end})
-        char_idx += len(word) + 1
+    if matched == 0:
+        return _fallback_timings(original_text)
 
-    return word_timings if word_timings else _fallback_timings(original_text)
+    # Fill unlocated words by carrying the previous start forward (leading gaps
+    # start at 0.0), then clamp to monotonically non-decreasing so the karaoke
+    # reveal never jumps backwards.
+    prev = 0.0
+    for i, v in enumerate(located):
+        if v is None:
+            located[i] = prev
+        else:
+            prev = v
+    for i in range(1, len(located)):
+        if located[i] < located[i - 1]:
+            located[i] = located[i - 1]
+
+    word_timings = []
+    for i, word in enumerate(words):
+        start_t = located[i]
+        end_t = located[i + 1] if i + 1 < len(words) else (total_dur + 0.4)
+        word_timings.append({"word": word, "start": start_t, "end": max(end_t, start_t)})
+    return word_timings
 
 
 def _fallback_timings(text: str) -> list:

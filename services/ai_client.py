@@ -316,6 +316,11 @@ def get_ai_response(
             getattr(last_usage, "completion_tokens", 0) or 0,
             extract_reasoning_tokens(last_usage),
         )
+    else:
+        # No usage chunk (some providers omit it on streamed calls even with
+        # include_usage). Log it so a missing/zero entry in the cost report is
+        # explainable rather than silently under-counting spend.
+        logger.debug("AI call (%s): no usage returned — cost not recorded for this call.", model)
     logger.debug("AI response (%s): %.80s …", model, text)
     return text
 

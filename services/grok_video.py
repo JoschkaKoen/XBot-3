@@ -11,7 +11,6 @@ state so all daily counters live in one place.
 """
 
 import base64
-import json
 import logging
 import os
 import time
@@ -38,9 +37,10 @@ def _load_state() -> dict:
 
 
 def _save_state(data: dict) -> None:
-    os.makedirs(os.path.dirname(_VIDEO_STATE_FILE), exist_ok=True)
-    with open(_VIDEO_STATE_FILE, "w", encoding="utf-8") as f:
-        json.dump(data, f, indent=2)
+    # Atomic write-then-rename: a crash mid-write must never leave a truncated
+    # video_state.json (this counter has a history of reset/corruption bugs).
+    from utils.io import atomic_json_write
+    atomic_json_write(_VIDEO_STATE_FILE, data, indent=2)
 
 
 def should_generate_video() -> bool:
@@ -259,11 +259,10 @@ def _download_video(url: str) -> str:
     ts = datetime.now().strftime("%Y%m%d_%H%M%S")
     path = os.path.join(_VIDEOS_DIR, f"grok_{ts}.mp4")
     info("Downloading Grok video …")
+    from utils.io import stream_to_file
     resp = requests.get(url, stream=True, timeout=120)
     resp.raise_for_status()
-    with open(path, "wb") as f:
-        for chunk in resp.iter_content(8192):
-            f.write(chunk)
+    stream_to_file(resp, path)   # raises on a truncated download → caller falls back
     size_mb = os.path.getsize(path) / 1024 / 1024
     logger.info("Grok video downloaded → %s (%.1f MB)", path, size_mb)
     ok(f"Grok video saved ({size_mb:.1f} MB) → {os.path.basename(path)}")

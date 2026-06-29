@@ -52,6 +52,14 @@ def score_and_store(state: dict) -> dict:
     metrics: dict = state.get("metrics", {})
     score: float = compute_score(metrics)
 
+    # If nothing was posted this cycle (publish skipped — no video/image, e.g.
+    # ComfyUI unavailable), don't append a phantom empty-tweet_id record. Such
+    # rows would pollute avoid_words, strategy analysis, and the improvement
+    # engine's top/bottom summaries with a permanent score-0 entry.
+    if not state.get("tweet_id"):
+        logger.info("score_and_store: no tweet_id (nothing posted) — skipping history append.")
+        return {**state, "engagement_score": score}
+
     record = {
         "timestamp": datetime.now(timezone.utc).isoformat(),
         "tweet_id": state.get("tweet_id", ""),

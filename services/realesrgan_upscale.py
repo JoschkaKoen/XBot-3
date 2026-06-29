@@ -57,6 +57,13 @@ import config
 
 logger = logging.getLogger("xbot.realesrgan_upscale")
 
+# Wall-clock cap for the Real-ESRGAN video upscale (override REALESRGAN_TIMEOUT_SEC).
+# 30 min is generous for a short clip; it only guards against a hung GPU process.
+try:
+    _UPSCALE_TIMEOUT_SEC = float(os.getenv("REALESRGAN_TIMEOUT_SEC", "") or 1800)
+except ValueError:
+    _UPSCALE_TIMEOUT_SEC = 1800.0
+
 
 def _find_python(realesrgan_dir: Path) -> str:
     """Prefer Real-ESRGAN's own venv, fall back to XBot's venv Python."""
@@ -129,7 +136,14 @@ def upscale_video(input_path: str) -> str:
         config.REALESRGAN_MODEL, config.REALESRGAN_TILE,
     )
 
-    result = subprocess.run(cmd, cwd=str(realesrgan_dir))
+    # Bound the GPU upscale (override with REALESRGAN_TIMEOUT_SEC). On timeout
+    # the process is killed and we raise, so create_video keeps the 480p video.
+    try:
+        result = subprocess.run(cmd, cwd=str(realesrgan_dir), timeout=_UPSCALE_TIMEOUT_SEC)
+    except subprocess.TimeoutExpired as exc:
+        raise RuntimeError(
+            f"Real-ESRGAN exceeded {_UPSCALE_TIMEOUT_SEC:.0f}s — killed (GPU may be wedged)."
+        ) from exc
     if result.returncode != 0:
         raise RuntimeError(
             f"Real-ESRGAN exited with code {result.returncode}. "

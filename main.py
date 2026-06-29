@@ -280,7 +280,34 @@ def main():
             state["secondary_results"] = []
             result = graph.invoke(state, config=config)
 
-            consecutive_failures = 0
+            # A cycle that produced no posted tweet (e.g. the image provider was
+            # unavailable so publish was skipped) still runs LLM/provider calls and
+            # burns credits. Count it toward the consecutive-failure watchdog so a
+            # persistent outage stops the bot instead of looping forever posting
+            # nothing — but never crash, since the pipeline handled it gracefully.
+            if result.get("tweet_id"):
+                consecutive_failures = 0
+            else:
+                consecutive_failures += 1
+                warn(
+                    f"Cycle {cycle} posted no tweet "
+                    f"({consecutive_failures}/{max_consecutive}) — provider may be unavailable."
+                )
+                logger.warning(
+                    "Cycle %d completed without posting a tweet (%d/%d consecutive).",
+                    cycle, consecutive_failures, max_consecutive,
+                )
+                if consecutive_failures >= max_consecutive:
+                    err(
+                        f"Stopping bot — {consecutive_failures} cycles in a row posted nothing. "
+                        "Fix the image/video provider before restarting."
+                    )
+                    logger.critical(
+                        "Aborting after %d consecutive no-post cycles.", consecutive_failures
+                    )
+                    state["error"] = "no tweet posted"
+                    break
+
             state = {
                 "cycle":    cycle,
                 "strategy": result.get("strategy", state["strategy"]),
@@ -367,6 +394,10 @@ def _single_cycle() -> None:
             "image_path":          result.get("image_path", ""),
             "midjourney_prompt":   result.get("midjourney_prompt", ""),
             "video_path":          result.get("video_path", ""),
+            # Secondary fan-out posts (e.g. English→Chinese) are REAL tweets on
+            # other accounts. The self-improvement engine reads these so a failed
+            # verification can delete them too — otherwise they leak (stay live).
+            "secondary_results":   result.get("secondary_results", []),
             "errors":              [],
         }
         with open(output_path, "w", encoding="utf-8") as f:

@@ -93,7 +93,7 @@ def _find_comfyui_pid_by_port(port: int) -> int | None:
     try:
         result = subprocess.run(
             ["ss", "-tlnp", f"sport = :{port}"],
-            capture_output=True, text=True,
+            capture_output=True, text=True, timeout=10,
         )
         m = re.search(r"pid=(\d+)", result.stdout)
         if m:
@@ -465,18 +465,45 @@ def _submit_prompt(workflow: dict, comfyui_url: str) -> str:
         headers={"Content-Type": "application/json"},
         method="POST",
     )
-    with urllib.request.urlopen(req) as resp:
+    with urllib.request.urlopen(req, timeout=30) as resp:
         result = json.loads(resp.read())
     return result["prompt_id"]
 
 
-def _poll_until_done(prompt_id: str, comfyui_url: str, poll_interval: int = 5) -> dict:
-    """Poll /history/{prompt_id} until complete. Returns the history entry."""
+# Wall-clock cap for one Z-Image generation poll loop. Turbo (8 steps) finishes
+# in seconds; this only bounds the pathological case where ComfyUI accepts the
+# job then wedges (OOM during sampling, lost job) and never reports completion.
+_POLL_TIMEOUT_SEC = 600.0
+
+
+def _poll_until_done(
+    prompt_id: str, comfyui_url: str,
+    poll_interval: int = 5, timeout_sec: float = _POLL_TIMEOUT_SEC,
+) -> dict:
+    """
+    Poll /history/{prompt_id} until complete. Returns the history entry.
+
+    Bounded by *timeout_sec* (wall clock) so a wedged ComfyUI job cannot hang the
+    bot cycle forever, and each HTTP poll is itself capped so a hung socket can't
+    block past the deadline. Transient poll failures are tolerated until the
+    deadline rather than aborting a generation that is still in progress.
+    """
     dots = 0
+    deadline = time.time() + timeout_sec
     while True:
+        if time.time() > deadline:
+            print()  # newline after progress dots
+            raise TimeoutError(
+                f"ComfyUI generation for prompt {prompt_id} did not finish within "
+                f"{timeout_sec:.0f}s — abandoning (ComfyUI may have wedged or OOM'd)."
+            )
         time.sleep(poll_interval)
-        with urllib.request.urlopen(f"{comfyui_url}/history/{prompt_id}") as resp:
-            history = json.loads(resp.read())
+        try:
+            with urllib.request.urlopen(f"{comfyui_url}/history/{prompt_id}", timeout=30) as resp:
+                history = json.loads(resp.read())
+        except (urllib.error.URLError, OSError, json.JSONDecodeError) as exc:
+            logger.debug("ComfyUI history poll failed (%s) — retrying until deadline.", exc)
+            continue
 
         if prompt_id in history:
             entry  = history[prompt_id]

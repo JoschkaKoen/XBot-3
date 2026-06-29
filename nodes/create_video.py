@@ -53,13 +53,11 @@ from datetime import datetime
 from pydub import AudioSegment
 import numpy as np
 import requests
-from PIL import Image as _PILImage, ImageFont, ImageDraw
+from PIL import Image as _PILImage
 from moviepy import (
     AudioFileClip,
-    ColorClip,
     CompositeVideoClip,
     ImageClip,
-    TextClip,
     VideoClip,
     VideoFileClip,
 )
@@ -82,6 +80,26 @@ logger = logging.getLogger("xbot.create_video")
 
 os.makedirs(VOICES_MUSIC_DIR, exist_ok=True)
 os.makedirs(VIDEOS_DIR, exist_ok=True)
+
+
+def _close_clips(*clips) -> None:
+    """
+    Best-effort close of moviepy clips to release the ffmpeg reader
+    subprocesses and file handles they hold.
+
+    Each AudioFileClip/VideoFileClip keeps an open ffmpeg process and source
+    file handle; in a long-running while-True bot, not closing them leaks one
+    handle (and the backing RAM) per cycle until the process exhausts its file
+    descriptors.  Closing is idempotent here — double-closing or closing a
+    derived clip whose parent is already closed is swallowed.
+    """
+    for clip in clips:
+        if clip is None:
+            continue
+        try:
+            clip.close()
+        except Exception:
+            pass
 
 
 # ── flag badge helpers (composited onto video frames) ────────────────────────
@@ -312,31 +330,35 @@ def create_simple_video(image_path: str, audio_path: str) -> str:
 
     fps = config.VIDEO_FPS
     audio = AudioFileClip(audio_path)
-    if config.ENABLE_KEN_BURNS:
-        base = _make_ken_burns_clip(image_path, audio.duration)
-    else:
-        base = ImageClip(image_path).with_duration(audio.duration).with_fps(fps)
+    base = badge = final = None
+    try:
+        if config.ENABLE_KEN_BURNS:
+            base = _make_ken_burns_clip(image_path, audio.duration)
+        else:
+            base = ImageClip(image_path).with_duration(audio.duration).with_fps(fps)
 
-    if config.FLAG_OVERLAY:
-        try:
-            badge = _make_badge_clip(base.w, base.h, audio.duration, fps)
-            final = CompositeVideoClip([base, badge]).with_audio(audio)
-        except Exception as exc:
-            logger.warning("Flag badge skipped in simple video — could not fetch flag images: %s", exc)
+        if config.FLAG_OVERLAY:
+            try:
+                badge = _make_badge_clip(base.w, base.h, audio.duration, fps)
+                final = CompositeVideoClip([base, badge]).with_audio(audio)
+            except Exception as exc:
+                logger.warning("Flag badge skipped in simple video — could not fetch flag images: %s", exc)
+                final = base.with_audio(audio)
+        else:
             final = base.with_audio(audio)
-    else:
-        final = base.with_audio(audio)
 
-    final.write_videofile(
-        video_path,
-        codec="libx264",
-        audio_codec="aac",
-        fps=fps,
-        bitrate="8000k",
-        preset="medium",
-        threads=4,
-        logger=None,
-    )
+        final.write_videofile(
+            video_path,
+            codec="libx264",
+            audio_codec="aac",
+            fps=fps,
+            bitrate="8000k",
+            preset="medium",
+            threads=4,
+            logger=None,
+        )
+    finally:
+        _close_clips(final, badge, base, audio)
     logger.info("Simple video ready: %s", video_path)
     return video_path
 
@@ -360,31 +382,35 @@ def create_ktv_video(
     fps      = config.VIDEO_FPS
     audio    = AudioFileClip(audio_path)
     duration = audio.duration
-    if config.ENABLE_KEN_BURNS:
-        base = _make_ken_burns_clip(image_path, duration)
-    else:
-        base = ImageClip(image_path).with_duration(duration).with_fps(fps)
+    base = final = None
+    badge_layers: list = []
+    overlays: list = []
+    try:
+        if config.ENABLE_KEN_BURNS:
+            base = _make_ken_burns_clip(image_path, duration)
+        else:
+            base = ImageClip(image_path).with_duration(duration).with_fps(fps)
 
-    if config.FLAG_OVERLAY:
-        try:
-            badge_layers = [_make_badge_clip(base.w, base.h, duration, fps)]
-        except Exception as exc:
-            logger.warning("Flag badge skipped in KTV video — could not fetch flag images: %s", exc)
-            badge_layers = []
-    else:
-        badge_layers = []
-    overlays = _build_ktv_overlay_clips(base, duration, german_text, word_timings or [])
-    final = CompositeVideoClip([base] + badge_layers + overlays).with_audio(audio)
-    final.write_videofile(
-        output_path,
-        codec="libx264",
-        audio_codec="aac",
-        fps=fps,
-        bitrate="8000k",
-        preset="medium",
-        threads=4,
-        logger=None,
-    )
+        if config.FLAG_OVERLAY:
+            try:
+                badge_layers = [_make_badge_clip(base.w, base.h, duration, fps)]
+            except Exception as exc:
+                logger.warning("Flag badge skipped in KTV video — could not fetch flag images: %s", exc)
+                badge_layers = []
+        overlays = _build_ktv_overlay_clips(base, duration, german_text, word_timings or [])
+        final = CompositeVideoClip([base] + badge_layers + overlays).with_audio(audio)
+        final.write_videofile(
+            output_path,
+            codec="libx264",
+            audio_codec="aac",
+            fps=fps,
+            bitrate="8000k",
+            preset="medium",
+            threads=4,
+            logger=None,
+        )
+    finally:
+        _close_clips(final, *overlays, *badge_layers, base, audio)
     logger.info("KTV video (image) ready: %s", output_path)
     return output_path
 
@@ -410,39 +436,42 @@ def create_ktv_video_from_motion(
     audio         = AudioFileClip(audio_path)
     audio_dur     = audio.duration
     raw_video     = VideoFileClip(base_video_path)
+    base = final = None
+    badge_layers: list = []
+    overlays: list = []
+    try:
+        # Preserve the source video's native FPS for compositing so MoviePy does
+        # not drop/duplicate frames. Only the final encode is written at VIDEO_FPS.
+        # (Forcing with_fps to a lower value before write caused frame-drops.)
+        src_fps   = raw_video.fps
+        encode_fps = config.VIDEO_FPS
+        duration  = max(audio_dur, raw_video.duration)
+        base      = raw_video.with_duration(duration)
+        logger.info(
+            "create_ktv_video_from_motion: src_fps=%.2f encode_fps=%d duration=%.2fs",
+            src_fps, encode_fps, duration,
+        )
 
-    # Preserve the source video's native FPS for compositing so MoviePy does
-    # not drop/duplicate frames. Only the final encode is written at VIDEO_FPS.
-    # (Forcing with_fps to a lower value before write caused frame-drops.)
-    src_fps   = raw_video.fps
-    encode_fps = config.VIDEO_FPS
-    duration  = max(audio_dur, raw_video.duration)
-    base      = raw_video.with_duration(duration)
-    logger.info(
-        "create_ktv_video_from_motion: src_fps=%.2f encode_fps=%d duration=%.2fs",
-        src_fps, encode_fps, duration,
-    )
-
-    if config.FLAG_OVERLAY:
-        try:
-            badge_layers = [_make_badge_clip(base.w, base.h, duration, src_fps)]
-        except Exception as exc:
-            logger.warning("Flag badge skipped in KTV motion video — could not fetch flag images: %s", exc)
-            badge_layers = []
-    else:
-        badge_layers = []
-    overlays = _build_ktv_overlay_clips(base, duration, german_text, word_timings or [])
-    final = CompositeVideoClip([base] + badge_layers + overlays).with_audio(audio)
-    final.write_videofile(
-        output_path,
-        codec="libx264",
-        audio_codec="aac",
-        fps=encode_fps,
-        bitrate="8000k",
-        preset="medium",
-        threads=4,
-        logger=None,
-    )
+        if config.FLAG_OVERLAY:
+            try:
+                badge_layers = [_make_badge_clip(base.w, base.h, duration, src_fps)]
+            except Exception as exc:
+                logger.warning("Flag badge skipped in KTV motion video — could not fetch flag images: %s", exc)
+                badge_layers = []
+        overlays = _build_ktv_overlay_clips(base, duration, german_text, word_timings or [])
+        final = CompositeVideoClip([base] + badge_layers + overlays).with_audio(audio)
+        final.write_videofile(
+            output_path,
+            codec="libx264",
+            audio_codec="aac",
+            fps=encode_fps,
+            bitrate="8000k",
+            preset="medium",
+            threads=4,
+            logger=None,
+        )
+    finally:
+        _close_clips(final, *overlays, *badge_layers, base, raw_video, audio)
     logger.info("KTV video (Grok) ready: %s", output_path)
     return output_path
 

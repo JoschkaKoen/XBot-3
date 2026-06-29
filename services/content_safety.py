@@ -129,7 +129,7 @@ def check_compliance(text: str, policy: str = "china", max_attempts: int | None 
     for attempt in range(1, attempts + 1):
         try:
             raw = _one_call(text, system)
-        except BaseException as exc:  # noqa: BLE001 — classify below
+        except Exception as exc:  # noqa: BLE001 — classify below; KeyboardInterrupt/SystemExit propagate
             if _is_content_rejection(exc):
                 return False, "blocked", "provider moderation (data_inspection_failed)"
             last_err = f"{type(exc).__name__}: {str(exc)[:100]}"

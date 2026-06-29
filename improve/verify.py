@@ -10,7 +10,6 @@ must keep running so the caller sees every failure, not just the first.
 import json
 import logging
 import os
-from typing import Optional
 
 logger = logging.getLogger("xbot.improve.verify")
 
@@ -105,13 +104,16 @@ def verify_image_quality(image_path: str, midjourney_prompt: str) -> dict:
         from services.image_ranker import _get_model
         model = _get_model()
         if model is None:
-            return {"pass": True, "score": 0.0, "reason": "ImageReward unavailable — skipped"}
+            # Gate can't run without the model — pass so deployments without
+            # ImageReward aren't blocked, but flag skipped=True so the report
+            # doesn't read as a genuine quality pass.
+            return {"pass": True, "score": 0.0, "skipped": True, "reason": "ImageReward unavailable — skipped"}
         from PIL import Image as PILImage
         img = PILImage.open(image_path).convert("RGB")
         score = model.score(midjourney_prompt or "a beautiful photorealistic scene", img)
-        return {"pass": score > -1.0, "score": round(float(score), 4), "reason": ""}
+        return {"pass": score > -1.0, "score": round(float(score), 4), "skipped": False, "reason": ""}
     except Exception as exc:
-        return {"pass": True, "score": 0.0, "reason": f"scoring failed ({exc}) — skipped"}
+        return {"pass": True, "score": 0.0, "skipped": True, "reason": f"scoring failed ({exc}) — skipped"}
 
 
 def verify_terminal_output(terminal_output: str) -> dict:

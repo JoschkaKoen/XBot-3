@@ -39,11 +39,11 @@ import os
 from datetime import datetime, timezone
 
 import config
-from config import HISTORY_FILE, STRATEGY_FILE, STRATEGY_HISTORY_FILE
+from config import STRATEGY_FILE, STRATEGY_HISTORY_FILE
 from services.ai_client import get_ai_response
 from services.history import load_history
 from utils.io import atomic_json_write, safe_json_read
-from utils.ui import stage_banner, ok, info as ui_info, warn as ui_warn
+from utils.ui import stage_banner, ok, info as ui_info
 
 
 logger = logging.getLogger("xbot.analyze")
@@ -156,8 +156,6 @@ def _log_strategy_diff(old: dict, new: dict) -> bool:
     Print a human-readable diff to the terminal.
     Returns True if anything changed, False if identical.
     """
-    _Y    = "\033[93m"
-
     scalar_keys = ["preferred_cefr", "next_topic", "style"]
     changed = False
     lines = []
@@ -377,7 +375,7 @@ def analyze_and_improve(state: dict) -> dict:
     # Freeze CEFR bias until every level has at least _CEFR_MIN_TWEETS tweets.
     if frozen:
         merged["preferred_cefr"] = ", ".join(_ALL_CEFR_LEVELS)
-        # Safety-net: strip any stray CEFR level tokens the LLM may have written into 'focus'
+        # Safety-net: strip any stray CEFR level tokens the LLM may have written into 'style'
         import re as _re
         merged["style"] = _re.sub(
             r"\b(A1|A2|B1|B2|C1|C2)\b[\s,/]*",
@@ -387,7 +385,7 @@ def analyze_and_improve(state: dict) -> dict:
         ).strip(" ,;—-")
         under = {lvl: n for lvl, n in cefr_counts_pre.items() if n < _CEFR_MIN_TWEETS}
         ui_info(
-            f"CEFR bias frozen — insufficient data for: "
+            "CEFR bias frozen — insufficient data for: "
             + ", ".join(f"{lvl}({n})" for lvl, n in sorted(under.items()))
             + f" (need {_CEFR_MIN_TWEETS} each)"
         )

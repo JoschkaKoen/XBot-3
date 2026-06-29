@@ -98,6 +98,55 @@ def _delete_tweet(tweet_id: str) -> None:
         log_both(f"{_YELLOW}⚠️  Could not delete tweet {tweet_id}: {exc}{_R}", "warning")
 
 
+def _secondary_client(target_id: str):
+    """Build a tweepy client for a secondary target's own account, or None.
+
+    Secondary fan-out tweets live on DIFFERENT accounts than the default one, so
+    deleting them needs that target's credentials (from data/secondary_targets.json
+    + TWITTER_*_<PREFIX> in .env), not _twitter_client()'s default keys.
+    """
+    import tweepy
+    import config
+    for spec in (getattr(config, "SECONDARY_TARGETS", []) or []):
+        if getattr(spec, "id", None) == target_id:
+            acc = getattr(spec, "account", None)
+            if acc is None or not acc.is_complete():
+                return None
+            return tweepy.Client(
+                consumer_key=acc.consumer_key,
+                consumer_secret=acc.consumer_secret,
+                access_token=acc.access_token,
+                access_token_secret=acc.access_token_secret,
+            )
+    return None
+
+
+def _delete_secondary_tweet(target_id: str, tweet_id: str) -> None:
+    try:
+        client = _secondary_client(target_id)
+        if client is None:
+            log_both(
+                f"{_YELLOW}⚠️  No usable creds for secondary target '{target_id}' — "
+                f"cannot delete tweet {tweet_id}; delete it manually on that account.{_R}",
+                "warning",
+            )
+            return
+        client.delete_tweet(tweet_id)
+        log_both(f"{_RED}🗑️  Deleted secondary tweet {tweet_id} [{target_id}] from X{_R}")
+    except Exception as exc:
+        log_both(f"{_YELLOW}⚠️  Could not delete secondary tweet {tweet_id} [{target_id}]: {exc}{_R}", "warning")
+
+
+def _collect_secondary_tweets(cycle_output: dict) -> list:
+    """Return [(target_id, tweet_id)] for live (non-dry-run) secondary posts."""
+    pairs = []
+    for r in (cycle_output.get("secondary_results") or []):
+        tid = r.get("tweet_id")
+        if tid and not r.get("dry_run"):
+            pairs.append((r.get("target_id", ""), tid))
+    return pairs
+
+
 def _remove_from_history(tweet_id: str) -> None:
     from services.history import load_history, save_history
     history = load_history()
@@ -105,6 +154,24 @@ def _remove_from_history(tweet_id: str) -> None:
     history = [r for r in history if r.get("tweet_id") != tweet_id]
     save_history(history)
     log_both(f"{_GRAY}🗑️  Removed tweet {tweet_id} from history ({before} → {len(history)} records){_R}")
+
+
+def _restore_stash() -> None:
+    """Pop the auto-improve stash, warning loudly (and preserving it) on conflict.
+
+    `git stash pop` on a conflict leaves markers in the working tree AND keeps the
+    stash entry; the old `check=False` silently swallowed that, hiding half-applied
+    or lost work. Surface it instead so the operator can resolve it.
+    """
+    res = _git(["stash", "pop"], check=False)
+    if res.returncode != 0:
+        log_both(
+            f"{_RED}⚠️  Could not restore stashed changes cleanly (likely a conflict). "
+            f"Your work is preserved — run `git stash list` and resolve it manually.{_R}",
+            "warning",
+        )
+    else:
+        log_both(f"{_CYAN}📦  Restored stashed changes.{_R}")
 
 
 # ── Git helpers ────────────────────────────────────────────────────────────────
@@ -215,15 +282,25 @@ def _build_phase1_prompt(history: list, branch_name: str) -> str:
         key=lambda r: r.get("engagement_score", 0)
     )[:3]
 
+    # History keys were renamed in the April 2026 refactor (german_word →
+    # source_word, example_sentence_de → example_sentence_source). Read the new
+    # keys with a fallback to the old ones so Claude sees real data — not the
+    # blank word=None / empty-sentence summaries the stale keys produced.
+    def _word(t):
+        return t.get("source_word") or t.get("german_word") or ""
+
+    def _sentence(t):
+        return t.get("example_sentence_source") or t.get("example_sentence_de") or ""
+
     top_summary = "\n".join(
-        f"  score={t['engagement_score']:.1f} | word={t.get('german_word')} | "
-        f"cefr={t.get('cefr_level')} | sentence: {t.get('example_sentence_de', '')[:60]}"
+        f"  score={t['engagement_score']:.1f} | word={_word(t)} | "
+        f"cefr={t.get('cefr_level')} | sentence: {_sentence(t)[:60]}"
         for t in top_tweets
     ) or "  (none yet)"
 
     bottom_summary = "\n".join(
-        f"  score={t['engagement_score']:.1f} | word={t.get('german_word')} | "
-        f"cefr={t.get('cefr_level')} | sentence: {t.get('example_sentence_de', '')[:60]}"
+        f"  score={t['engagement_score']:.1f} | word={_word(t)} | "
+        f"cefr={t.get('cefr_level')} | sentence: {_sentence(t)[:60]}"
         for t in bottom_tweets
     ) or "  (none yet)"
 
@@ -308,12 +385,15 @@ You may modify any file EXCEPT .env, improve_with_claude_code.py, and scripts/ve
 Same cost constraint applies: do not switch high-volume calls to grok-4 flagship.
 
 Review the failures and decide:
-1. If the failures are fixable with code changes → fix them and respond: FIXED
-2. If the failures are due to external factors (API, randomness) not caused by code → respond: NO_CHANGE (will retry same code)
-3. If the failures indicate the improvement is fundamentally broken or not worth pursuing → respond: GIVE_UP
+1. If the failures are fixable with code changes → fix them. Decision: FIXED
+2. If the failures are due to external factors (API, randomness) not caused by code → Decision: NO_CHANGE (will retry same code)
+3. If the failures indicate the improvement is fundamentally broken or not worth pursuing → Decision: GIVE_UP
 
-Your response must START with one of: FIXED | NO_CHANGE | GIVE_UP
-Then explain your reasoning.
+IMPORTANT: explain your reasoning first, then make the VERY LAST line of your
+response exactly one of (nothing else on that line):
+DECISION: FIXED
+DECISION: NO_CHANGE
+DECISION: GIVE_UP
 """
 
 
@@ -451,7 +531,19 @@ def _run_claude_streaming(
     except Exception as exc:
         log_both(f"{_YELLOW}⚠️  {label}: error reading stream: {exc}{_R}", "warning")
 
-    proc.wait()
+    # stdout EOF doesn't guarantee the process exited (it may still be flushing
+    # stderr or wedged). Bound the wait by the remaining deadline and kill on
+    # overrun so this can never hang the improvement run indefinitely.
+    remaining = max(5.0, deadline - time.time())
+    try:
+        proc.wait(timeout=remaining)
+    except subprocess.TimeoutExpired:
+        log_both(f"{_RED}❌  {label}: did not exit after stream closed — killing.{_R}", "error")
+        proc.kill()
+        try:
+            proc.wait(timeout=10)
+        except subprocess.TimeoutExpired:
+            pass
     t.join(timeout=5)
     return proc.returncode, final_text
 
@@ -503,7 +595,7 @@ def phase_1_improve_code(original_branch: str) -> "str | None":
         _git(["checkout", original_branch])
         _git(["branch", "-D", branch_name], check=False)
         if stashed:
-            _git(["stash", "pop"], check=False)
+            _restore_stash()
         return None
 
     claude_returncode = returncode
@@ -519,7 +611,7 @@ def phase_1_improve_code(original_branch: str) -> "str | None":
         _git(["checkout", original_branch])
         _git(["branch", "-D", branch_name], check=False)
         if stashed:
-            _git(["stash", "pop"], check=False)
+            _restore_stash()
         return None
 
     # Verify imports
@@ -531,11 +623,19 @@ def phase_1_improve_code(original_branch: str) -> "str | None":
         "from nodes.score import score_and_store; print('OK')",
     ]
     for check in checks:
-        result = subprocess.run(
-            [sys.executable, "-c", check],
-            cwd=str(PROJECT_DIR),
-            capture_output=True, text=True
-        )
+        try:
+            result = subprocess.run(
+                [sys.executable, "-c", check],
+                cwd=str(PROJECT_DIR),
+                capture_output=True, text=True, timeout=120,
+            )
+        except subprocess.TimeoutExpired:
+            log_both(f"{_RED}❌  Import verification timed out: {check[:60]}{_R}", "error")
+            _git(["checkout", original_branch])
+            _git(["branch", "-D", branch_name], check=False)
+            if stashed:
+                _restore_stash()
+            return None
         label = check.split("import ")[1].split(";")[0].strip()
         if result.returncode == 0:
             log_both(f"{_GREEN}    ✅  {label}{_R}")
@@ -545,7 +645,7 @@ def phase_1_improve_code(original_branch: str) -> "str | None":
             _git(["checkout", original_branch])
             _git(["branch", "-D", branch_name], check=False)
             if stashed:
-                _git(["stash", "pop"], check=False)
+                _restore_stash()
             return None
 
     # Commit any uncommitted changes on the branch
@@ -603,7 +703,9 @@ def phase_2_live_cycle(attempt: int) -> dict:
             proc.wait(timeout=900)
         except subprocess.TimeoutExpired:
             proc.kill()
-            t_out.join(); t_err.join()
+            # Bounded joins: a grandchild (ffmpeg/ComfyUI) may keep the pipe FDs
+            # open after kill(), so an unbounded join would hang the engine.
+            t_out.join(timeout=5); t_err.join(timeout=5)
             partial = "".join(stdout_lines) + "\n--- STDERR ---\n" + "".join(stderr_lines)
             terminal_path.write_text(
                 f"TIMEOUT: Live cycle exceeded 15 minutes\n\n{partial}", encoding="utf-8"
@@ -611,7 +713,7 @@ def phase_2_live_cycle(attempt: int) -> dict:
             log_both(f"{_RED}❌  Live cycle timed out after 15 minutes{_R}", "error")
             return {"success": False, "errors": ["timeout"]}
 
-        t_out.join(); t_err.join()
+        t_out.join(timeout=10); t_err.join(timeout=10)
         terminal_content = "".join(stdout_lines) + "\n--- STDERR ---\n" + "".join(stderr_lines)
         terminal_path.write_text(terminal_content, encoding="utf-8")
         log_both(f"{_GRAY}    Exit code: {proc.returncode}{_R}")
@@ -733,22 +835,31 @@ def _ask_claude_code_to_fix(failure_report: dict, attempt: int, terminal_output:
         log_both(f"{_YELLOW}⚠️  Claude Code failed or timed out — treating as NO_CHANGE{_R}", "warning")
         return "NO_CHANGE"
 
+    import re as _re
     output = output.strip()
     last_lines = [ln.strip() for ln in output.splitlines()[-30:] if ln.strip()]
     log_both(f"{_GRAY}    Claude Code last line: {last_lines[-1] if last_lines else '(empty)'}{_R}")
 
-    decision = "NO_CHANGE"
+    decision = None
+    # Preferred: an explicit "DECISION: X" line (scan from the end — the prompt
+    # asks for it on the very last line).
     for line in reversed(last_lines):
-        first = line.split()[0].upper() if line.split() else ""
-        if first in ("FIXED", "NO_CHANGE", "GIVE_UP"):
-            decision = first
+        m = _re.search(r"\bDECISION:\s*(FIXED|NO_CHANGE|GIVE_UP)\b", line, _re.IGNORECASE)
+        if m:
+            decision = m.group(1).upper()
             break
-        for kw in ("GIVE_UP", "FIXED", "NO_CHANGE"):
-            if kw in line.upper() and len(line) <= 40:
-                decision = kw
+    # Fallback: a short line that is just a bare verdict token.
+    if decision is None:
+        for line in reversed(last_lines):
+            tokens = [t.strip(":").upper() for t in line.split()]
+            verdict = next((t for t in tokens if t in ("FIXED", "NO_CHANGE", "GIVE_UP")), None)
+            if verdict and len(line) <= 40:
+                decision = verdict
                 break
-        if decision != "NO_CHANGE":
-            break
+    if decision is None:
+        # Bounded by the 3-attempt cap regardless; NO_CHANGE just retries once more.
+        decision = "NO_CHANGE"
+        log_both(f"{_YELLOW}⚠️  No explicit DECISION line found — defaulting to NO_CHANGE.{_R}", "warning")
 
     log_both(f"{_CYAN}🤖  Claude Code says: {decision}{_R}")
     return decision
@@ -793,10 +904,11 @@ def phase_4_failure(
     attempted_tweets: list,
     branch_name: "str | None",
     original_branch: str,
+    attempted_secondary: "list | None" = None,
 ) -> None:
     log_header("PHASE 4: DECISION — FAILURE")
 
-    # Delete all tweets posted during failed attempts
+    # Delete all PRIMARY tweets posted during failed attempts
     if attempted_tweets:
         log_both(f"{_RED}🗑️  Deleting {len(attempted_tweets)} tweet(s) posted during failed attempts …{_R}")
         for tweet_id in attempted_tweets:
@@ -804,6 +916,14 @@ def phase_4_failure(
             _remove_from_history(tweet_id)
     else:
         log_both(f"{_GRAY}    No tweets to delete.{_R}")
+
+    # Delete SECONDARY fan-out tweets too (real posts on other accounts) — these
+    # were previously leaked: the engine believed it cleaned up but left them live.
+    attempted_secondary = attempted_secondary or []
+    if attempted_secondary:
+        log_both(f"{_RED}🗑️  Deleting {len(attempted_secondary)} secondary fan-out tweet(s) …{_R}")
+        for target_id, tweet_id in attempted_secondary:
+            _delete_secondary_tweet(target_id, tweet_id)
 
     # Restore to original branch and delete improvement branch
     if branch_name:
@@ -822,8 +942,7 @@ def phase_4_failure(
     # Restore stash if any
     stash_list = _git(["stash", "list"], check=False).stdout.strip()
     if "auto-improve stash" in stash_list:
-        _git(["stash", "pop"], check=False)
-        log_both(f"{_CYAN}📦  Restored stash{_R}")
+        _restore_stash()
 
     log_both(f"{_GRAY}    Old bot continues on {original_branch}.{_R}")
 
@@ -849,6 +968,7 @@ def run() -> None:
 
     branch_name: "str | None" = None
     attempted_tweets: list = []
+    attempted_secondary: list = []   # [(target_id, tweet_id)] live secondary fan-out posts
 
     try:
         # ── Phase 1 ──────────────────────────────────────────────────────────
@@ -862,6 +982,10 @@ def run() -> None:
             log_header(f"PHASE 2+3: ATTEMPT {attempt}/3")
 
             cycle_output = phase_2_live_cycle(attempt)
+
+            # Collect any live secondary fan-out tweets this attempt posted, so a
+            # later failure deletes them too (they're real posts on other accounts).
+            attempted_secondary.extend(_collect_secondary_tweets(cycle_output))
 
             if not cycle_output.get("success"):
                 log_both(f"{_RED}❌  Live cycle crashed on attempt {attempt}{_R}", "error")
@@ -917,13 +1041,13 @@ def run() -> None:
 
         # All attempts exhausted or GIVE_UP
         log_both(f"{_RED}❌  All verification attempts failed{_R}", "error")
-        phase_4_failure(attempted_tweets, branch_name, original_branch)
+        phase_4_failure(attempted_tweets, branch_name, original_branch, attempted_secondary)
         _cleanup_artifacts()
 
     except Exception as exc:
         log_both(f"{_RED}❌  Improvement engine crashed: {exc}{_R}", "error")
         _file_logger.exception("Improvement engine crashed")
-        phase_4_failure(attempted_tweets, branch_name, original_branch)
+        phase_4_failure(attempted_tweets, branch_name, original_branch, attempted_secondary)
         _cleanup_artifacts()
 
 
