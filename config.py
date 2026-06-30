@@ -300,6 +300,7 @@ def reload_settings() -> None:
     global IMAGE_STYLE_CYCLE, IMAGE_STYLE
     global TWEET_STYLE_CYCLE, TWEET_STYLE
     global IMAGE_PROVIDER, GENERATED_IMAGE_COUNT, INDIVIDUAL_IMAGE_PROMPTS, Z_IMAGE_TURBO_STEPS, Z_IMAGE_TURBO_WIDTH, Z_IMAGE_TURBO_HEIGHT, Z_IMAGE_PROMPT_SUFFIX
+    global GROK_IMAGE_MODEL, GROK_IMAGE_RESOLUTION
     global Z_IMAGE_BASE_MODEL_ID, Z_IMAGE_BASE_STEPS, Z_IMAGE_BASE_GUIDANCE_SCALE, Z_IMAGE_BASE_WIDTH, Z_IMAGE_BASE_HEIGHT, Z_IMAGE_BASE_NEGATIVE_PROMPT
     global ENABLE_INSTRUCTIR_ENHANCE, INSTRUCTIR_DIR, INSTRUCTIR_PROMPT
     global VIDEO_INTERPOLATION, RIFE_DIR, RIFE_PYTHON, VIDEO_UPLOAD_FPS
@@ -333,6 +334,8 @@ def reload_settings() -> None:
     TWEET_STYLE_CYCLE              = [s.lower().strip() for s in _raw_tweet.split(",") if s.strip()] or ["funny"]
     TWEET_STYLE                    = TWEET_STYLE_CYCLE[0]
     IMAGE_PROVIDER                 = os.getenv("IMAGE_PROVIDER", "midjourney").lower().strip()
+    GROK_IMAGE_MODEL               = os.getenv("GROK_IMAGE_MODEL", "grok-imagine-image").strip()
+    GROK_IMAGE_RESOLUTION          = os.getenv("GROK_IMAGE_RESOLUTION", "1k").lower().strip()
     GENERATED_IMAGE_COUNT          = _int_env("GENERATED_IMAGE_COUNT", 1, fallback_key="GROK_IMAGE_COUNT")
     INDIVIDUAL_IMAGE_PROMPTS       = os.getenv("INDIVIDUAL_IMAGE_PROMPTS", "false").lower().strip() == "true"
     Z_IMAGE_TURBO_STEPS            = _int_env("Z_IMAGE_TURBO_STEPS", 8)
@@ -414,6 +417,16 @@ def reload_settings() -> None:
 # "z-image-turbo" = Z-Image-Turbo FP8 AIO via local ComfyUI (requires COMFYUI_URL/COMFYUI_DIR)
 # "z-image-base"  = Z-Image base model via diffusers (local GPU, higher quality, no ComfyUI)
 IMAGE_PROVIDER: str = os.getenv("IMAGE_PROVIDER", "midjourney").lower().strip()
+
+# ── Grok Imagine API settings (IMAGE_PROVIDER=grok) ───────────────────────────
+# Which xAI image model + resolution to use. TO CHANGE QUALITY/COST, just edit
+# GROK_IMAGE_MODEL in settings.env — no code change needed:
+#   grok-imagine-image          → standard fidelity, $0.02 per 1K image   ← current default
+#   grok-imagine-image-quality  → higher fidelity,   $0.05 per 1K image
+# GROK_IMAGE_RESOLUTION: "1k" (default; 1280×720 at 16:9) or "2k". 2K is unnecessary
+# here (the tweet image only needs 1K) and costs more on the quality model ($0.07).
+GROK_IMAGE_MODEL: str = os.getenv("GROK_IMAGE_MODEL", "grok-imagine-image").strip()
+GROK_IMAGE_RESOLUTION: str = os.getenv("GROK_IMAGE_RESOLUTION", "1k").lower().strip()
 
 # Number of images to generate per cycle.
 # Grok: requested in a single API call. z-image-turbo: sequential runs with different seeds.

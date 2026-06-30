@@ -2,6 +2,11 @@
 GrokImagineClient — image generation via the xAI Grok Imagine API.
 
 Used by nodes/generate_image.py when IMAGE_PROVIDER=grok.
+
+Model + resolution are config-driven (set in settings.env — NO code change to switch):
+  GROK_IMAGE_MODEL = grok-imagine-image          → standard, $0.02 / 1K image  (default)
+                   = grok-imagine-image-quality  → higher fidelity, $0.05 / 1K image
+  GROK_IMAGE_RESOLUTION = 1k (default; 1280×720 @ 16:9) | 2k
 """
 
 import base64
@@ -12,13 +17,14 @@ from typing import List
 
 import requests
 
+import config
 from config import IMAGES_DIR
 from utils.errors import FatalProviderError
 from utils.retry import with_retry
 
 logger = logging.getLogger("xbot.grok_imagine")
 
-_GROK_IMAGE_MODEL = "grok-imagine-image"
+_DEFAULT_GROK_IMAGE_MODEL = "grok-imagine-image"
 _XAI_BASE_URL = "https://api.x.ai/v1"
 
 
@@ -50,14 +56,19 @@ class GrokImagineClient:
         return path
 
     def generate(self, prompt: str, n: int = 1, aspect_ratio: str = "16:9") -> List[str]:
+        # Model + resolution are config-driven (settings.env → GROK_IMAGE_MODEL /
+        # GROK_IMAGE_RESOLUTION). Read at call time so reload_settings is honoured.
+        model = (getattr(config, "GROK_IMAGE_MODEL", "") or _DEFAULT_GROK_IMAGE_MODEL).strip()
+        resolution = (getattr(config, "GROK_IMAGE_RESOLUTION", "") or "1k").strip()
         payload = {
-            "model": _GROK_IMAGE_MODEL,
+            "model": model,
             "prompt": prompt,
             "n": n,
             "aspect_ratio": aspect_ratio,
+            "resolution": resolution,
             "response_format": "url",
         }
-        print(f"\r  ⏳  Requesting {n} image(s) from Grok Imagine …", flush=True)
+        print(f"\r  ⏳  Requesting {n} {resolution} image(s) from Grok Imagine ({model}) …", flush=True)
         resp = requests.post(
             f"{_XAI_BASE_URL}/images/generations",
             headers=self._headers(),
@@ -75,7 +86,11 @@ class GrokImagineClient:
         if not items:
             raise RuntimeError(f"Grok Imagine returned no images: {data}")
         print()
-        logger.info("Grok Imagine returned %d image(s).", len(items))
+        # The API reports exact spend (cost_in_usd_ticks, 1 tick = $1e-10) — log it so
+        # per-cycle image cost is visible in the terminal/logs.
+        ticks = (data.get("usage") or {}).get("cost_in_usd_ticks")
+        cost_note = f" — cost ${ticks * 1e-10:.4f}" if isinstance(ticks, (int, float)) else ""
+        logger.info("Grok Imagine (%s, %s) returned %d image(s)%s.", model, resolution, len(items), cost_note)
         paths = []
         for i, item in enumerate(items):
             url = item.get("url") or item.get("b64_json")
