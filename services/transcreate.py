@@ -16,6 +16,11 @@ The one shared artifact is the image; everything else is generated new:
   Step 2 — SENTENCE: generate N diverse funny candidates for that fixed word
     (each pushed to a different comedic angle so best-of-N has real variety), then
     pick the funniest via TWEET_PICKER_MODEL — exactly like the German bot.
+    Candidates are written FOR the audience (e.g. Chinese speakers learning
+    English: universally relatable humor, no culture-locked references, must stay
+    funny in a faithful translation) and, when the target declares a
+    content_policy, steered around exactly what the downstream compliance gate
+    would block — and nothing more (_POLICY_GUIDANCE).
   Step 3 — AUDIENCE: render a close, FAITHFUL audience-language (e.g. Simplified
     Chinese) translation a learner can map back to the English word-for-word, and
     assemble the tweet DETERMINISTICALLY from a rotating scaffold (shared pool),
@@ -53,6 +58,22 @@ _FUNNY_TONE = (
     "think 'ha, that's so true'. Use a SPECIFIC, concrete, vivid detail — never a bland, "
     "generic description."
 )
+
+# Per-content-policy steering for JOKE GENERATION, applied only when the target
+# declares a content_policy (data/secondary_targets.json) — the same key that
+# arms the downstream compliance gate (services/content_safety.py). Deliberately
+# narrow: steer around exactly what that gate would block and NOTHING more, so
+# the humor is not watered down (user steer 2026-07-21: adjust only as much as
+# necessary for compliance — and not more).
+_POLICY_GUIDANCE = {
+    "china": (
+        "The account's readers are in mainland China, so the post must be publishable there: no "
+        "political jokes about China, its government or leaders, and none about topics that are "
+        "very sensitive in China (territorial or historical-political issues, protests, "
+        "censorship). That is the ONLY restriction — everyday-life humor stays sharp; do not "
+        "water the joke down beyond avoiding those topics."
+    ),
+}
 
 # Distinct comedic angles handed one-per-candidate so the N takes actually diverge
 # (same word + same scene otherwise collapse into paraphrases of one line).
@@ -195,7 +216,7 @@ def _word_pick_call(spec, scene: str, avoid_prompt: list, cefr_hint: str) -> lis
         if avoid_prompt else ""
     )
     system = (
-        f"You are a {src} teacher choosing a fresh, useful {src} word to teach {tgt} speakers. "
+        f"You are a language teacher choosing a fresh, useful {src} word to teach {tgt} speakers. "
         "You always respond with valid JSON only."
     )
     user = (
@@ -252,14 +273,25 @@ def _stage1_candidates(spec, word: str, scene: str, funny: bool, n: int, verbose
     import threading
     from concurrent.futures import ThreadPoolExecutor
 
-    src = spec.source_language
+    src, tgt = spec.source_language, spec.target_language
     scene_line = (
         f"- It should suit this picture (loose guardrail, don't contradict it): {scene}\n"
         if scene else ""
     )
+    # The joke is written in the TAUGHT language but read by the AUDIENCE: it must
+    # land for them, and (faithful-translation design) survive the {tgt} render.
+    audience_line = (
+        f"Your readers are {tgt} speakers learning {src} — the joke must land for THEM: build it "
+        f"on universally relatable everyday situations rather than {src}-language wordplay or "
+        f"Western pop-culture references they may not know, and prefer humor that stays funny in "
+        f"a faithful {tgt} translation. "
+    )
+    policy_line = _POLICY_GUIDANCE.get(getattr(spec, "content_policy", "") or "", "")
     system = (
-        f"You are a {src} stand-up comedy writer and teacher running a hugely popular X account "
-        f"that teaches {src} to {spec.target_language} speakers. "
+        f"You are a stand-up comedy writer and {src} teacher running a hugely popular X account "
+        f"that teaches {src} to {tgt} speakers. "
+        + audience_line
+        + (policy_line + " " if policy_line else "")
         + (_FUNNY_TONE + " " if funny else "")
         + "You always respond with valid JSON only."
     )
@@ -360,7 +392,7 @@ def _pick_funniest(spec, cands: list, funny: bool, verbose: bool) -> dict:
 def _stage2_audience(spec, word: str, sentence: str, *, extra: str = "") -> dict:
     src, tgt = spec.source_language, spec.target_language
     system = (
-        f"You are a {src} teacher creating vocabulary posts for {tgt} speakers. You produce a "
+        f"You are a language teacher creating {src} vocabulary posts for {tgt} speakers. You produce a "
         f"close, FAITHFUL {tgt} ({spec.script}) translation a learner can map back to the {src} "
         "word-for-word — natural and colloquial, never robotic, but faithful: do NOT reinvent the "
         "joke, swap references, or add meaning. You always respond with valid JSON only."

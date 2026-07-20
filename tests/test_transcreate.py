@@ -140,6 +140,39 @@ class TranscreateTests(unittest.TestCase):
         self.assertNotIn("reuses this picture", user)   # no scene clause
         self.assertEqual(res["source_word"], "procrastinate")
 
+    # ── audience + China-compliance steering in joke generation ────────────────
+
+    def test_stage1_targets_the_chinese_audience(self):
+        ai = self._standard_ai()
+        T.get_ai_response = ai
+        T.transcreate(self.spec, {"midjourney_prompt": _SCENE}, verbose=False)
+        _user, system = ai.prompts_for("_src_")[0]
+        self.assertIn("Chinese speakers learning English", system)
+        self.assertIn("universally relatable", system)
+        self.assertIn("faithful Chinese translation", system)
+
+    def test_china_policy_steers_generation_only_when_declared(self):
+        spec_cn = _spec_from_dict({
+            "id": "zh", "source_language": "English", "target_language": "Chinese",
+            "source_flag": "🇬🇧", "target_flag": "🇨🇳", "script": "simplified",
+            "max_tweet_length": 280, "history_file": self._tmp.name,
+            "content_policy": "china",
+        })
+        ai = self._standard_ai()
+        T.get_ai_response = ai
+        T.transcreate(spec_cn, {"midjourney_prompt": _SCENE}, verbose=False)
+        _user, system = ai.prompts_for("_src_")[0]
+        self.assertIn("mainland China", system)               # steer present
+        self.assertIn("ONLY restriction", system)             # …and explicitly bounded
+        self.assertIn("do not water the joke down", system)
+
+        # The default spec (no content_policy) must get NO compliance text at all.
+        ai2 = self._standard_ai()
+        T.get_ai_response = ai2
+        T.transcreate(self.spec, {"midjourney_prompt": _SCENE}, verbose=False)
+        _user2, system2 = ai2.prompts_for("_src_")[0]
+        self.assertNotIn("mainland China", system2)
+
     # ── faithful Chinese, not a reinvented joke ────────────────────────────────
 
     def test_stage2_demands_faithful_translation(self):
