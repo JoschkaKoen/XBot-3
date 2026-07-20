@@ -71,6 +71,28 @@ def get_top_tweets(history: list, n: int = 3) -> list:
     return qualifying[:n]
 
 
+# ── CEFR rotation (shared: primary generate_content + secondary transcreate) ────
+
+VALID_CEFR = {"A1", "A2", "B1", "B2", "C1", "C2"}
+CEFR_SEQUENCE = ["A1", "A2", "B1", "B2", "C1", "C2"]
+
+
+def next_cefr_level(records: list) -> str:
+    """Return the CEFR level one step after the most recent one in *records*.
+
+    Walks *records* newest-first for the last valid ``cefr_level`` and advances
+    one step in A1→A2→B1→B2→C1→C2→A1 order; falls back to A1 when none is
+    recorded yet. Pure (takes the list, does no I/O) so the primary path
+    (nodes.generate_content over load_history()) and the secondary fan-out
+    (services.transcreate over a target's own history) share one rotation rule.
+    """
+    for record in reversed(records):
+        last = (record.get("cefr_level") or "").strip().upper()
+        if last in VALID_CEFR:
+            return CEFR_SEQUENCE[(CEFR_SEQUENCE.index(last) + 1) % len(CEFR_SEQUENCE)]
+    return CEFR_SEQUENCE[0]
+
+
 def load_history() -> list:
     """Return the post-history list, or [] if the file is missing/corrupt."""
     return safe_json_read(HISTORY_FILE, default=[], logger=logger)

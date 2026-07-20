@@ -634,23 +634,16 @@ def _pick_word_from_trends(avoid_words: list) -> Optional[tuple[str, str, str]]:
         return None
 
 
-_VALID_CEFR = {"A1", "A2", "B1", "B2", "C1", "C2"}
-_CEFR_SEQUENCE = ["A1", "A2", "B1", "B2", "C1", "C2"]
+# CEFR set + rotation rule live in services.history so the secondary fan-out
+# (services.transcreate) shares one implementation. _VALID_CEFR is still used for
+# validation elsewhere in this module.
+from services.history import VALID_CEFR as _VALID_CEFR, next_cefr_level as _next_cefr_level
 
 
 def _next_cefr_rotation() -> str:
-    """Return the next CEFR level after the last one recorded in post history.
-
-    Walks post_history in reverse to find the most recent record with a valid
-    cefr_level, then advances one step in A1→A2→B1→B2→C1→C2→A1 order.
-    Falls back to A1 when history is empty or no level has been recorded yet.
-    """
+    """Next CEFR level after the last recorded in primary post history (see history.next_cefr_level)."""
     from services.history import load_history
-    for record in reversed(load_history()):
-        last = (record.get("cefr_level") or "").strip().upper()
-        if last in _VALID_CEFR:
-            return _CEFR_SEQUENCE[(_CEFR_SEQUENCE.index(last) + 1) % len(_CEFR_SEQUENCE)]
-    return _CEFR_SEQUENCE[0]
+    return _next_cefr_level(load_history())
 
 
 def _is_word_too_similar(word: str, avoid_words: list) -> tuple[bool, str]:

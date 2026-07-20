@@ -1,29 +1,32 @@
 """
-services/transcreate — turn the base cycle's content into a natural, FUNNY tweet
-for a secondary language pair (e.g. English→Chinese), consistent with the SAME image.
+services/transcreate — generate a natural, FUNNY tweet for a secondary language
+pair (e.g. English→Chinese) that fits the SAME reused image as the base cycle.
 
-This is the quality-critical step. It is a *transcreation*, not a literal
-translation, and — crucially — it must keep the humor/grit of the base German→
-English tweet, not flatten it into an image description.
+This is the quality-critical step. It mirrors the German→English generator's
+*architecture* (nodes/generate_content) rather than translating the base tweet —
+German and English humor differ, so a fresh joke lands better than a ported one.
+The one shared artifact is the image; everything else is generated new:
 
-How it stays funny (mirrors the German bot, which is funny *because* it generates
-several DIVERSE candidates and picks the funniest):
-  Stage 1 — TAUGHT language (e.g. English): generate N candidates that are genuinely
-    DIFFERENT from each other — each driven by the image SCENE (the only hard
-    constraint, since the image is shared) and pushed toward a distinct comedic angle,
-    with the base joke as loose inspiration ("don't translate it"). Pick the funniest
-    via TWEET_PICKER_MODEL.
-  Stage 2 — AUDIENCE language (e.g. Simplified Chinese): render it into natural,
-    colloquial, still-funny text and assemble the tweet.
+  Step 0 — inputs from THIS target's own history (data/post_history.<id>.json):
+    an avoid-list of recently taught words + (optional) a rotated CEFR level.
+  Step 1 — WORD: pick a fresh taught-language word (e.g. English) EVOKED BY the
+    picture's situation/mood/activity — not necessarily an object visible in it,
+    and not the most obvious noun. This is what stops the tweet degrading into an
+    image caption. Deterministically enforced against the avoid-list.
+  Step 2 — SENTENCE: generate N diverse funny candidates for that fixed word
+    (each pushed to a different comedic angle so best-of-N has real variety), then
+    pick the funniest via TWEET_PICKER_MODEL — exactly like the German bot.
+  Step 3 — AUDIENCE: render a close, FAITHFUL audience-language (e.g. Simplified
+    Chinese) translation a learner can map back to the English word-for-word, and
+    assemble the tweet DETERMINISTICALLY from a rotating scaffold (shared pool),
+    so layout/hashtags never drift.
 
-Earlier versions seeded every candidate with the base English sentence ("keep the
-exact joke"), which collapsed them into near-identical paraphrases — so best-of-N
-had nothing to choose from. The image scene is now the creative DRIVER (it still
-must not be contradicted), which restores real candidate diversity.
+Scaffold rotation is state-free (index = len(this target's history) % pool size),
+so it never disturbs the primary path's persisted scaffold_state.json.
 
-Reuses services.ai_client.get_ai_response (token usage auto-recorded → shows up in
-the cost report) and config.{TRANSCREATION_MODEL, TRANSCREATION_CANDIDATES,
-TWEET_PICKER_MODEL, resolve_tweet_style, MAX_EXAMPLE_WORDS}.
+Reuses services.ai_client.get_ai_response (token usage auto-recorded → cost
+report) and config.{TRANSCREATION_MODEL, TRANSCREATION_CANDIDATES, WORD_PICK_MODEL,
+TWEET_PICKER_MODEL, CEFR_ROTATION, resolve_tweet_style, MAX_EXAMPLE_WORDS}.
 """
 
 from __future__ import annotations
@@ -33,7 +36,10 @@ import logging
 import re
 
 import config
+from scaffolds import fill_scaffold, scaffold_at
 from services.ai_client import get_ai_response
+from services.history import next_cefr_level
+from utils.io import safe_json_read
 from utils.ui import info as ui_info, ok as ui_ok, tweet_box
 
 logger = logging.getLogger("xbot.transcreate")
@@ -48,11 +54,8 @@ _FUNNY_TONE = (
     "generic description."
 )
 
-# Distinct comedic angles handed one-per-candidate so the N takes actually diverge.
-# (Unlike the German bot — which gets variety for free from an open-ended "write a
-# joke for this WORD" prompt — our scene is fixed by the shared image, so we must
-# actively push each candidate toward a different KIND of joke or they collapse into
-# paraphrases of the same line.)
+# Distinct comedic angles handed one-per-candidate so the N takes actually diverge
+# (same word + same scene otherwise collapse into paraphrases of one line).
 _ANGLES = (
     "an ironic twist — the outcome is the opposite of what you'd expect",
     "playful exaggeration / hyperbole, pushed just far enough to stay believable",
@@ -99,75 +102,192 @@ def _parse_json(raw: str) -> dict:
     return data
 
 
-# ── Stage 1: taught language — N funny candidates, preserve the joke ───────────
+# ── small pure helpers ─────────────────────────────────────────────────────────
 
-def _stage1_candidates(spec, base: dict, funny: bool, n: int, verbose: bool) -> list:
-    """Generate N DIVERSE funny candidates, the way the German bot does.
+def _has_han(text: str) -> bool:
+    """True if *text* contains at least one CJK ideograph (0x4E00–0x9FFF)."""
+    return any(0x4E00 <= ord(c) <= 0x9FFF for c in text)
 
-    The variety comes from generating fresh takes — NOT paraphrasing the base
-    sentence. The shared image is the only hard constraint, so each candidate is
-    driven by the image SCENE and pushed toward a different comedic angle; the
-    base joke is loose inspiration, explicitly "don't translate it". Calls run in
-    parallel (like nodes/generate_content), each independent at high temperature.
+
+def _first_emoji(val) -> str:
+    """First whitespace-delimited token of *val* — trims the model's habit of
+    returning two emoji ('🖋️ 📓') where one is asked for."""
+    toks = str(val or "").strip().split()
+    return toks[0] if toks else ""
+
+
+def _recent_words(records: list, k: int = 30) -> list:
+    """Last *k* records' taught words, deduped newest-window, order preserved."""
+    words = [(r.get("source_word") or "").strip() for r in records[-k:]]
+    return list(dict.fromkeys(w for w in words if w))
+
+
+def _clean_scene(scene: str) -> str:
+    """Strip the constant image-style suffix from a stored midjourney_prompt.
+
+    generate_image appends a fixed photographic suffix (", shot on Canon EOS R5,
+    … natural warm smiles") and/or config.Z_IMAGE_PROMPT_SUFFIX to every prompt.
+    Left in, that vocabulary biases every word pick toward the same cozy/camera
+    cluster — fatal now that the scene DRIVES word choice. Cut at the first known
+    suffix; degrade to the raw scene if the style registry is unavailable.
     """
+    scene = (scene or "").strip()
+    if not scene:
+        return ""
+    suffixes: list[str] = []
+    try:
+        from styles import get_style, known_styles
+        for name in known_styles():
+            suf = getattr(get_style(name), "midjourney_suffix", "") or ""
+            if suf.strip():
+                suffixes.append(suf)
+    except Exception as exc:  # registry unavailable → belt-and-braces prompt line still helps
+        logger.debug("transcreate: could not load style suffixes (%s)", exc)
+    zsuf = (getattr(config, "Z_IMAGE_PROMPT_SUFFIX", "") or "").strip()
+    if zsuf:
+        suffixes.append(zsuf)
+    for suf in suffixes:
+        idx = scene.find(suf)
+        if idx != -1:
+            scene = scene[:idx]
+            break
+    return scene.strip(" .,\n")
+
+
+def _fix_quotes(spec, template: str) -> str:
+    """Swap the Quotes scaffold's German typography (U+201E … U+201C) around the
+    sentence for English (U+201C … U+201D) when the taught language isn't German.
+    Done on the template, not post-fill — German's close quote U+201C IS English's
+    open quote, so a blind character replace would corrupt it."""
+    if spec.source_language == "German":
+        return template
+    return template.replace(
+        "„[SHORT_FUNNY_SOURCE_SENTENCE]“",
+        "“[SHORT_FUNNY_SOURCE_SENTENCE]”",
+    )
+
+
+# ── Step 1: pick a fresh taught-language word evoked by the scene ───────────────
+
+def _word_pick_call(spec, scene: str, avoid_prompt: list, cefr_hint: str) -> list:
+    src, tgt = spec.source_language, spec.target_language
+    if scene:
+        scene_clause = (
+            f"The post reuses this picture:\n{scene}\n\n"
+            "Pick words EVOKED BY the situation, mood, or activity in it — a word does NOT have "
+            "to name an object visible in the picture, and should NOT be the single most obvious "
+            "noun in it. Ignore any camera, lens, photography or art-style wording; focus on what "
+            "is happening and how it feels.\n\n"
+        )
+    else:
+        scene_clause = ""
+    if cefr_hint in ("A1", "A2"):
+        level_clause = (
+            f"Target CEFR level: {cefr_hint} — the words MUST fit this level. At this level a "
+            "common concrete word is fine; prefer the less-obvious option only when it still fits.\n"
+        )
+    elif cefr_hint:
+        level_clause = f"Target CEFR level: {cefr_hint} — the words MUST fit this level.\n"
+    else:
+        level_clause = "Choose an appropriate CEFR level (A1–C2) for each word.\n"
+    avoid_clause = (
+        f"Do NOT reuse any of these already-taught words: {', '.join(avoid_prompt)}\n"
+        if avoid_prompt else ""
+    )
+    system = (
+        f"You are a {src} teacher choosing a fresh, useful {src} word to teach {tgt} speakers. "
+        "You always respond with valid JSON only."
+    )
+    user = (
+        scene_clause
+        + f"Suggest 3 good {src} words to teach (common noun, verb, adjective, or short phrase; "
+        "everyday and useful; not a proper noun), ranked best first.\n"
+        + level_clause
+        + avoid_clause
+        + '\nReturn ONLY this JSON object:\n'
+        '{"words": [{"word": "<word>", "cefr": "<A1|A2|B1|B2|C1|C2>"}, ...]}'
+    )
+    raw = get_ai_response(
+        config.WORD_PICK_MODEL, user, system,
+        max_tokens=160, temperature=0.9, retry_label=f"transcreate_{spec.id}_word",
+    )
+    data = _parse_json(raw)
+    opts = data.get("words")
+    return opts if isinstance(opts, list) else []
+
+
+def _pick_word(spec, scene: str, avoid_prompt: list, avoid_all: set,
+               cefr_hint: str, verbose: bool) -> dict:
+    """Pick one word not in *avoid_all*, from a ranked shortlist; one re-pick if
+    every suggestion collides, then take the best anyway."""
+    seen_reject: list = []
+    for attempt in range(2):
+        try:
+            opts = _word_pick_call(spec, scene, avoid_prompt + seen_reject, cefr_hint)
+        except Exception as exc:
+            logger.warning("transcreate[%s] word pick failed: %s", spec.id, exc)
+            opts = []
+        for o in opts:
+            w = (o.get("word") or "").strip()
+            if w and w.lower() not in avoid_all:
+                cefr = (o.get("cefr") or cefr_hint or "").strip().upper()
+                if verbose:
+                    ui_info(f"word: {w}" + (f"  [{cefr}]" if cefr else ""))
+                return {"word": w, "cefr": cefr}
+        seen_reject += [(o.get("word") or "").strip() for o in opts if o.get("word")]
+        if opts:
+            logger.info("transcreate[%s]: all word suggestions were repeats — re-picking.", spec.id)
+    # Fallback: take the best of whatever we last saw, even if a repeat.
+    if seen_reject:
+        w = seen_reject[0]
+        if verbose:
+            ui_info(f"word: {w}  (repeat — avoid-list exhausted)")
+        return {"word": w, "cefr": (cefr_hint or "").upper()}
+    raise ValueError("word pick produced no usable word")
+
+
+# ── Step 2: N diverse funny sentences for the fixed word ───────────────────────
+
+def _stage1_candidates(spec, word: str, scene: str, funny: bool, n: int, verbose: bool) -> list:
     import threading
     from concurrent.futures import ThreadPoolExecutor
 
-    src, tgt = spec.source_language, spec.target_language
-    scene = (base.get("midjourney_prompt") or "").strip()
-    base_en = (base.get("example_sentence_target") or "").strip()  # base TARGET == our taught lang
-    base_tweet = (base.get("full_tweet") or "").strip()
-    picture = scene or base_en          # what the shared image shows (must fit)
-    inspiration = base_tweet or base_en  # the original take (loose inspiration only)
-
+    src = spec.source_language
+    scene_line = (
+        f"- It should suit this picture (loose guardrail, don't contradict it): {scene}\n"
+        if scene else ""
+    )
     system = (
-        f"You are a {src} language teacher and stand-up comedy writer running a hugely popular X "
-        f"account that teaches {src} to {tgt} speakers. "
+        f"You are a {src} stand-up comedy writer and teacher running a hugely popular X account "
+        f"that teaches {src} to {spec.target_language} speakers. "
         + (_FUNNY_TONE + " " if funny else "")
         + "You always respond with valid JSON only."
     )
 
     def _one(i: int):
         angle = _ANGLES[i % len(_ANGLES)] if funny else ""
-        picture_line = (
-            "The post reuses an existing image, so your sentence MUST fit that picture (don't "
-            "contradict it) — but a single picture supports many different jokes, so find a FRESH "
-            f"one.\nWhat the picture shows:\n{picture}\n\n" if picture else ""
-        )
-        inspiration_line = (
-            "For inspiration ONLY — the original post's angle. Do NOT translate or paraphrase it; "
-            f"invent your OWN, different joke that fits the same picture:\n{inspiration}\n\n"
-            if inspiration else ""
-        )
         user = (
-            picture_line
-            + inspiration_line
-            + f"Write ONE natural, idiomatic{' and genuinely funny' if funny else ''} {src} example "
-            f"sentence (≤ {config.MAX_EXAMPLE_WORDS} words) that fits the picture above.\n"
+            f'Write ONE natural, idiomatic{" and genuinely funny" if funny else ""} {src} example '
+            f'sentence (≤ {config.MAX_EXAMPLE_WORDS} words) that teaches the word "{word}".\n'
+            f'- The sentence MUST contain the word "{word}".\n'
+            + scene_line
             + (f"- Build the humor on: {angle}\n" if angle else "")
-            + f"- It must contain ONE useful {src} headword worth teaching (common noun/verb/"
-            "adjective/phrase; not 'the/a/is/and', not a proper noun).\n"
             + (f"\n{_FUNNY_TONE}\n" if funny else "")
             + '\nReturn ONLY this JSON object:\n'
-            '{"word": "<headword>", "sentence": "<the example sentence>", "cefr": "<A1|A2|B1|B2|C1|C2>"}'
+            '{"sentence": "<the example sentence>"}'
         )
         try:
             raw = get_ai_response(
                 config.TRANSCREATION_MODEL, user, system,
-                max_tokens=400, temperature=0.95,
+                max_tokens=300, temperature=0.95,
                 retry_label=f"transcreate_{spec.id}_src_{i + 1}",
             )
-            d = _parse_json(raw)
+            sentence = (_parse_json(raw).get("sentence") or "").strip()
         except Exception as exc:
             logger.warning("transcreate[%s] candidate %d failed: %s", spec.id, i + 1, exc)
             return None
-        word = (d.get("word") or "").strip()
-        sentence = (d.get("sentence") or "").strip()
-        if not word or not sentence:
-            return None
-        return {"word": word, "sentence": sentence, "cefr": (d.get("cefr") or "").strip().upper()}
+        return {"word": word, "sentence": sentence} if sentence else None
 
-    cands: list = []
     lock = threading.Lock()
     arrived = [0]
 
@@ -176,7 +296,7 @@ def _stage1_candidates(spec, base: dict, funny: bool, n: int, verbose: bool) -> 
         if c and verbose:
             with lock:
                 arrived[0] += 1
-                ui_info(f"cand {arrived[0]}/{n}: {c['sentence']}  [{c['word']}]")
+                ui_info(f"cand {arrived[0]}/{n}: {c['sentence']}")
         return c
 
     with ThreadPoolExecutor(max_workers=min(n, 4)) as pool:
@@ -184,25 +304,39 @@ def _stage1_candidates(spec, base: dict, funny: bool, n: int, verbose: bool) -> 
 
     if not cands:
         raise ValueError("stage 1 produced no usable candidates")
-    return cands
+    # Soft-filter: keep candidates that actually contain the taught word, if any do.
+    containing = [c for c in cands if word.lower() in c["sentence"].lower()]
+    return containing or cands
 
 
-def _pick_funniest(spec, cands: list, verbose: bool) -> dict:
+def _pick_funniest(spec, cands: list, funny: bool, verbose: bool) -> dict:
     if len(cands) == 1:
         return cands[0]
     src = spec.source_language
-    numbered = "\n".join(f"{i + 1}. {c['sentence']}   (teaches: {c['word']})" for i, c in enumerate(cands))
-    prompt = (
-        f"Choose the FUNNIEST of these {len(cands)} {src} vocabulary sentences for "
-        f"{spec.target_language} learners:\n\n{numbered}\n\n"
-        "Pick the one with the sharpest punchline / best ironic twist / most relatable everyday "
-        "humor (warm beats cynical). Reply with ONLY the number, then a short reason — e.g. "
-        "'2 — sharp, relatable punchline'."
-    )
-    system = (
-        "You are a comedy editor picking the funniest vocabulary sentence. "
-        "Reply with only the number followed by a short reason — nothing before the number."
-    )
+    numbered = "\n".join(f"{i + 1}. {c['sentence']}" for i, c in enumerate(cands))
+    if funny:
+        prompt = (
+            f"Choose the FUNNIEST of these {len(cands)} {src} vocabulary sentences for "
+            f"{spec.target_language} learners:\n\n{numbered}\n\n"
+            "Pick the one with the sharpest punchline / best ironic twist / most relatable everyday "
+            "humor (warm beats cynical). Reply with ONLY the number, then a short reason — e.g. "
+            "'2 — sharp, relatable punchline'."
+        )
+        system = (
+            "You are a comedy editor picking the funniest vocabulary sentence. "
+            "Reply with only the number followed by a short reason — nothing before the number."
+        )
+    else:
+        prompt = (
+            f"Choose the BEST of these {len(cands)} {src} vocabulary sentences for "
+            f"{spec.target_language} learners:\n\n{numbered}\n\n"
+            "Pick the one that is most natural, useful and charming to read. Reply with ONLY the "
+            "number, then a short reason — e.g. '2 — natural and vivid'."
+        )
+        system = (
+            "You are an editor picking the best vocabulary sentence. "
+            "Reply with only the number followed by a short reason — nothing before the number."
+        )
     try:
         raw = get_ai_response(
             config.TWEET_PICKER_MODEL, prompt, system,
@@ -221,65 +355,129 @@ def _pick_funniest(spec, cands: list, verbose: bool) -> dict:
     return cands[idx]
 
 
-# ── Stage 2: audience language + assemble (keep it funny) ──────────────────────
+# ── Step 3: faithful audience-language render (content pieces only) ─────────────
 
-def _stage2_audience(spec, s1: dict, base: dict, *, extra: str = "") -> dict:
+def _stage2_audience(spec, word: str, sentence: str, *, extra: str = "") -> dict:
     src, tgt = spec.source_language, spec.target_language
-    scene = (base.get("midjourney_prompt") or "").strip()
-    fmt = (
-        f"{spec.source_flag} {s1['word']}\n"
-        f"{spec.target_flag} <{tgt} meaning> <emoji>\n\n"
-        f"{spec.source_flag} {s1['sentence']}\n"
-        f"{spec.target_flag} <{tgt} translation> <emoji>\n\n"
-        f"{spec.hashtags()}"
-    )
     system = (
-        f"You are a {src} teacher creating viral, funny vocabulary posts for {tgt} speakers. "
-        f"You write natural, idiomatic, colloquial {tgt} ({spec.script}) that KEEPS the humor — "
-        "never stiff, literal translationese. You always respond with valid JSON only."
+        f"You are a {src} teacher creating vocabulary posts for {tgt} speakers. You produce a "
+        f"close, FAITHFUL {tgt} ({spec.script}) translation a learner can map back to the {src} "
+        "word-for-word — natural and colloquial, never robotic, but faithful: do NOT reinvent the "
+        "joke, swap references, or add meaning. You always respond with valid JSON only."
     )
     user = (
-        f"{src} word: {s1['word']}\n"
-        f"{src} sentence (funny — keep it funny): {s1['sentence']}\n"
-        + (f"Image guardrail (don't contradict): {scene}\n" if scene else "")
-        + "\nProduce a tweet teaching this word to "
-        f"{tgt} speakers:\n"
-        f'1. "audience_word": the natural {tgt} meaning of the word (concise, {spec.script}).\n'
-        f'2. "audience_sentence": render the sentence in natural, colloquial, FUNNY {tgt} '
-        f"({spec.script}) that keeps the joke landing — a native {tgt} speaker should find it "
-        "funny. NOT a literal word-for-word translation.\n"
-        '3. "full_tweet": assemble EXACTLY this layout (keep the flags and the blank lines):\n\n'
-        f"{fmt}\n\n"
-        "Rules:\n"
+        f"{src} word: {word}\n"
+        f"{src} sentence: {sentence}\n\n"
+        f"Produce, for {tgt} learners:\n"
+        f'1. "audience_word": the {tgt} meaning of the word — concise, {spec.script}.\n'
+        f'2. "audience_sentence": a close, faithful {tgt} ({spec.script}) translation of the '
+        "sentence above — natural and idiomatic, but it MUST preserve the exact meaning so a "
+        "learner can map it back to the original. Do NOT rewrite the joke or localize it.\n"
+        '3. "emoji1": ONE emoji that fits the word (not a laughing face).\n'
+        '4. "emoji2": ONE emoji that fits the sentence (not a laughing face).\n'
         f"- All {tgt} text must use {spec.script} characters.\n"
-        "- Replace each <emoji> with ONE emoji that aids understanding (not a laughing face).\n"
-        f"- Keep the whole tweet under {spec.max_tweet_length} weighted characters "
-        f"(each {tgt} character counts as ~2 on X).\n"
-        f"{extra}\n"
-        'Return ONLY this JSON object:\n'
-        '{"audience_word": "...", "audience_sentence": "...", "full_tweet": "..."}'
+        + (f"{extra}\n" if extra else "")
+        + '\nReturn ONLY this JSON object:\n'
+        '{"audience_word": "...", "audience_sentence": "...", "emoji1": "...", "emoji2": "..."}'
     )
     raw = get_ai_response(
         config.TRANSCREATION_MODEL, user, system,
-        max_tokens=800, temperature=0.7, retry_label=f"transcreate_{spec.id}_audience",
+        max_tokens=300, temperature=0.7, retry_label=f"transcreate_{spec.id}_audience",
     )
     data = _parse_json(raw)
-    full_tweet = (data.get("full_tweet") or "").strip()
-    if not full_tweet:
-        raise ValueError("stage 2 returned empty full_tweet")
+    aw = (data.get("audience_word") or "").strip()
+    as_ = (data.get("audience_sentence") or "").strip()
+    if not aw or not as_:
+        raise ValueError("stage 2 returned empty audience fields")
     return {
-        "audience_word": (data.get("audience_word") or "").strip(),
-        "audience_sentence": (data.get("audience_sentence") or "").strip(),
-        "full_tweet": full_tweet,
+        "audience_word": aw,
+        "audience_sentence": as_,
+        "emoji1": _first_emoji(data.get("emoji1")),
+        "emoji2": _first_emoji(data.get("emoji2")),
     }
+
+
+# ── assembly + length ladder ───────────────────────────────────────────────────
+
+def _assemble(spec, template: str, word: str, sentence: str, s2: dict, cefr: str) -> str:
+    return fill_scaffold(template, {
+        "SOURCE_FLAG": spec.source_flag,
+        "TARGET_FLAG": spec.target_flag,
+        "SOURCE_LANGUAGE": spec.source_language.replace(" ", ""),
+        "TARGET_LANGUAGE": spec.target_language.replace(" ", ""),
+        "ARTICLE": "",                       # taught language (English) has no article slot
+        "SOURCE_WORD": word,
+        "TARGET_TRANSLATION": s2["audience_word"],
+        "SHORT_FUNNY_SOURCE_SENTENCE": sentence,
+        "TARGET_TRANSLATION_OF_SENTENCE": s2["audience_sentence"],
+        "EMOJI1": s2["emoji1"],
+        "EMOJI2": s2["emoji2"],
+        "LEVEL": cefr,
+    })
+
+
+def _shorten_hashtags(full: str) -> str:
+    """Reduce the tweet's hashtag line to its first tag (~−19 weighted chars)."""
+    lines = full.split("\n")
+    for i in range(len(lines) - 1, -1, -1):
+        if lines[i].lstrip().startswith("#"):
+            toks = lines[i].split()
+            lines[i] = toks[0] if toks else lines[i]
+            break
+    return "\n".join(lines)
+
+
+def _shrink_to_fit(spec, template: str, word: str, sentence: str, s2: dict, cefr: str) -> str:
+    """Bring the tweet under the weighted cap WITHOUT ever truncating the Chinese:
+    (a) one shorter faithful re-render, (b) drop emoji, (c) shorten hashtags,
+    (d) post as-is (X may reject, but the website mirror — primary China channel,
+    no 280 limit — records it regardless; a hard CJK slice would be worse)."""
+    cap = spec.max_tweet_length
+    full = _assemble(spec, template, word, sentence, s2, cefr)
+    if x_weighted_len(full) <= cap:
+        return full
+
+    # (a) shorter, still-faithful re-render with a stated weighted-char floor.
+    overhead = x_weighted_len(_assemble(
+        spec, template, word, sentence,
+        {**s2, "audience_word": "", "audience_sentence": ""}, cefr))
+    budget = max(10, cap - overhead)
+    try:
+        s2b = _stage2_audience(spec, word, sentence, extra=(
+            f"⚠ Keep the {spec.target_language} meaning and sentence SHORT — together well under "
+            f"{budget} weighted characters (each {spec.target_language} character counts ~2 on X). "
+            "Stay a faithful translation."))
+        cand = _assemble(spec, template, word, sentence, s2b, cefr)
+        if x_weighted_len(cand) < x_weighted_len(full):
+            full, s2 = cand, s2b
+        if x_weighted_len(full) <= cap:
+            return full
+    except Exception as exc:
+        logger.warning("transcreate[%s]: shorter re-render failed: %s", spec.id, exc)
+
+    # (b) drop emoji2, then both emoji.
+    for e1, e2 in ((s2["emoji1"], ""), ("", "")):
+        cand = _assemble(spec, template, word, sentence, {**s2, "emoji1": e1, "emoji2": e2}, cefr)
+        full = cand
+        if x_weighted_len(cand) <= cap:
+            return cand
+
+    # (c) shorten the hashtag line.
+    full = _shorten_hashtags(full)
+    if x_weighted_len(full) <= cap:
+        return full
+
+    logger.warning("transcreate[%s]: still %d weighted chars (cap %d) — posting anyway.",
+                   spec.id, x_weighted_len(full), cap)
+    return full
 
 
 # ── Public entry point ────────────────────────────────────────────────────────
 
 def transcreate(spec, base: dict, cycle: int = 0, verbose: bool = True) -> dict:
     """
-    Transcreate *base* (the German→English cycle's content) into *spec*'s pair,
-    preserving the humor. Returns:
+    Generate a fresh, funny tweet for *spec*'s language pair that fits the base
+    cycle's reused image. Returns:
       full_tweet, source_word, source_sentence (spoken + KTV-subtitled),
       audience_word, audience_sentence, cefr.
     Raises on unrecoverable failure (the fan-out node isolates this per target).
@@ -287,38 +485,49 @@ def transcreate(spec, base: dict, cycle: int = 0, verbose: bool = True) -> dict:
     funny = config.resolve_tweet_style(cycle) == "funny"
     n = max(1, int(getattr(config, "TRANSCREATION_CANDIDATES", 3)))
 
-    if verbose:
-        ui_info(f"Stage 1/2 — {spec.source_language}: {n} candidate(s), preserving the joke …")
-    cands = _stage1_candidates(spec, base, funny, n, verbose)
-    s1 = _pick_funniest(spec, cands, verbose)
+    records = safe_json_read(spec.history_file, default=[])
+    if not isinstance(records, list):
+        records = []
+    avoid_all = {(r.get("source_word") or "").strip().lower()
+                 for r in records if (r.get("source_word") or "").strip()}
+    avoid_prompt = _recent_words(records, 30)
+    cefr_hint = next_cefr_level(records) if getattr(config, "CEFR_ROTATION", False) else ""
+    scene = _clean_scene(base.get("midjourney_prompt") or "")
 
     if verbose:
-        ui_info(f"Stage 2/2 — {spec.target_language} ({spec.script}): translating + assembling …")
-    s2 = _stage2_audience(spec, s1, base)
+        ui_info(f"Step 1/3 — picking a fresh {spec.source_language} word evoked by the picture …")
+    picked = _pick_word(spec, scene, avoid_prompt, avoid_all, cefr_hint, verbose)
+    word = picked["word"]
+    cefr = picked["cefr"] or cefr_hint
 
-    # Length guard: one retry shorter if over the weighted cap.
-    weighted = x_weighted_len(s2["full_tweet"])
-    if weighted > spec.max_tweet_length:
-        logger.info("transcreate[%s]: tweet too long (%d) — retrying shorter.", spec.id, weighted)
-        s2 = _stage2_audience(spec, s1, base, extra=(
-            f"⚠ The previous version was too long. Make both the {spec.target_language} meaning "
-            f"and sentence noticeably shorter, well under {spec.max_tweet_length} weighted chars."
-        ))
-        weighted = x_weighted_len(s2["full_tweet"])
-        if weighted > spec.max_tweet_length:
-            logger.warning("transcreate[%s]: still %d weighted chars — posting may be rejected.",
-                           spec.id, weighted)
+    if verbose:
+        ui_info(f"Step 2/3 — {spec.source_language}: {n} candidate(s) for '{word}' …")
+    cands = _stage1_candidates(spec, word, scene, funny, n, verbose)
+    best = _pick_funniest(spec, cands, funny, verbose)
+    sentence = best["sentence"]
+
+    if verbose:
+        ui_info(f"Step 3/3 — {spec.target_language} ({spec.script}): faithful translation + assemble …")
+    s2 = _stage2_audience(spec, word, sentence)
+    if not _has_han(s2["audience_sentence"]):
+        logger.info("transcreate[%s]: translation had no CJK — retrying.", spec.id)
+        s2 = _stage2_audience(spec, word, sentence,
+                              extra=f"The audience_sentence MUST be written in {spec.script} characters.")
+
+    _name, template = scaffold_at(len(records))
+    template = _fix_quotes(spec, template)
+    full_tweet = _shrink_to_fit(spec, template, word, sentence, s2, cefr)
 
     result = {
-        "full_tweet": s2["full_tweet"],
-        "source_word": s1["word"],
-        "source_sentence": s1["sentence"],
+        "full_tweet": full_tweet,
+        "source_word": word,
+        "source_sentence": sentence,
         "audience_word": s2["audience_word"],
         "audience_sentence": s2["audience_sentence"],
-        "cefr": s1["cefr"],
+        "cefr": cefr,
     }
     if verbose:
-        ui_info(f"{spec.source_language}: {result['source_word']} — {result['source_sentence']}")
-        ui_info(f"{spec.target_language}: {result['audience_word']} — {result['audience_sentence']}")
-        tweet_box(result["full_tweet"])
+        ui_info(f"{spec.source_language}: {word} — {sentence}")
+        ui_info(f"{spec.target_language}: {s2['audience_word']} — {s2['audience_sentence']}")
+        tweet_box(full_tweet)
     return result

@@ -26,6 +26,7 @@ sequence survives restarts.
 
 import json
 import logging
+import re
 
 logger = logging.getLogger("xbot.scaffolds")
 
@@ -77,3 +78,59 @@ def next_scaffold() -> tuple[str, str]:
     name, template = pool[idx]
     logger.info("Scaffold rotation: %d/%d — %s", idx + 1, len(pool), name)
     return name, template
+
+
+# ── stateless helpers (shared with the secondary fan-out) ──────────────────────
+
+def scaffold_at(index: int) -> tuple[str, str]:
+    """Return the (name, template) at *index* modulo the pool — no state I/O.
+
+    Lets a caller drive rotation from its own counter (a secondary target
+    rotates on len(its own history)) without touching the primary path's
+    persisted data/scaffold_state.json.
+    """
+    pool = _load_pool()
+    name, template = pool[index % len(pool)]
+    logger.info("Scaffold pick: %d/%d — %s", (index % len(pool)) + 1, len(pool), name)
+    return name, template
+
+
+def fill_scaffold(template: str, values: dict) -> str:
+    """Substitute ``[PLACEHOLDER]`` tokens in *template* from *values*.
+
+    *values* keys are bare placeholder names without brackets, e.g.
+    ``{"SOURCE_FLAG": "🇬🇧", "SOURCE_WORD": "notebook", ...}``.
+
+    - An empty/absent ``ARTICLE`` drops the token *and* one trailing space, so
+      ``"[SOURCE_FLAG]  [ARTICLE] [SOURCE_WORD]"`` collapses cleanly instead of
+      leaving a stray gap (English has no article; German nouns do). The
+      deliberate two-space gaps after flags are preserved.
+    - Bracket-closed tokens can't prefix-collide (``[TARGET_TRANSLATION]`` is not
+      a substring of ``[TARGET_TRANSLATION_OF_SENTENCE]``), so fill order is free.
+    - Any placeholder left unfilled is stripped and logged, so a future scaffold
+      edit adding an unsupplied token can't ship literal ``[FOO]`` text.
+    - Collapses 3+ consecutive newlines to 2.
+    """
+    article = (values.get("ARTICLE") or "").strip()
+    out = template
+    if article:
+        out = out.replace("[ARTICLE]", article)
+    else:
+        out = out.replace("[ARTICLE] ", "").replace("[ARTICLE]", "")
+
+    for key, val in values.items():
+        if key == "ARTICLE":
+            continue
+        out = out.replace(f"[{key}]", str(val))
+
+    leftovers = sorted(set(re.findall(r"\[[A-Z0-9_]+\]", out)))
+    if leftovers:
+        logger.warning("fill_scaffold: unfilled placeholders stripped: %s", ", ".join(leftovers))
+        for tok in leftovers:
+            out = out.replace(tok, "")
+
+    # Trim end-of-line whitespace (e.g. a dropped [EMOJI] leaving a trailing gap);
+    # the deliberate two-space gaps are mid-line, so they survive. Then collapse
+    # blank runs the substitutions may have opened up.
+    out = "\n".join(line.rstrip() for line in out.split("\n"))
+    return re.sub(r"\n{3,}", "\n\n", out).strip()
