@@ -21,6 +21,7 @@ env/
 
 # Runtime data (logs, checkpoints — large/binary, not tracked)
 data/bot.log
+data/console.log
 data/improvement.log
 data/checkpoints.sqlite*
 data/test_cycle_output.json
