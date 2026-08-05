@@ -130,14 +130,43 @@ class TranscreateTests(unittest.TestCase):
         self.assertNotIn("Canon EOS R5", user)                   # photographic suffix stripped
         self.assertIn("notebook", user)                          # avoid-list present
         self.assertIn("A2", user)                                # rotated CEFR hint present
-        self.assertIn("EVOKED BY", user)                         # the anti-caption instruction
+
+    def test_word_prompt_rejects_mood_and_depiction_words(self):
+        """The funniness fix: mood/atmosphere and 'describe the picture' words are
+        what produced flat captions (peaceful/convivial/give), so the word pick
+        must explicitly rule them out and ask for comic potential instead."""
+        ai = self._standard_ai()
+        T.get_ai_response = ai
+        T.transcreate(self.spec, {"midjourney_prompt": _SCENE + _STYLE_SUFFIX}, verbose=False)
+        user, _system = ai.prompts_for("word")[0]
+        self.assertIn("do NOT pick a word that merely DESCRIBES the picture", user)
+        self.assertIn("mood/atmosphere adjectives", user)
+        self.assertIn("comic potential", user)
+        self.assertIn("EVERYDAY LIFE", user)          # German-bot framing
+        self.assertNotIn("EVOKED BY", user)           # the wording that caused the regression
+
+    def test_word_prompt_uses_compressed_situation_not_lush_description(self):
+        """Only the first sentence (setting + subjects + action) reaches the word
+        pick; the atmospheric tail soaked the call in descriptive register."""
+        lush = ("A woman daydreams at a cluttered desk. Warm lamplight glows softly across "
+                "the wall, and her gentle smile conveys quiet kindness." + _STYLE_SUFFIX)
+        ai = self._standard_ai()
+        T.get_ai_response = ai
+        T.transcreate(self.spec, {"midjourney_prompt": lush}, verbose=False)
+        user, _ = ai.prompts_for("word")[0]
+        self.assertIn("daydreams at a cluttered desk", user)
+        self.assertNotIn("quiet kindness", user)      # atmospheric tail dropped
+        # Stage 1 still gets the full scene for grounding.
+        s1_user, _ = ai.prompts_for("_src_")[0]
+        self.assertIn("quiet kindness", s1_user)
 
     def test_empty_scene_falls_back_to_free_pick(self):
         ai = self._standard_ai()
         T.get_ai_response = ai
         res = T.transcreate(self.spec, {"midjourney_prompt": ""}, verbose=False)
         user, _ = ai.prompts_for("word")[0]
-        self.assertNotIn("reuses this picture", user)   # no scene clause
+        self.assertNotIn("set in this everyday situation", user)   # no scene clause
+        self.assertNotIn("DESCRIBES the picture", user)            # no anchor clause either
         self.assertEqual(res["source_word"], "procrastinate")
 
     # ── audience + China-compliance steering in joke generation ────────────────
@@ -242,6 +271,22 @@ class PureHelperTests(unittest.TestCase):
     def test_clean_scene_empty(self):
         self.assertEqual(T._clean_scene(""), "")
         self.assertEqual(T._clean_scene(None), "")
+
+    def test_situation_takes_first_sentence(self):
+        lush = ("cozy living room at dusk, a shy teenage boy offers a tiny gift box to an "
+                "elderly woman. Warm lamplight conveys quiet kindness." + _STYLE_SUFFIX)
+        self.assertEqual(
+            T._situation(lush),
+            "cozy living room at dusk, a shy teenage boy offers a tiny gift box to an elderly woman")
+
+    def test_situation_falls_back_when_no_sentence_break(self):
+        long_no_period = "a beer garden at dusk with three graduates celebrating " * 6
+        out = T._situation(long_no_period)
+        self.assertTrue(out)
+        self.assertLessEqual(len(out), 220)
+
+    def test_situation_empty(self):
+        self.assertEqual(T._situation(""), "")
 
     def test_first_emoji_trims_doubles(self):
         self.assertEqual(T._first_emoji("🖋️ 📓"), "🖋️")

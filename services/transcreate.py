@@ -9,10 +9,13 @@ The one shared artifact is the image; everything else is generated new:
 
   Step 0 — inputs from THIS target's own history (data/post_history.<id>.json):
     an avoid-list of recently taught words + (optional) a rotated CEFR level.
-  Step 1 — WORD: pick a fresh taught-language word (e.g. English) EVOKED BY the
-    picture's situation/mood/activity — not necessarily an object visible in it,
-    and not the most obvious noun. This is what stops the tweet degrading into an
-    image caption. Deterministically enforced against the avoid-list.
+  Step 1 — WORD: pick a fresh taught-language word (e.g. English) the way the
+    German bot does — frequent, practical, everyday — with the picture's situation
+    as a topical anchor, NOT as something to describe. Words that name the mood or
+    the visible action cannot carry a joke, so they are explicitly rejected; this
+    is what stops the tweet degrading into an image caption, and it is the single
+    biggest lever on funniness (A/B tested, see _word_pick_call).
+    Deterministically enforced against the avoid-list.
   Step 2 — SENTENCE: generate N diverse funny candidates for that fixed word
     (each pushed to a different comedic angle so best-of-N has real variety), then
     pick the funniest via TWEET_PICKER_MODEL — exactly like the German bot.
@@ -175,6 +178,25 @@ def _clean_scene(scene: str) -> str:
     return scene.strip(" .,\n")
 
 
+def _situation(scene: str) -> str:
+    """Compress a cleaned image prompt to its first sentence — the bare situation.
+
+    The stored prompt is a lush *visual* description ("warm lamplight … gentle
+    smile … quiet kindness"); feeding all of it to the word pick soaked that call
+    in descriptive register and produced mood words (peaceful/convivial/repose)
+    that no joke can be built on. The first sentence carries setting + subjects +
+    action and drops the atmospheric tail. Measured on 6 real scenes: mood-word
+    picks → concrete comic words (unwrap, spill, mosquito, wind).
+    """
+    scene = _clean_scene(scene)
+    if not scene:
+        return ""
+    # ≥25 chars so a lead fragment ("Wide shot.") is skipped for the real first
+    # sentence, but a genuinely short one ("A woman daydreams at a desk.") is kept.
+    m = re.search(r"^(.{25,220}?)\.(?:\s|$)", scene)
+    return (m.group(1) if m else scene[:220]).strip()
+
+
 def _fix_quotes(spec, template: str) -> str:
     """Swap the Quotes scaffold's German typography (U+201E … U+201C) around the
     sentence for English (U+201C … U+201D) when the taught language isn't German.
@@ -188,20 +210,36 @@ def _fix_quotes(spec, template: str) -> str:
     )
 
 
-# ── Step 1: pick a fresh taught-language word evoked by the scene ───────────────
+# ── Step 1: pick a fresh, JOKE-CAPABLE taught-language word for the situation ───
 
 def _word_pick_call(spec, scene: str, avoid_prompt: list, cefr_hint: str) -> list:
+    """Ask for a shortlist of everyday words the situation *supports* — the way the
+    German bot picks (frequent, practical, everyday), with the scene as a topical
+    anchor rather than something to describe.
+
+    This is the funniness bottleneck. Asking for words "evoked by the mood" made
+    the model name the picture's atmosphere (peaceful, convivial, repose, quiet)
+    or its visible action (give), and no joke can be built on those — the sentence
+    could only restate the image. A/B tested on 6 real scenes: this wording won
+    4/6 blind head-to-heads and produced unwrap / spill / mosquito / wind instead.
+    """
     src, tgt = spec.source_language, spec.target_language
     if scene:
         scene_clause = (
-            f"The post reuses this picture:\n{scene}\n\n"
-            "Pick words EVOKED BY the situation, mood, or activity in it — a word does NOT have "
-            "to name an object visible in the picture, and should NOT be the single most obvious "
-            "noun in it. Ignore any camera, lens, photography or art-style wording; focus on what "
-            "is happening and how it feels.\n\n"
+            f"Today's post is set in this everyday situation:\n{_situation(scene)}\n\n"
+        )
+        anchor_clause = (
+            "- Belong to the world of that situation: something a person there would actually "
+            "talk about, do, want, or complain about\n"
+            "- Have comic potential: a word you can build a joke around because real life around "
+            "it is messy or relatable\n\n"
+            "CRITICAL — do NOT pick a word that merely DESCRIBES the picture. Reject words that "
+            "name what is visibly happening, and reject mood/atmosphere adjectives (e.g. "
+            "'peaceful', 'quiet', 'convivial', 'cozy') — those produce boring caption-like "
+            "sentences. Prefer concrete everyday nouns, verbs and phrases with real-life texture.\n"
         )
     else:
-        scene_clause = ""
+        scene_clause = anchor_clause = ""
     if cefr_hint in ("A1", "A2"):
         level_clause = (
             f"Target CEFR level: {cefr_hint} — the words MUST fit this level. At this level a "
@@ -221,8 +259,11 @@ def _word_pick_call(spec, scene: str, avoid_prompt: list, cefr_hint: str) -> lis
     )
     user = (
         scene_clause
-        + f"Suggest 3 good {src} words to teach (common noun, verb, adjective, or short phrase; "
-        "everyday and useful; not a proper noun), ranked best first.\n"
+        + f"Pick 3 {src} words to teach, ranked best first. Each word must:\n"
+        "- Be frequently used and widespread in EVERYDAY LIFE (no jargon, no rare or literary "
+        "words, not a proper noun)\n"
+        "- Be practical and useful — the kind of word a learner is glad to know\n"
+        + anchor_clause
         + level_clause
         + avoid_clause
         + '\nReturn ONLY this JSON object:\n'
@@ -230,7 +271,7 @@ def _word_pick_call(spec, scene: str, avoid_prompt: list, cefr_hint: str) -> lis
     )
     raw = get_ai_response(
         config.WORD_PICK_MODEL, user, system,
-        max_tokens=160, temperature=0.9, retry_label=f"transcreate_{spec.id}_word",
+        max_tokens=200, temperature=0.9, retry_label=f"transcreate_{spec.id}_word",
     )
     data = _parse_json(raw)
     opts = data.get("words")
