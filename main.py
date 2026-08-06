@@ -44,6 +44,7 @@ sys.stdout.reconfigure(line_buffering=True)
 import config as _config
 from config import setup_logging, reload_settings
 from utils.errors import FatalProviderError
+from services.api_retry import is_connectivity_error
 from utils.ui import (
     startup_banner,
     cycle_banner,
@@ -247,6 +248,10 @@ def main():
     if cycle:
         logger.info("Resuming from last posted cycle %d — next cycle will be %d.", cycle, cycle + 1)
     consecutive_failures = 0
+    # Counted separately from consecutive_failures: a cycle lost to the network
+    # never reached a provider's decision, so it says nothing about whether the
+    # bot is healthy. Tracked so a genuinely long outage still stops eventually.
+    network_failures = 0
 
     while not _shutdown:
         reload_settings()
@@ -287,6 +292,7 @@ def main():
             # nothing — but never crash, since the pipeline handled it gracefully.
             if result.get("tweet_id"):
                 consecutive_failures = 0
+                network_failures = 0
             else:
                 consecutive_failures += 1
                 warn(
@@ -328,6 +334,43 @@ def main():
             break
         except Exception as exc:
             elapsed = time.perf_counter() - t_cycle
+
+            # A cycle killed by the network is NOT evidence that the bot is
+            # broken — no provider ever rendered a verdict. Judging it by
+            # MAX_CONSECUTIVE_FAILURES (set to 2 here) meant a single SSL EOF
+            # from api.x.ai could end the run, which is exactly how the bot
+            # died on 2026-08-06 and stayed down for 8 h. It gets its own,
+            # far more forgiving budget instead. Still bounded, because a
+            # cycle can burn LLM credits before reaching the call that fails.
+            if is_connectivity_error(exc):
+                network_failures += 1
+                max_network = _config.MAX_CONSECUTIVE_NETWORK_FAILURES
+                wait_s = _config.NETWORK_RETRY_WAIT_SECONDS
+                warn(
+                    f"Cycle {cycle} lost to a network error after "
+                    f"{format_elapsed(elapsed)} ({network_failures}/{max_network}) "
+                    f"— not counted as a bot failure: {exc}"
+                )
+                logger.warning(
+                    "Cycle %d — connectivity failure (%d/%d) after %.1fs: %s",
+                    cycle, network_failures, max_network, elapsed, exc,
+                )
+                if network_failures >= max_network:
+                    err(
+                        f"Stopping bot — {network_failures} consecutive cycles lost to "
+                        "network errors. The connection to the providers looks down, "
+                        "not flaky."
+                    )
+                    logger.critical(
+                        "Aborting after %d consecutive connectivity failures.",
+                        network_failures,
+                    )
+                    state["error"] = str(exc)
+                    break
+                warn(f"Network looks down — waiting {wait_s}s before retrying …")
+                time.sleep(wait_s)
+                continue
+
             consecutive_failures += 1
             err(
                 f"Cycle {cycle} failed after {format_elapsed(elapsed)} "

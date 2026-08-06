@@ -309,7 +309,7 @@ def reload_settings() -> None:
     global ENABLE_VIDEO, ENABLE_GROK_VIDEO, VIDEO_FREQUENCY, GROK_VIDEO_FREQUENCY, ENABLE_KEN_BURNS, ENABLE_BACKGROUND_MUSIC, WAN_VIDEO_DIR, WAN_VIDEO_STEPS, WAN_VIDEO_FRAMES, WAN_VIDEO_HISTORY_FILE, KTV_FONT_SIZE, VIDEO_FPS
     global ENABLE_REALESRGAN, REALESRGAN_DIR, REALESRGAN_MODEL, REALESRGAN_OUTSCALE, REALESRGAN_TILE
     global ENABLE_SELF_IMPROVEMENT, IMPROVEMENT_INTERVAL_CYCLES, IMPROVEMENT_SCORE_THRESHOLD
-    global MAX_CONSECUTIVE_FAILURES
+    global MAX_CONSECUTIVE_FAILURES, MAX_CONSECUTIVE_NETWORK_FAILURES, NETWORK_RETRY_WAIT_SECONDS
     global TRANSCREATION_MODEL, TRANSCREATION_CANDIDATES, FANOUT_DRY_RUN, SECONDARY_TARGETS
     global CONTENT_SAFETY_MODEL, CONTENT_SAFETY_MAX_ATTEMPTS, CONTENT_SAFETY_STOP_AFTER_UNVERIFIED
     global EXERCISE_INGEST_URL, EXERCISE_INGEST_TOKEN, EXERCISE_INGEST_DIRECT
@@ -386,6 +386,8 @@ def reload_settings() -> None:
     IMPROVEMENT_INTERVAL_CYCLES    = _int_env("IMPROVEMENT_INTERVAL_CYCLES", 5)
     IMPROVEMENT_SCORE_THRESHOLD    = _float_env("IMPROVEMENT_SCORE_THRESHOLD", 9999)
     MAX_CONSECUTIVE_FAILURES       = _int_env("MAX_CONSECUTIVE_FAILURES", 5)
+    MAX_CONSECUTIVE_NETWORK_FAILURES = _int_env("MAX_CONSECUTIVE_NETWORK_FAILURES", 6)
+    NETWORK_RETRY_WAIT_SECONDS     = _int_env("NETWORK_RETRY_WAIT_SECONDS", 300)
     STRATEGY_METRICS_UPDATES_ENABLED, STRATEGY_UPDATE_INTERVAL_HOURS = _parse_strategy_update_interval(
         os.getenv("STRATEGY_UPDATE_INTERVAL_HOURS", "24")
     )
@@ -554,6 +556,18 @@ IMPROVEMENT_SCORE_THRESHOLD: float = _float_env("IMPROVEMENT_SCORE_THRESHOLD", 9
 # Prevents the bot from burning upstream API credits indefinitely when a provider is down.
 # Fatal billing/auth errors (HTTP 401/402/403) always stop the bot immediately regardless.
 MAX_CONSECUTIVE_FAILURES: int = _int_env("MAX_CONSECUTIVE_FAILURES", 5)
+
+# Cycles lost to CONNECTIVITY errors are counted separately and far more
+# forgivingly. A network failure means no provider ever answered, so it is no
+# evidence the bot is broken — judging it by MAX_CONSECUTIVE_FAILURES (2 here)
+# let one transient SSL EOF from api.x.ai end an 8-hour run on 2026-08-06.
+# Still bounded rather than infinite: a cycle can burn LLM credits before
+# reaching the call that fails, so a truly dead link must eventually stop.
+# 6 tries × 300s ⇒ rides out ~30 min of flakiness before giving up.
+MAX_CONSECUTIVE_NETWORK_FAILURES: int = _int_env("MAX_CONSECUTIVE_NETWORK_FAILURES", 6)
+
+# How long to wait before re-running a cycle that died on a network error.
+NETWORK_RETRY_WAIT_SECONDS: int = _int_env("NETWORK_RETRY_WAIT_SECONDS", 300)
 
 
 # Which video engine to use for animating the generated image.

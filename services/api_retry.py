@@ -99,6 +99,60 @@ def is_retryable_error(exc: BaseException) -> bool:
     return True
 
 
+# Transport-level failure types, matched BY NAME because requests/httpx/urllib3
+# each define their own and importing all three here would be fragile.
+_CONNECTIVITY_TYPE_NAMES: frozenset[str] = frozenset({
+    # ssl / stdlib
+    "SSLError", "SSLEOFError", "SSLZeroReturnError", "SSLSyscallError",
+    # requests
+    "ConnectionError", "ConnectTimeout", "ReadTimeout", "Timeout",
+    "ProxyError", "ChunkedEncodingError",
+    # urllib3
+    "NewConnectionError", "NameResolutionError", "ProtocolError",
+    "ConnectTimeoutError", "ReadTimeoutError", "IncompleteRead",
+    # httpx
+    "ConnectError", "ReadError", "WriteError", "PoolTimeout",
+    "RemoteProtocolError", "ConnectTimeout",
+    # openai sdk
+    "APIConnectionError", "APITimeoutError",
+})
+
+
+def _exception_chain(exc: BaseException):
+    """Yield ``exc`` and every ``__cause__``/``__context__`` beneath it."""
+    seen: set[int] = set()
+    cur: BaseException | None = exc
+    while cur is not None and id(cur) not in seen:
+        seen.add(id(cur))
+        yield cur
+        cur = cur.__cause__ or cur.__context__
+
+
+def is_connectivity_error(exc: BaseException) -> bool:
+    """True when we never actually reached the provider.
+
+    Distinguishes "the network ate the request" (SSL EOF, connection reset,
+    DNS failure, proxy hiccup — the GFW/Clash failure mode this box lives
+    with) from "the provider answered and said no". The two deserve very
+    different handling: a connectivity error is worth waiting out patiently,
+    a provider rejection is not.
+
+    Walks the ``__cause__``/``__context__`` chain because requests wraps the
+    real ``ssl.SSLError`` two layers deep — the exception you catch is a
+    ``requests.exceptions.SSLError`` whose ``str()`` mentions SSL but whose
+    type is meaningless to ``isinstance`` against ``ssl.SSLError``.
+    """
+    import socket  # noqa: PLC0415
+    import ssl  # noqa: PLC0415
+
+    for err in _exception_chain(exc):
+        if isinstance(err, (ssl.SSLError, socket.gaierror, ConnectionError, TimeoutError)):
+            return True
+        if type(err).__name__ in _CONNECTIVITY_TYPE_NAMES:
+            return True
+    return False
+
+
 def retry_api_call(
     fn: Callable[[], T],
     *,
@@ -110,6 +164,9 @@ def retry_api_call(
     jitter: float = 0.25,
     is_retryable: Callable[[BaseException], bool] = is_retryable_error,
     on_retry: Callable[[int, BaseException, float], None] | None = None,
+    conn_max_attempts: int = 7,
+    conn_base_sleep: float = 2.0,
+    conn_max_sleep: float = 60.0,
 ) -> T:
     """Call ``fn`` with retry/backoff on transient errors.
 
@@ -117,8 +174,19 @@ def retry_api_call(
     at ``max_sleep``, with ±``jitter`` randomization to avoid thundering
     herds when many parallel calls hit the same endpoint blip.
 
-    Re-raises the last exception after ``max_attempts``. Callers that want
-    to degrade gracefully should wrap the call in their own try/except.
+    **Two ladders, picked per failure.** A provider that answers with a 5xx
+    or 429 is retried on the fast ladder — it is up, so a sub-second pause is
+    the right response. A *connectivity* failure (``is_connectivity_error``)
+    gets a much more patient one, because the fast ladder cannot survive the
+    thing it exists for: 4 attempts at 0.1s/0.2s/0.4s spend the whole retry
+    budget inside ONE SECOND, so a network blip lasting seconds — the normal
+    GFW/proxy failure on this box — exhausted it every time and killed the
+    cycle. The default connectivity ladder rides out ~2 minutes
+    (2+4+8+16+32+60s) before giving up.
+
+    Re-raises the last exception after the applicable attempt cap. Callers
+    that want to degrade gracefully should wrap the call in their own
+    try/except.
 
     Args:
         fn: Zero-arg callable performing the API call (and stream
@@ -131,6 +199,9 @@ def retry_api_call(
         jitter: ±fraction randomization (0.25 = ±25%). Default 0.25.
         is_retryable: Predicate deciding which exceptions trigger a retry.
         on_retry: Optional ``(attempt_index, exc, sleep_s)`` callback for tests.
+        conn_max_attempts: Attempt cap for connectivity errors. Default 7.
+        conn_base_sleep: First-retry sleep for connectivity errors. Default 2.0s.
+        conn_max_sleep: Per-sleep cap for connectivity errors. Default 60.0s.
     """
     from utils.ui import info, warn  # noqa: PLC0415  (avoid circular imports)
 
@@ -140,25 +211,35 @@ def retry_api_call(
         try:
             return fn()
         except BaseException as exc:
-            if attempt >= max_attempts or not is_retryable(exc):
-                suffix = ", no more retries" if attempt >= max_attempts else ""
-                warn(f"{label}: API error (attempt {attempt}/{max_attempts}{suffix})  —  {exc}")
+            # Pick the ladder from the failure in hand. A caller that asked for
+            # MORE attempts than the connectivity default keeps its own value.
+            if is_connectivity_error(exc):
+                eff_attempts = max(conn_max_attempts, max_attempts)
+                eff_base, eff_max = conn_base_sleep, conn_max_sleep
+                kind = "network"
+            else:
+                eff_attempts, eff_base, eff_max = max_attempts, base_sleep, max_sleep
+                kind = "API"
+
+            if attempt >= eff_attempts or not is_retryable(exc):
+                suffix = ", no more retries" if attempt >= eff_attempts else ""
+                warn(f"{label}: {kind} error (attempt {attempt}/{eff_attempts}{suffix})  —  {exc}")
                 logger.warning(
-                    "%s: API error (attempt %d/%d%s) — %s",
-                    label, attempt, max_attempts, suffix, exc,
+                    "%s: %s error (attempt %d/%d%s) — %s",
+                    label, kind, attempt, eff_attempts, suffix, exc,
                 )
                 raise
 
-            sleep_s = min(base_sleep * (backoff_factor ** (attempt - 1)), max_sleep)
+            sleep_s = min(eff_base * (backoff_factor ** (attempt - 1)), eff_max)
             if jitter:
                 sleep_s *= random.uniform(1.0 - jitter, 1.0 + jitter)
             # Interim retries are routine (transient SSL hiccups, brief 5xx);
             # log as info so a recovered call does not surface as a warning.
-            info(f"{label}: API error (attempt {attempt}/{max_attempts})  —  {exc}")
+            info(f"{label}: {kind} error (attempt {attempt}/{eff_attempts})  —  {exc}")
             info(f"{label}: retrying in {sleep_s:.2f}s …")
             logger.info(
-                "%s: API error (attempt %d/%d) — %s ; retrying in %.2fs",
-                label, attempt, max_attempts, exc, sleep_s,
+                "%s: %s error (attempt %d/%d) — %s ; retrying in %.2fs",
+                label, kind, attempt, eff_attempts, exc, sleep_s,
             )
             if on_retry is not None:
                 on_retry(attempt, exc, sleep_s)
