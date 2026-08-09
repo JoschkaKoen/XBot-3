@@ -19,6 +19,11 @@ The one shared artifact is the image; everything else is generated new:
   Step 2 — SENTENCE: generate N diverse funny candidates for that fixed word
     (each pushed to a different comedic angle so best-of-N has real variety), then
     pick the funniest via TWEET_PICKER_MODEL — exactly like the German bot.
+    The taught word is the ONLY hard word allowed (_VOCAB_RULE): everything around
+    it must be basic vocabulary, or the learner can't read the example. "normal"
+    style cycles use _LIGHT_TONE — lighter humor, never none, matching the German
+    path, whose scaffold keeps asking for a [SHORT_FUNNY_SOURCE_SENTENCE] on those
+    cycles too.
     Candidates are written FOR the audience (e.g. Chinese speakers learning
     English: universally relatable humor, no culture-locked references, must stay
     funny in a faithful translation) and, when the target declares a
@@ -77,6 +82,30 @@ _POLICY_GUIDANCE = {
         "water the joke down beyond avoiding those topics."
     ),
 }
+
+# Light-humor tone for "normal" cycles. The German path keeps asking for a
+# *funny* sentence even on those (its scaffold slot is literally
+# [SHORT_FUNNY_SOURCE_SENTENCE]), so dropping humor entirely here made half of
+# every zh post a flat statement — "She can drop the jar into the bin." Every
+# joke-less live tweet traced to a normal cycle, so normal now means *lighter*
+# humor, not none.
+_LIGHT_TONE = (
+    "The sentence should still raise a smile — a warm, witty little observation from everyday "
+    "life. It does not need a hard punchline, but it must never be a flat statement of the "
+    "obvious. Keep it realistic, positive and specific."
+)
+
+# The taught word is the lesson; everything around it must be easy or the learner
+# cannot read the example. Without this the model wrote "Conquering bureaucracy
+# earned her this gleaming certificate today" for a C2 word — the taught word was
+# the least of the reader's problems. Measured: learner-simplicity 4.0 → 5.0/5.
+_VOCAB_RULE = (
+    'VOCABULARY — this is a lesson{level}:\n'
+    '- "{word}" is the ONLY word allowed to be difficult — it is the word being taught.\n'
+    '- EVERY other word must be very common, basic {src} a beginner already knows.\n'
+    '- No literary or showy words (no "savor", "gleaming", "conquering", "amidst") and no rare nouns.\n'
+    '- Keep the grammar simple: one short clause, everyday phrasing.\n'
+)
 
 # Distinct comedic angles handed one-per-candidate so the N takes actually diverge
 # (same word + same scene otherwise collapse into paraphrases of one line).
@@ -310,11 +339,17 @@ def _pick_word(spec, scene: str, avoid_prompt: list, avoid_all: set,
 
 # ── Step 2: N diverse funny sentences for the fixed word ───────────────────────
 
-def _stage1_candidates(spec, word: str, scene: str, funny: bool, n: int, verbose: bool) -> list:
+def _stage1_candidates(spec, word: str, scene: str, funny: bool, n: int, verbose: bool,
+                       cefr: str = "") -> list:
     import threading
     from concurrent.futures import ThreadPoolExecutor
 
     src, tgt = spec.source_language, spec.target_language
+    tone = _FUNNY_TONE if funny else _LIGHT_TONE
+    vocab_rule = _VOCAB_RULE.format(
+        level=f" for learners at {cefr} level" if cefr else " for learners",
+        word=word, src=src,
+    )
     scene_line = (
         f"- It should suit this picture (loose guardrail, don't contradict it): {scene}\n"
         if scene else ""
@@ -333,19 +368,23 @@ def _stage1_candidates(spec, word: str, scene: str, funny: bool, n: int, verbose
         f"that teaches {src} to {tgt} speakers. "
         + audience_line
         + (policy_line + " " if policy_line else "")
-        + (_FUNNY_TONE + " " if funny else "")
+        + tone + " "
         + "You always respond with valid JSON only."
     )
 
     def _one(i: int):
-        angle = _ANGLES[i % len(_ANGLES)] if funny else ""
+        # Angles drive candidate diversity, so they apply on light cycles too —
+        # only the strength of the humor differs between the two tones.
+        angle = _ANGLES[i % len(_ANGLES)]
         user = (
-            f'Write ONE natural, idiomatic{" and genuinely funny" if funny else ""} {src} example '
-            f'sentence (≤ {config.MAX_EXAMPLE_WORDS} words) that teaches the word "{word}".\n'
+            f'Write ONE natural, idiomatic{" and genuinely funny" if funny else " and lightly witty"} '
+            f'{src} example sentence (≤ {config.MAX_EXAMPLE_WORDS} words) that teaches the word '
+            f'"{word}".\n'
             f'- The sentence MUST contain the word "{word}".\n'
             + scene_line
-            + (f"- Build the humor on: {angle}\n" if angle else "")
-            + (f"\n{_FUNNY_TONE}\n" if funny else "")
+            + f"- Build the humor on: {angle}\n"
+            + "\n" + vocab_rule
+            + f"\n{tone}\n"
             + '\nReturn ONLY this JSON object:\n'
             '{"sentence": "<the example sentence>"}'
         )
@@ -403,11 +442,12 @@ def _pick_funniest(spec, cands: list, funny: bool, verbose: bool) -> dict:
         prompt = (
             f"Choose the BEST of these {len(cands)} {src} vocabulary sentences for "
             f"{spec.target_language} learners:\n\n{numbered}\n\n"
-            "Pick the one that is most natural, useful and charming to read. Reply with ONLY the "
-            "number, then a short reason — e.g. '2 — natural and vivid'."
+            "Pick the one that is most natural, charming and witty — it should raise a smile. A "
+            "flat statement of the obvious must lose. Reply with ONLY the number, then a short "
+            "reason — e.g. '2 — warm and vivid, with a smile'."
         )
         system = (
-            "You are an editor picking the best vocabulary sentence. "
+            "You are an editor picking the most charming, quietly witty vocabulary sentence. "
             "Reply with only the number followed by a short reason — nothing before the number."
         )
     try:
@@ -430,7 +470,7 @@ def _pick_funniest(spec, cands: list, funny: bool, verbose: bool) -> dict:
 
 # ── Step 3: faithful audience-language render (content pieces only) ─────────────
 
-def _stage2_audience(spec, word: str, sentence: str, *, extra: str = "") -> dict:
+def _stage2_audience(spec, word: str, sentence: str, *, scene: str = "", extra: str = "") -> dict:
     src, tgt = spec.source_language, spec.target_language
     system = (
         f"You are a language teacher creating {src} vocabulary posts for {tgt} speakers. You produce a "
@@ -438,11 +478,21 @@ def _stage2_audience(spec, word: str, sentence: str, *, extra: str = "") -> dict
         "word-for-word — natural and colloquial, never robotic, but faithful: do NOT reinvent the "
         "joke, swap references, or add meaning. You always respond with valid JSON only."
     )
+    # The situation disambiguates word senses: "she might spill everything" in a
+    # beer garden means spilling a drink, not divulging secrets — without this
+    # context stage 2 rendered exactly that as 泄露 ("divulge").
+    context_line = (
+        f"The post's picture shows: {_situation(scene)}\n"
+        f"Use it ONLY to pick the right sense of an ambiguous word — never translate the picture.\n"
+        if scene else ""
+    )
     user = (
         f"{src} word: {word}\n"
-        f"{src} sentence: {sentence}\n\n"
-        f"Produce, for {tgt} learners:\n"
-        f'1. "audience_word": the {tgt} meaning of the word — concise, {spec.script}.\n'
+        f"{src} sentence: {sentence}\n"
+        + context_line
+        + f"\nProduce, for {tgt} learners:\n"
+        f'1. "audience_word": the {tgt} meaning of the word — concise, {spec.script}. It must be '
+        f"the sense the word actually carries in the sentence above.\n"
         f'2. "audience_sentence": a close, faithful {tgt} ({spec.script}) translation of the '
         "sentence above — natural and idiomatic, but it MUST preserve the exact meaning so a "
         "learner can map it back to the original. Do NOT rewrite the joke or localize it.\n"
@@ -500,7 +550,8 @@ def _shorten_hashtags(full: str) -> str:
     return "\n".join(lines)
 
 
-def _shrink_to_fit(spec, template: str, word: str, sentence: str, s2: dict, cefr: str) -> str:
+def _shrink_to_fit(spec, template: str, word: str, sentence: str, s2: dict, cefr: str,
+                   scene: str = "") -> str:
     """Bring the tweet under the weighted cap WITHOUT ever truncating the Chinese:
     (a) one shorter faithful re-render, (b) drop emoji, (c) shorten hashtags,
     (d) post as-is (X may reject, but the website mirror — primary China channel,
@@ -516,7 +567,7 @@ def _shrink_to_fit(spec, template: str, word: str, sentence: str, s2: dict, cefr
         {**s2, "audience_word": "", "audience_sentence": ""}, cefr))
     budget = max(10, cap - overhead)
     try:
-        s2b = _stage2_audience(spec, word, sentence, extra=(
+        s2b = _stage2_audience(spec, word, sentence, scene=scene, extra=(
             f"⚠ Keep the {spec.target_language} meaning and sentence SHORT — together well under "
             f"{budget} weighted characters (each {spec.target_language} character counts ~2 on X). "
             "Stay a faithful translation."))
@@ -575,21 +626,21 @@ def transcreate(spec, base: dict, cycle: int = 0, verbose: bool = True) -> dict:
 
     if verbose:
         ui_info(f"Step 2/3 — {spec.source_language}: {n} candidate(s) for '{word}' …")
-    cands = _stage1_candidates(spec, word, scene, funny, n, verbose)
+    cands = _stage1_candidates(spec, word, scene, funny, n, verbose, cefr=cefr)
     best = _pick_funniest(spec, cands, funny, verbose)
     sentence = best["sentence"]
 
     if verbose:
         ui_info(f"Step 3/3 — {spec.target_language} ({spec.script}): faithful translation + assemble …")
-    s2 = _stage2_audience(spec, word, sentence)
+    s2 = _stage2_audience(spec, word, sentence, scene=scene)
     if not _has_han(s2["audience_sentence"]):
         logger.info("transcreate[%s]: translation had no CJK — retrying.", spec.id)
-        s2 = _stage2_audience(spec, word, sentence,
+        s2 = _stage2_audience(spec, word, sentence, scene=scene,
                               extra=f"The audience_sentence MUST be written in {spec.script} characters.")
 
     _name, template = scaffold_at(len(records))
     template = _fix_quotes(spec, template)
-    full_tweet = _shrink_to_fit(spec, template, word, sentence, s2, cefr)
+    full_tweet = _shrink_to_fit(spec, template, word, sentence, s2, cefr, scene=scene)
 
     result = {
         "full_tweet": full_tweet,

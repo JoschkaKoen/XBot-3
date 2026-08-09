@@ -202,6 +202,58 @@ class TranscreateTests(unittest.TestCase):
         _user2, system2 = ai2.prompts_for("_src_")[0]
         self.assertNotIn("mainland China", system2)
 
+    # ── example-sentence vocabulary must stay readable for learners ────────────
+
+    def test_stage1_restricts_surrounding_vocabulary(self):
+        """The taught word is the only hard word allowed; without this the model
+        wrote "Conquering bureaucracy earned her this gleaming certificate"."""
+        config.CEFR_ROTATION = True
+        self._write_history([{"source_word": "notebook", "cefr_level": "B2"}])
+        ai = self._standard_ai()
+        T.get_ai_response = ai
+        T.transcreate(self.spec, {"midjourney_prompt": _SCENE}, verbose=False)
+        user, _system = ai.prompts_for("_src_")[0]
+        self.assertIn("ONLY word allowed to be difficult", user)
+        self.assertIn("basic English a beginner already knows", user)
+        # The level that governs the sentence is the one the word pick assigned to
+        # the chosen word (B1 here) — the rotation only steers which word is picked.
+        self.assertIn("learners at B1 level", user)
+
+    def test_stage1_vocab_rule_without_cefr(self):
+        """No level anywhere → still restrict vocabulary, just without a level."""
+        config.CEFR_ROTATION = False
+        ai = self._standard_ai(word=json.dumps({"words": [{"word": "procrastinate"}]}))
+        T.get_ai_response = ai
+        T.transcreate(self.spec, {"midjourney_prompt": _SCENE}, verbose=False)
+        user, _ = ai.prompts_for("_src_")[0]
+        self.assertIn("ONLY word allowed to be difficult", user)
+        self.assertIn("this is a lesson for learners:", user)
+
+    # ── "normal" cycles keep light humor (they used to have none) ──────────────
+
+    def test_normal_style_still_asks_for_humor(self):
+        """Every joke-less live tweet traced to a 'normal' cycle, where all humor
+        guidance used to be stripped. Normal now means lighter, never none."""
+        config.resolve_tweet_style = lambda cycle: "normal"
+        ai = self._standard_ai()
+        T.get_ai_response = ai
+        T.transcreate(self.spec, {"midjourney_prompt": _SCENE}, verbose=False)
+        user, system = ai.prompts_for("_src_")[0]
+        blob = user + " " + system
+        self.assertIn("raise a smile", blob)
+        self.assertIn("never be a flat statement", blob)
+        self.assertIn("Build the humor on:", user)      # angles apply on normal too
+        self.assertIn("lightly witty", user)
+
+    def test_funny_style_keeps_the_strong_tone(self):
+        config.resolve_tweet_style = lambda cycle: "funny"
+        ai = self._standard_ai()
+        T.get_ai_response = ai
+        T.transcreate(self.spec, {"midjourney_prompt": _SCENE}, verbose=False)
+        user, system = ai.prompts_for("_src_")[0]
+        self.assertIn("genuinely very funny", user + " " + system)
+        self.assertIn("genuinely funny", user)
+
     # ── faithful Chinese, not a reinvented joke ────────────────────────────────
 
     def test_stage2_demands_faithful_translation(self):
@@ -213,6 +265,25 @@ class TranscreateTests(unittest.TestCase):
         self.assertIn("faithful", blob)
         self.assertIn("map it back", user.lower())
         self.assertNotIn("not a literal word-for-word", blob)   # old anti-faithful wording gone
+
+    def test_stage2_gets_scene_for_word_sense_disambiguation(self):
+        """Without the situation, "she might spill everything" was rendered 泄露
+        ("divulge secrets") instead of spilling a drink."""
+        ai = self._standard_ai()
+        T.get_ai_response = ai
+        T.transcreate(self.spec, {"midjourney_prompt": _SCENE + _STYLE_SUFFIX}, verbose=False)
+        user, _ = ai.prompts_for("audience")[0]
+        self.assertIn("daydreams at a cluttered desk", user)
+        self.assertIn("right sense of an ambiguous word", user)
+        self.assertIn("never translate the picture", user)
+        self.assertIn("sense the word actually carries", user)
+
+    def test_stage2_without_scene_has_no_context_line(self):
+        ai = self._standard_ai()
+        T.get_ai_response = ai
+        T.transcreate(self.spec, {"midjourney_prompt": ""}, verbose=False)
+        user, _ = ai.prompts_for("audience")[0]
+        self.assertNotIn("post's picture shows", user)
 
     def test_non_chinese_translation_triggers_one_retry(self):
         calls = {"n": 0}
