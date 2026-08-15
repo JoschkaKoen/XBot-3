@@ -11,10 +11,12 @@ The one shared artifact is the image; everything else is generated new:
     an avoid-list of recently taught words + (optional) a rotated CEFR level.
   Step 1 — WORD: pick a fresh taught-language word (e.g. English) the way the
     German bot does — frequent, practical, everyday — with the picture's situation
-    as a topical anchor, NOT as something to describe. Words that name the mood or
-    the visible action cannot carry a joke, so they are explicitly rejected; this
-    is what stops the tweet degrading into an image caption, and it is the single
-    biggest lever on funniness (A/B tested, see _word_pick_call).
+    as a topical anchor, NOT as something to describe. Two kinds of word are
+    rejected because neither can carry a joke: ones naming the mood or the visible
+    action (→ image captions), and bare objects with no social meaning (→ flat
+    anecdotes). What is wanted is an everyday LIFE CONCEPT you could write a witty
+    one-line truth about. This is the biggest single lever on funniness —
+    A/B tested on real scenes, see _word_pick_call.
     Deterministically enforced against the avoid-list.
   Step 2 — SENTENCE: generate N diverse funny candidates for that fixed word
     (each pushed to a different comedic angle so best-of-N has real variety), then
@@ -93,6 +95,23 @@ _LIGHT_TONE = (
     "The sentence should still raise a smile — a warm, witty little observation from everyday "
     "life. It does not need a hard punchline, but it must never be a flat statement of the "
     "obvious. Keep it realistic, positive and specific."
+)
+
+# What actually separates a wooden line from a funny one here. The German bot's
+# jokes are little epigrams — a general truth with a turn ("Sonntagsruhe sorgt für
+# leere Regale und volle Sofas") — while the fan-out kept reporting single events
+# ("He smiles after he spills his beer."), which reads flat no matter how good the
+# tone instructions are. Applies on funny AND light cycles: a wry truth is the
+# house voice, only its strength varies.
+_JOKE_SHAPE = (
+    "SHAPE — write a little TRUTH about life, not a report of one event.\n"
+    "- Prefer a general observation (\"always\", \"every time\", \"until\", \"never\") over "
+    "narrating what one person did.\n"
+    "- Put a turn in it: a contrast, an unexpected pairing, or a reversal at the very end. Two "
+    "things that clash in one short line is the strongest form.\n"
+    "- Merely describing the scene, or reporting one action, is the wooden failure to avoid.\n"
+    "- Vary how you open — do NOT start every sentence with \"Every\".\n"
+    "- It is a teaching example, so write a complete sentence and end it with punctuation.\n"
 )
 
 # The taught word is the lesson; everything around it must be easy or the learner
@@ -258,14 +277,22 @@ def _word_pick_call(spec, scene: str, avoid_prompt: list, cefr_hint: str) -> lis
             f"Today's post is set in this everyday situation:\n{_situation(scene)}\n\n"
         )
         anchor_clause = (
+            "- Name an everyday LIFE CONCEPT people have opinions about — a habit, a small ritual, "
+            "a routine, a social situation, a recurring annoyance or pleasure. The test: could you "
+            "write a witty one-line truth about it?\n"
+            "- It must be something people DO or RUN INTO, never a feeling or an abstract state. "
+            "Even at high CEFR levels, choose the plain everyday word (holiday, break, leftovers, "
+            "chore) over a formal abstract noun ('anticipation', 'respite', 'indulgence', "
+            "'nostalgia', 'serenity') — abstractions produce solemn, humourless lines.\n"
             "- Belong to the world of that situation: something a person there would actually "
-            "talk about, do, want, or complain about\n"
-            "- Have comic potential: a word you can build a joke around because real life around "
-            "it is messy or relatable\n\n"
+            "talk about, do, want, or complain about\n\n"
             "CRITICAL — do NOT pick a word that merely DESCRIBES the picture. Reject words that "
             "name what is visibly happening, and reject mood/atmosphere adjectives (e.g. "
-            "'peaceful', 'quiet', 'convivial', 'cozy') — those produce boring caption-like "
-            "sentences. Prefer concrete everyday nouns, verbs and phrases with real-life texture.\n"
+            "'peaceful', 'quiet', 'convivial', 'cozy') — those produce caption-like sentences.\n"
+            "Equally, avoid bare physical objects with no social meaning ('jar', 'board', 'lamp', "
+            "'tab', 'splinter') — those only support flat anecdotes ('He spills his beer.'). The "
+            "words that carry real humor hold a little everyday human drama: holiday, deadline, "
+            "leftovers, small talk, shortcut, excuse, bargain, nap, chore, milestone, habit.\n"
         )
     else:
         scene_clause = anchor_clause = ""
@@ -383,6 +410,7 @@ def _stage1_candidates(spec, word: str, scene: str, funny: bool, n: int, verbose
             f'- The sentence MUST contain the word "{word}".\n'
             + scene_line
             + f"- Build the humor on: {angle}\n"
+            + "\n" + _JOKE_SHAPE
             + "\n" + vocab_rule
             + f"\n{tone}\n"
             + '\nReturn ONLY this JSON object:\n'

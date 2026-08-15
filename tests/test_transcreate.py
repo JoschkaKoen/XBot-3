@@ -131,6 +131,36 @@ class TranscreateTests(unittest.TestCase):
         self.assertIn("notebook", user)                          # avoid-list present
         self.assertIn("A2", user)                                # rotated CEFR hint present
 
+    def test_word_prompt_asks_for_life_concepts_not_bare_objects(self):
+        """Concrete objects (tab, splinter) only support flat anecdotes — "He
+        spills his beer." The funny words are life concepts you can write a truth
+        about, which is what the German path's words are (Sonntagsruhe, Abschluss)."""
+        ai = self._standard_ai()
+        T.get_ai_response = ai
+        T.transcreate(self.spec, {"midjourney_prompt": _SCENE}, verbose=False)
+        user, _ = ai.prompts_for("word")[0]
+        self.assertIn("LIFE CONCEPT", user)
+        self.assertIn("witty one-line truth", user)
+        self.assertIn("bare physical objects with no social meaning", user)
+
+    def test_stage1_asks_for_a_truth_not_an_event(self):
+        """The epigram shape is what separates the German jokes from flat reports."""
+        ai = self._standard_ai()
+        T.get_ai_response = ai
+        T.transcreate(self.spec, {"midjourney_prompt": _SCENE}, verbose=False)
+        user, _ = ai.prompts_for("_src_")[0]
+        self.assertIn("write a little TRUTH about life, not a report of one event", user)
+        self.assertIn("Put a turn in it", user)
+        self.assertIn('do NOT start every sentence with "Every"', user)
+
+    def test_joke_shape_applies_on_normal_cycles_too(self):
+        config.resolve_tweet_style = lambda cycle: "normal"
+        ai = self._standard_ai()
+        T.get_ai_response = ai
+        T.transcreate(self.spec, {"midjourney_prompt": _SCENE}, verbose=False)
+        user, _ = ai.prompts_for("_src_")[0]
+        self.assertIn("write a little TRUTH about life", user)
+
     def test_word_prompt_rejects_mood_and_depiction_words(self):
         """The funniness fix: mood/atmosphere and 'describe the picture' words are
         what produced flat captions (peaceful/convivial/give), so the word pick
@@ -141,7 +171,6 @@ class TranscreateTests(unittest.TestCase):
         user, _system = ai.prompts_for("word")[0]
         self.assertIn("do NOT pick a word that merely DESCRIBES the picture", user)
         self.assertIn("mood/atmosphere adjectives", user)
-        self.assertIn("comic potential", user)
         self.assertIn("EVERYDAY LIFE", user)          # German-bot framing
         self.assertNotIn("EVOKED BY", user)           # the wording that caused the regression
 
