@@ -6,6 +6,7 @@ without scrolling past hundreds of lines of constants in config.py.
 """
 
 import logging
+import logging.handlers
 
 
 class ConsoleFormatter(logging.Formatter):
@@ -58,7 +59,11 @@ def build_root_logger(log_file: str) -> logging.Logger:
         "%(asctime)s [%(levelname)s] %(name)s: %(message)s",
         datefmt="%Y-%m-%d %H:%M:%S",
     )
-    fh = logging.FileHandler(log_file, encoding="utf-8")
+    # Rotating rather than plain: the log is DEBUG-level and unattended, and had
+    # grown to 15 MB (160k lines) with no bound.
+    fh = logging.handlers.RotatingFileHandler(
+        log_file, maxBytes=20 * 1024 * 1024, backupCount=3, encoding="utf-8"
+    )
     fh.setLevel(logging.DEBUG)
     fh.setFormatter(file_fmt)
 

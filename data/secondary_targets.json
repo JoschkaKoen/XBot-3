@@ -11,10 +11,18 @@
     "source_flag_colors": "012169,FFFFFF,C8102E",
     "target_flag_colors": "EE1C25,FFFF00,EE1C25",
     "script": "simplified",
-    "tts_speed": 0.70,
+    "tts_speed": 0.7,
     "max_tweet_length": 280,
     "account_env_prefix": "ZH",
     "content_policy": "china",
-    "handle": "@learnZEnglish"
+    "handle": "@learnZEnglish",
+    "hashtag_sets": [
+      "#英语学习 #每日英语",
+      "#英语单词 #学英语",
+      "#英语口语 #英语学习",
+      "#每日一词 #背单词",
+      "#英语学习 #英语单词",
+      "#学英语 #每日英语"
+    ]
   }
 ]

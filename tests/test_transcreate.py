@@ -343,6 +343,53 @@ class TranscreateTests(unittest.TestCase):
         self.assertLessEqual(T.x_weighted_len(res["full_tweet"]), self.spec.max_tweet_length)
         self.assertEqual(res["full_tweet"].count("#"), 2)
 
+    # ── audience-language hashtags ─────────────────────────────────────────────
+
+    def test_chinese_hashtags_replace_the_scaffold_tags(self):
+        """The scaffolds tag the TAUGHT language (#LearnEnglish), which is
+        undiscoverable for the Chinese speakers this account teaches — measured
+        0 CJK hashtags across 40 live posts at ~2 impressions each."""
+        spec_tags = _spec_from_dict({
+            "id": "zh", "source_language": "English", "target_language": "Chinese",
+            "source_flag": "\U0001F1EC\U0001F1E7", "target_flag": "\U0001F1E8\U0001F1F3",
+            "script": "simplified", "max_tweet_length": 280,
+            "history_file": self._tmp.name,
+            "hashtag_sets": ["#\u82f1\u8bed\u5b66\u4e60 #\u6bcf\u65e5\u82f1\u8bed",
+                             "#\u82f1\u8bed\u5355\u8bcd #\u5b66\u82f1\u8bed"],
+        })
+        ai = self._standard_ai()
+        T.get_ai_response = ai
+        res = T.transcreate(spec_tags, {"midjourney_prompt": _SCENE}, verbose=False)
+        tweet = res["full_tweet"]
+        tags = [l for l in tweet.split("\n") if l.lstrip().startswith("#")]
+        self.assertEqual(len(tags), 1, tweet)
+        self.assertTrue(any(0x4E00 <= ord(c) <= 0x9FFF for c in tags[0]), tags)
+        self.assertNotIn("#LearnEnglish", tweet)
+        self.assertLessEqual(T.x_weighted_len(tweet), spec_tags.max_tweet_length)
+
+    def test_hashtag_sets_rotate_with_history_length(self):
+        sets = ["#AAA", "#BBB", "#CCC"]
+        spec_tags = _spec_from_dict({
+            "id": "zh", "source_language": "English", "target_language": "Chinese",
+            "script": "simplified", "max_tweet_length": 280,
+            "history_file": self._tmp.name, "hashtag_sets": sets,
+        })
+        seen = []
+        for n in range(4):
+            self._write_history([{"source_word": f"w{i}", "cefr_level": "A2"} for i in range(n)])
+            ai = self._standard_ai()
+            T.get_ai_response = ai
+            tweet = T.transcreate(spec_tags, {"midjourney_prompt": _SCENE}, verbose=False)["full_tweet"]
+            seen.append(next(l for l in tweet.split("\n") if l.lstrip().startswith("#")))
+        self.assertEqual(seen, ["#AAA", "#BBB", "#CCC", "#AAA"])
+
+    def test_no_hashtag_sets_keeps_scaffold_tags(self):
+        """The German path defines none and must be untouched."""
+        ai = self._standard_ai()
+        T.get_ai_response = ai
+        tweet = T.transcreate(self.spec, {"midjourney_prompt": _SCENE}, verbose=False)["full_tweet"]
+        self.assertIn("#LearnEnglish", tweet)
+
     # ── contract ───────────────────────────────────────────────────────────────
 
     def test_return_contract(self):

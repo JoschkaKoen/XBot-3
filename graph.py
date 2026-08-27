@@ -149,6 +149,30 @@ def _check_for_update() -> None:
 
 # ── wait node ─────────────────────────────────────────────────────────────────
 
+def _seconds_until_next_post(improvement_duration: int) -> int:
+    """How long to sleep before the next cycle.
+
+    With POST_SCHEDULE on, anchor to the next fixed UTC slot so the posting time
+    stops drifting through the clock (see utils/schedule). Otherwise keep the
+    historical fixed-interval behaviour. Any problem with the slot config falls
+    back to the interval rather than stopping the bot.
+    """
+    if getattr(config, "POST_SCHEDULE", False):
+        try:
+            from utils.schedule import parse_slots, seconds_until_next_slot
+            slots = parse_slots(config.POST_TIMES)
+            if slots:
+                secs = seconds_until_next_slot(slots)
+                logger.info(
+                    "Next post slot in %ds (POST_TIMES=%s UTC).", secs, config.POST_TIMES
+                )
+                return secs
+            logger.warning("POST_SCHEDULE on but POST_TIMES has no valid slot — using interval.")
+        except Exception as exc:
+            logger.warning("Slot scheduling failed (%s) — falling back to interval.", exc)
+    return max(config.POST_INTERVAL_SECONDS - improvement_duration, 60)
+
+
 def wait_node(state: dict) -> dict:
     """
     Wait before the next cycle.  Runs (in order):
@@ -231,7 +255,7 @@ def wait_node(state: dict) -> dict:
             except (subprocess.SubprocessError, OSError, RuntimeError) as exc:
                 logger.warning("Self-improvement failed: %s", exc)
 
-    remaining = max(config.POST_INTERVAL_SECONDS - improvement_duration, 60)
+    remaining = _seconds_until_next_post(improvement_duration)
     logger.info("Waiting %ds before next cycle …", remaining)
     wait_countdown(remaining)
     logger.info("Wait complete.")

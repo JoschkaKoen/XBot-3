@@ -186,6 +186,93 @@ def _fetch_cycle_metrics(n: int) -> None:
     logger.info("_fetch_cycle_metrics done: %d updated, %d deleted.", updated, deleted)
 
 
+# ── secondary targets ─────────────────────────────────────────────────────────
+
+def _target_client(spec) -> tweepy.Client:
+    """A tweepy client for a secondary target's own X app."""
+    creds = spec.account
+    return tweepy.Client(
+        bearer_token=creds.bearer_token or None,
+        consumer_key=creds.consumer_key,
+        consumer_secret=creds.consumer_secret,
+        access_token=creds.access_token,
+        access_token_secret=creds.access_token_secret,
+    )
+
+
+def _fetch_target_metrics(spec, n: int) -> None:
+    """Refresh metrics for the *n* most-recent posts of one secondary target.
+
+    Mirrors _fetch_cycle_metrics but is bound to *spec* rather than the primary:
+    it uses the target's own credentials and its own history file, read and
+    written through utils.io the way nodes/fanout_targets._record_history does.
+    services.history is deliberately NOT used here — its HISTORY_FILE is bound at
+    import time to the primary's path, so it cannot be redirected per target.
+
+    Until this existed the zh account had never had a single metric fetched: 191
+    posts with no idea whether anyone saw them.
+    """
+    from utils.io import safe_json_read, atomic_json_write
+
+    if not spec.account.is_complete():
+        logger.info("Metrics [%s]: incomplete credentials — skipping.", spec.id)
+        return
+    history = safe_json_read(spec.history_file, default=[], logger=logger)
+    if not isinstance(history, list) or not history:
+        return
+
+    cap = min(n, len(history))
+    skip = len(history) - cap
+    client = _target_client(spec)
+    updated = deleted = 0
+
+    ui_info(f"Per-cycle metrics refresh [{spec.id}]: last {cap} tweet(s) …")
+    new_history = list(history[:skip])
+    for record in history[skip:]:
+        tweet_id = (record.get("tweet_id") or "").strip()
+        if not tweet_id:
+            new_history.append(record)
+            continue
+        try:
+            metrics = _fetch_one(client, tweet_id)
+            new_history.append({**record, "metrics": metrics,
+                                "engagement_score": compute_score(metrics)})
+            updated += 1
+        except _TweetGoneError:
+            logger.info("Metrics [%s]: tweet %s gone — removed.", spec.id, tweet_id)
+            deleted += 1
+        except Exception as exc:
+            if _tweet_is_gone(exc):
+                logger.info("Metrics [%s]: tweet %s gone (%s) — removed.", spec.id, tweet_id, exc)
+                deleted += 1
+            else:
+                logger.warning("Metrics [%s]: could not fetch %s (%s) — kept.",
+                               spec.id, tweet_id, exc)
+                new_history.append(record)
+
+    atomic_json_write(spec.history_file, new_history, ensure_ascii=False, indent=2)
+    logger.info("Metrics [%s]: %d updated, %d deleted.", spec.id, updated, deleted)
+
+
+def _refresh_secondary_metrics(n: int) -> None:
+    """Refresh recent metrics for every enabled secondary target.
+
+    Isolated per target so one account's API trouble cannot stop the others or
+    the primary cycle.
+    """
+    try:
+        from services.targets import load_targets
+        specs = load_targets()
+    except Exception as exc:
+        logger.warning("Metrics: could not load secondary targets (%s).", exc)
+        return
+    for spec in specs:
+        try:
+            _fetch_target_metrics(spec, n)
+        except Exception as exc:
+            logger.warning("Metrics [%s] failed (non-fatal): %s", spec.id, exc)
+
+
 # ── node ──────────────────────────────────────────────────────────────────────
 
 def fetch_all_metrics(state: dict) -> dict:
@@ -206,6 +293,9 @@ def fetch_all_metrics(state: dict) -> dict:
             _fetch_cycle_metrics(_cfg.METRICS_FETCH_PER_CYCLE)
         except Exception as exc:
             logger.warning("Per-cycle metrics refresh failed (non-fatal): %s", exc)
+        # Secondary accounts get the same treatment on their own credentials —
+        # without this they accumulate posts with no engagement data at all.
+        _refresh_secondary_metrics(_cfg.METRICS_FETCH_PER_CYCLE)
 
     if not STRATEGY_METRICS_UPDATES_ENABLED:
         ui_info(

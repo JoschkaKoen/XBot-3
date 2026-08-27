@@ -114,6 +114,22 @@ def _build_word_prompt(strategy: dict) -> str:
     )
 
 
+def _history_words(history: list) -> list:
+    """Every taught word in *history*, including legacy-schema rows.
+
+    Records written before the language-agnostic refactor store the word under
+    "german_word" rather than "source_word". 35 of them (8% of the primary
+    history) were invisible to the avoid-list, so their words could be taught
+    again as if new.
+    """
+    words = []
+    for record in history:
+        word = (record.get("source_word") or record.get("german_word") or "").strip()
+        if word:
+            words.append(word)
+    return words
+
+
 def _expand_scaffold(scaffold: str) -> str:
     """Substitute language-pair config values into scaffold placeholders at runtime."""
     return (
@@ -651,9 +667,21 @@ def _is_word_too_similar(word: str, avoid_words: list) -> tuple[bool, str]:
     Use Grok fast non-reasoning to check whether *word* is morphologically or
     semantically too close to any word in *avoid_words* (e.g. deutsch/deutsche,
     Freund/Freundschaft).  Returns (is_similar, matched_word).
+
+    An exact repeat is caught first, deterministically and for free, against the
+    WHOLE avoid list. The LLM check below only ever sees the last 50 words, so
+    without this a word simply aged out of the window and could return: measured
+    on the live history, 84 of 396 posts (21%) repeated a previous word, e.g.
+    "sortieren" taught 2026-03-15 and again 2026-08-24, ~250 posts later.
     """
     if not avoid_words:
         return False, ""
+
+    normalized = word.strip().lower()
+    if normalized:
+        for previous in avoid_words:
+            if (previous or "").strip().lower() == normalized:
+                return True, previous
 
     recent = avoid_words[-50:]
     word_list_str = ", ".join(recent)
@@ -744,7 +772,7 @@ def generate_content(state: dict) -> dict:
     if word_source_mode == "trends":
         info(f"Word source: trends — fetching trends ({config.TRENDS_COUNTRY}) …")
         from services.history import load_history
-        history_words = [r.get("source_word", "") for r in load_history() if r.get("source_word")]
+        history_words = _history_words(load_history())
         strategy_words = strategy.get("avoid_words", [])
         avoid_words = list(dict.fromkeys(history_words + strategy_words))
         avoid_preview = ", ".join(avoid_words[-5:]) if avoid_words else "none"
@@ -759,7 +787,7 @@ def generate_content(state: dict) -> dict:
 
     if not german_word:
         from services.history import load_history
-        history_words = [r.get("source_word", "") for r in load_history() if r.get("source_word")]
+        history_words = _history_words(load_history())
         # Enrich avoid_words with full history before building the word prompt.
         avoid_words = list(dict.fromkeys(history_words + strategy.get("avoid_words", [])))
         strategy = {**strategy, "avoid_words": avoid_words}

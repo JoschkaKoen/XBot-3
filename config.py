@@ -305,6 +305,7 @@ def reload_settings() -> None:
     global ENABLE_INSTRUCTIR_ENHANCE, INSTRUCTIR_DIR, INSTRUCTIR_PROMPT
     global VIDEO_INTERPOLATION, RIFE_DIR, RIFE_PYTHON, VIDEO_UPLOAD_FPS
     global MAX_TWEET_LENGTH, MAX_EXAMPLE_WORDS, POST_INTERVAL_SECONDS, VIDEO_STYLE, ANALYZE_LAST_N
+    global POST_SCHEDULE, POST_TIMES
     global FLAG_OVERLAY
     global ENABLE_VIDEO, ENABLE_GROK_VIDEO, VIDEO_FREQUENCY, GROK_VIDEO_FREQUENCY, ENABLE_KEN_BURNS, ENABLE_BACKGROUND_MUSIC, WAN_VIDEO_DIR, WAN_VIDEO_STEPS, WAN_VIDEO_FRAMES, WAN_VIDEO_HISTORY_FILE, KTV_FONT_SIZE, VIDEO_FPS
     global ENABLE_REALESRGAN, REALESRGAN_DIR, REALESRGAN_MODEL, REALESRGAN_OUTSCALE, REALESRGAN_TILE
@@ -359,6 +360,8 @@ def reload_settings() -> None:
     MAX_TWEET_LENGTH               = _int_env("MAX_TWEET_LENGTH", 280)
     MAX_EXAMPLE_WORDS              = _int_env("MAX_EXAMPLE_WORDS", 13)
     POST_INTERVAL_SECONDS          = _int_env("POST_INTERVAL_SECONDS", 18000)
+    POST_SCHEDULE                  = _parse_on_off_env("POST_SCHEDULE", default=False)
+    POST_TIMES                     = os.getenv("POST_TIMES", "04:00,08:00,12:00,15:00").strip()
     VIDEO_STYLE                    = os.getenv("VIDEO_STYLE", "ktv").lower().strip()
     ANALYZE_LAST_N                 = _int_env("ANALYZE_LAST_N", 10)
     METRICS_FETCH_MAX_TWEETS       = _parse_metrics_fetch_max(
@@ -507,6 +510,13 @@ MAX_EXAMPLE_WORDS: int = _int_env("MAX_EXAMPLE_WORDS", 13)
 
 # ── Bot behaviour ─────────────────────────────────────────────────────────────
 POST_INTERVAL_SECONDS: int = _int_env("POST_INTERVAL_SECONDS", 18000)
+# Fixed daily posting slots (UTC "HH:MM", comma-separated). When on, the wait is
+# "until the next slot" instead of a fixed interval — a fixed interval that does
+# not divide 24h drifts through the clock (23000s drifts 4.83h/day), which put
+# ~25% of posts into 00:00-05:00 in the audience's own timezone. Off → unchanged
+# POST_INTERVAL_SECONDS behaviour.
+POST_SCHEDULE: bool = _parse_on_off_env("POST_SCHEDULE", default=False)
+POST_TIMES: str = os.getenv("POST_TIMES", "04:00,08:00,12:00,15:00").strip()
 HISTORY_FILE: str = os.getenv("HISTORY_FILE", "data/post_history.json")
 METRICS_REFRESH_FILE: str = "data/metrics_refresh.json"
 LOG_FILE: str = os.getenv("LOG_FILE", "data/bot.log")

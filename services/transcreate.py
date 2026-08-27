@@ -550,8 +550,9 @@ def _stage2_audience(spec, word: str, sentence: str, *, scene: str = "", extra: 
 
 # ── assembly + length ladder ───────────────────────────────────────────────────
 
-def _assemble(spec, template: str, word: str, sentence: str, s2: dict, cefr: str) -> str:
-    return fill_scaffold(template, {
+def _assemble(spec, template: str, word: str, sentence: str, s2: dict, cefr: str,
+              rotation: int = 0) -> str:
+    out = fill_scaffold(template, {
         "SOURCE_FLAG": spec.source_flag,
         "TARGET_FLAG": spec.target_flag,
         "SOURCE_LANGUAGE": spec.source_language.replace(" ", ""),
@@ -565,6 +566,28 @@ def _assemble(spec, template: str, word: str, sentence: str, s2: dict, cefr: str
         "EMOJI2": s2["emoji2"],
         "LEVEL": cefr,
     })
+    sets = getattr(spec, "hashtag_sets", ()) or ()
+    if sets:
+        out = _swap_hashtags(out, sets[rotation % len(sets)])
+    return out
+
+
+def _swap_hashtags(full: str, line: str) -> str:
+    """Replace the tweet's hashtag line with *line*.
+
+    The scaffolds carry #Learn[SOURCE_LANGUAGE]-style tags, which name the taught
+    language — right for the German account, wrong for an account teaching
+    English to Chinese speakers, who search in Chinese. Measured: 0 CJK hashtags
+    across the last 40 zh posts, at ~2 impressions each.
+    """
+    if not line:
+        return full
+    lines = full.split("\n")
+    for i in range(len(lines) - 1, -1, -1):
+        if lines[i].lstrip().startswith("#"):
+            lines[i] = line
+            return "\n".join(lines)
+    return full
 
 
 def _shorten_hashtags(full: str) -> str:
@@ -579,27 +602,27 @@ def _shorten_hashtags(full: str) -> str:
 
 
 def _shrink_to_fit(spec, template: str, word: str, sentence: str, s2: dict, cefr: str,
-                   scene: str = "") -> str:
+                   scene: str = "", rotation: int = 0) -> str:
     """Bring the tweet under the weighted cap WITHOUT ever truncating the Chinese:
     (a) one shorter faithful re-render, (b) drop emoji, (c) shorten hashtags,
     (d) post as-is (X may reject, but the website mirror — primary China channel,
     no 280 limit — records it regardless; a hard CJK slice would be worse)."""
     cap = spec.max_tweet_length
-    full = _assemble(spec, template, word, sentence, s2, cefr)
+    full = _assemble(spec, template, word, sentence, s2, cefr, rotation)
     if x_weighted_len(full) <= cap:
         return full
 
     # (a) shorter, still-faithful re-render with a stated weighted-char floor.
     overhead = x_weighted_len(_assemble(
         spec, template, word, sentence,
-        {**s2, "audience_word": "", "audience_sentence": ""}, cefr))
+        {**s2, "audience_word": "", "audience_sentence": ""}, cefr, rotation))
     budget = max(10, cap - overhead)
     try:
         s2b = _stage2_audience(spec, word, sentence, scene=scene, extra=(
             f"⚠ Keep the {spec.target_language} meaning and sentence SHORT — together well under "
             f"{budget} weighted characters (each {spec.target_language} character counts ~2 on X). "
             "Stay a faithful translation."))
-        cand = _assemble(spec, template, word, sentence, s2b, cefr)
+        cand = _assemble(spec, template, word, sentence, s2b, cefr, rotation)
         if x_weighted_len(cand) < x_weighted_len(full):
             full, s2 = cand, s2b
         if x_weighted_len(full) <= cap:
@@ -609,7 +632,8 @@ def _shrink_to_fit(spec, template: str, word: str, sentence: str, s2: dict, cefr
 
     # (b) drop emoji2, then both emoji.
     for e1, e2 in ((s2["emoji1"], ""), ("", "")):
-        cand = _assemble(spec, template, word, sentence, {**s2, "emoji1": e1, "emoji2": e2}, cefr)
+        cand = _assemble(spec, template, word, sentence, {**s2, "emoji1": e1, "emoji2": e2},
+                         cefr, rotation)
         full = cand
         if x_weighted_len(cand) <= cap:
             return cand
@@ -668,7 +692,8 @@ def transcreate(spec, base: dict, cycle: int = 0, verbose: bool = True) -> dict:
 
     _name, template = scaffold_at(len(records))
     template = _fix_quotes(spec, template)
-    full_tweet = _shrink_to_fit(spec, template, word, sentence, s2, cefr, scene=scene)
+    full_tweet = _shrink_to_fit(spec, template, word, sentence, s2, cefr, scene=scene,
+                                rotation=len(records))
 
     result = {
         "full_tweet": full_tweet,

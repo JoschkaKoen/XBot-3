@@ -74,6 +74,12 @@ class TargetSpec:
     content_policy: str = ""       # e.g. "china" → screen each post before publishing
     handle: str = ""              # e.g. "@learnZEnglish" — display only (startup banner/logs)
     enabled: bool = True
+    # Rotating hashtag sets, each a ready-to-post line. Set these when the
+    # audience does not search in the taught language's script: the zh account
+    # was tagging #LearnEnglish to Chinese speakers, so its posts were
+    # undiscoverable by the people it teaches. Empty → keep the scaffold's own
+    # hashtag line (the German path's behaviour).
+    hashtag_sets: tuple = ()
 
     def hashtags(self) -> str:
         """House-style hashtags for the taught language, e.g. '#LearnEnglish #EnglishVocabulary'."""
@@ -116,6 +122,9 @@ def _spec_from_dict(t: dict) -> TargetSpec:
         videos_dir=t.get("videos_dir", f"Videos/{tid}"),
         voices_music_dir=t.get("voices_music_dir", f"Voices with Background Music/{tid}"),
         history_file=t.get("history_file", f"data/post_history.{tid}.json"),
+        hashtag_sets=tuple(
+            line.strip() for line in (t.get("hashtag_sets") or []) if str(line).strip()
+        ),
         content_policy=str(t.get("content_policy", "")).strip(),
         handle=str(t.get("handle", "")).strip(),
         enabled=bool(t.get("enabled", True)),
