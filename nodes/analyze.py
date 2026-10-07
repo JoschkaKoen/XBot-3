@@ -41,7 +41,7 @@ from datetime import datetime, timezone
 import config
 from config import STRATEGY_FILE, STRATEGY_HISTORY_FILE
 from services.ai_client import get_ai_response
-from services.history import load_history
+from services.history import load_history, compute_score
 from utils.io import atomic_json_write, safe_json_read
 from utils.ui import stage_banner, ok, info as ui_info
 
@@ -220,9 +220,9 @@ def _build_analysis_prompt(history_slice: list, current_scaffold: str, funny_mod
                 "word": r.get("source_word"),
                 "cefr": r.get("cefr_level"),
                 "sentence_source": r.get("example_sentence_source"),
-                "age_hours": tweet_age_hours(r),
+                "age_hours": r.get("age_metrics", {}).get("24h", {}).get("age_hours", tweet_age_hours(r)),
                 "score_raw": r.get("engagement_score", 0),
-                "score_per_hour": normalized_score(r),
+                "score_per_hour": r.get("engagement_score", 0) / max(1, r["age_metrics"]["24h"]["age_hours"]) if "24h" in r.get("age_metrics", {}) else normalized_score(r),
                 "likes": r.get("metrics", {}).get("like_count", 0),
                 "reposts": r.get("metrics", {}).get("retweet_count", 0),
                 "replies": r.get("metrics", {}).get("reply_count", 0),
@@ -348,7 +348,14 @@ def analyze_and_improve(state: dict) -> dict:
         logger.info("Not enough history (%d records) — using current strategy.", len(history))
         return {**state, "strategy": old_strategy}
 
-    history_slice = history[-config.ANALYZE_LAST_N:]
+    comparable = [r for r in history if "24h" in r.get("age_metrics", {})]
+    if len(comparable) < 30:
+        logger.info("Strategy held: need 30 comparable 24h observations, have %d", len(comparable))
+        return {**state, "strategy": old_strategy}
+    history_slice = [{**r, "metrics": r["age_metrics"]["24h"]["metrics"],
+                      "engagement_score": compute_score(
+                          r["age_metrics"]["24h"]["metrics"])}
+                     for r in comparable[-config.ANALYZE_LAST_N:]]
     current_scaffold = old_strategy.get("scaffold", _DEFAULT_SCAFFOLD)
     frozen, cefr_counts_pre = _cefr_frozen(history)
     prompt = _build_analysis_prompt(history_slice, current_scaffold, funny_mode="funny" in config.TWEET_STYLE_CYCLE, cefr_frozen=frozen)

@@ -35,6 +35,8 @@ import sys
 import os
 import time
 import signal
+from utils.runtime import Health, STOP, acquire_instance, install_console, wait_ready, category
+install_console()
 import logging
 
 # Ensure print() flushes immediately even when output is redirected
@@ -186,6 +188,7 @@ def _handle_signal(sig, frame):
     warn(f"Signal {sig} received — will stop after current cycle.")
     logger.info("Signal %s received — stopping after current cycle.", sig)
     _shutdown = True
+    STOP.set()
 
 
 signal.signal(signal.SIGINT,  _handle_signal)
@@ -224,6 +227,9 @@ def _initial_state() -> dict:
 
 
 def main():
+    acquire_instance("data/bot.lock")
+    health = Health("data/health.json")
+    health.update(stage="starting")
     _config.resolve_language_config()
 
     # Discover styles from styles/ and validate the configured IMAGE_STYLE cycle
@@ -244,7 +250,14 @@ def main():
     config = {"configurable": {"thread_id": thread_id}}
 
     state = _initial_state()
-    cycle = _last_posted_cycle()
+    from services.delivery import recover_primary_history
+    recover_primary_history()
+    delivery = Health("data/delivery-primary.json").read()
+    if delivery.get("status") in ("posting", "uncertain"):
+        health.update(stage="held", failure={"category": "uncertain_delivery"})
+        raise RuntimeError("An uncertain X publication must be reconciled before resuming")
+    cycle = max(_last_posted_cycle(), int(health.read().get("cycle", 0)),
+                int(delivery.get("cycle", 0)))
     if cycle:
         logger.info("Resuming from last posted cycle %d — next cycle will be %d.", cycle, cycle + 1)
     consecutive_failures = 0
@@ -253,6 +266,14 @@ def main():
     # bot is healthy. Tracked so a genuinely long outage still stops eventually.
     network_failures = 0
 
+    # Seed old installations from their successful history. A first boot in slot
+    # mode waits for a real slot instead of posting at an arbitrary reboot time.
+    from utils.schedule import startup_due_at, next_due_at
+    from utils.io import safe_json_read
+    due = startup_due_at(health.read(), safe_json_read("data/post_history.json", default=[]),
+                         _config.POST_SCHEDULE, _config.POST_TIMES, _config.POST_INTERVAL_SECONDS)
+    health.update(next_post_at=due, stage="waiting")
+    STOP.wait(max(0, due - time.time()))
     while not _shutdown:
         reload_settings()
         # Re-discover styles after settings reload so files added/edited between
@@ -269,6 +290,12 @@ def main():
             from services.zit_image import ensure_comfyui_running
             ensure_comfyui_running()
 
+        # Reserve the next slot before any paid call. Crashes cannot trigger an
+        # immediate replay of a half-completed cycle on systemd restart.
+        if not wait_ready():
+            break
+        due = next_due_at(_config.POST_SCHEDULE, _config.POST_TIMES, _config.POST_INTERVAL_SECONDS)
+        health.update(next_post_at=due, cycle=cycle + 1, stage="cycle", failure=None)
         cycle += 1
         cycle_banner(cycle)
         logger.info("Starting cycle %d …", cycle)
@@ -328,12 +355,14 @@ def main():
             break
         except FatalProviderError as exc:
             elapsed = time.perf_counter() - t_cycle
+            health.update(failure={"category": category(exc), "type": type(exc).__name__})
             err(f"FATAL provider error after {format_elapsed(elapsed)} — stopping bot: {exc}")
             logger.critical("Cycle %d — FatalProviderError: %s", cycle, exc)
             state["error"] = str(exc)
             break
         except Exception as exc:
             elapsed = time.perf_counter() - t_cycle
+            health.update(failure={"category": category(exc), "type": type(exc).__name__})
 
             # A cycle killed by the network is NOT evidence that the bot is
             # broken — no provider ever rendered a verdict. Judging it by
@@ -368,7 +397,7 @@ def main():
                     state["error"] = str(exc)
                     break
                 warn(f"Network looks down — waiting {wait_s}s before retrying …")
-                time.sleep(wait_s)
+                STOP.wait(max(wait_s, health.read().get("next_post_at", 0) - time.time()))
                 continue
 
             consecutive_failures += 1
@@ -376,6 +405,7 @@ def main():
                 f"Cycle {cycle} failed after {format_elapsed(elapsed)} "
                 f"({consecutive_failures}/{max_consecutive}): {exc}"
             )
+            health.update(failure={"category": category(exc), "type": type(exc).__name__})
             logger.exception(
                 "Cycle %d failed after %.1fs: %s", cycle, elapsed, exc
             )
@@ -390,7 +420,7 @@ def main():
                 state["error"] = str(exc)
                 break
             warn("Waiting 60s before retrying …")
-            time.sleep(60)
+            STOP.wait(max(60, health.read().get("next_post_at", 0) - time.time()))
             state["error"] = str(exc)
 
     logger.info("Bot shut down after %d cycle(s).", cycle)
@@ -406,6 +436,7 @@ def _single_cycle() -> None:
     Uses a fresh UUID thread ID each time to avoid resuming a previous run's
     checkpointed state.
     """
+    acquire_instance("data/bot.lock")
     import uuid
     from graph import get_graph
 

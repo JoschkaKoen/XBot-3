@@ -64,7 +64,7 @@ def _sentence(text):
 
 def _audience(word_zh, sentence_zh, e1="😅", e2="⏳"):
     return json.dumps({"audience_word": word_zh, "audience_sentence": sentence_zh,
-                       "emoji1": e1, "emoji2": e2})
+                       "emoji1": e1, "emoji2": e2, "quality_ok": True, "image_fit": True})
 
 
 @unittest.skipIf(T is None, f"transcreate import unavailable: {_IMPORT_ERR}")
@@ -397,7 +397,7 @@ class TranscreateTests(unittest.TestCase):
         T.get_ai_response = ai
         res = T.transcreate(self.spec, {"midjourney_prompt": _SCENE}, verbose=False)
         self.assertEqual(set(res), {"full_tweet", "source_word", "source_sentence",
-                                    "audience_word", "audience_sentence", "cefr"})
+                                    "audience_word", "audience_sentence", "cefr", "cefr_target"})
         self.assertIn(res["source_sentence"], res["full_tweet"])
         self.assertIn(res["source_word"], res["full_tweet"])
         self.assertIn(res["audience_sentence"], res["full_tweet"])

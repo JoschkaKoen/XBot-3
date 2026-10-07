@@ -347,7 +347,8 @@ def _pick_word(spec, scene: str, avoid_prompt: list, avoid_all: set,
             opts = []
         for o in opts:
             w = (o.get("word") or "").strip()
-            if w and w.lower() not in avoid_all:
+            from services.content_quality import lemma
+            if w and lemma(w, spec.source_language) not in avoid_all:
                 cefr = (o.get("cefr") or cefr_hint or "").strip().upper()
                 if verbose:
                     ui_info(f"word: {w}" + (f"  [{cefr}]" if cefr else ""))
@@ -355,13 +356,7 @@ def _pick_word(spec, scene: str, avoid_prompt: list, avoid_all: set,
         seen_reject += [(o.get("word") or "").strip() for o in opts if o.get("word")]
         if opts:
             logger.info("transcreate[%s]: all word suggestions were repeats — re-picking.", spec.id)
-    # Fallback: take the best of whatever we last saw, even if a repeat.
-    if seen_reject:
-        w = seen_reject[0]
-        if verbose:
-            ui_info(f"word: {w}  (repeat — avoid-list exhausted)")
-        return {"word": w, "cefr": (cefr_hint or "").upper()}
-    raise ValueError("word pick produced no usable word")
+    raise ValueError("word pick produced no fresh usable word")
 
 
 # ── Step 2: N diverse funny sentences for the fixed word ───────────────────────
@@ -445,8 +440,11 @@ def _stage1_candidates(spec, word: str, scene: str, funny: bool, n: int, verbose
     if not cands:
         raise ValueError("stage 1 produced no usable candidates")
     # Soft-filter: keep candidates that actually contain the taught word, if any do.
-    containing = [c for c in cands if word.lower() in c["sentence"].lower()]
-    return containing or cands
+    from services.content_quality import issues
+    containing = [c for c in cands if not issues(word, c["sentence"], language=src)]
+    if not containing:
+        raise ValueError("No sentence contains the taught word correctly")
+    return containing
 
 
 def _pick_funniest(spec, cands: list, funny: bool, verbose: bool) -> dict:
@@ -500,7 +498,8 @@ def _pick_funniest(spec, cands: list, funny: bool, verbose: bool) -> dict:
 
 def _stage2_audience(spec, word: str, sentence: str, *, scene: str = "", extra: str = "") -> dict:
     src, tgt = spec.source_language, spec.target_language
-    system = (
+    from services.content_quality import QUALITY_INSTRUCTION
+    system = (QUALITY_INSTRUCTION +
         f"You are a language teacher creating {src} vocabulary posts for {tgt} speakers. You produce a "
         f"close, FAITHFUL {tgt} ({spec.script}) translation a learner can map back to the {src} "
         "word-for-word — natural and colloquial, never robotic, but faithful: do NOT reinvent the "
@@ -529,7 +528,8 @@ def _stage2_audience(spec, word: str, sentence: str, *, scene: str = "", extra: 
         f"- All {tgt} text must use {spec.script} characters.\n"
         + (f"{extra}\n" if extra else "")
         + '\nReturn ONLY this JSON object:\n'
-        '{"audience_word": "...", "audience_sentence": "...", "emoji1": "...", "emoji2": "..."}'
+        '{"audience_word": "...", "audience_sentence": "...", "emoji1": "...", "emoji2": "...", '
+        '"quality_ok": true|false, "image_fit": true|false}'
     )
     raw = get_ai_response(
         config.TRANSCREATION_MODEL, user, system,
@@ -538,6 +538,12 @@ def _stage2_audience(spec, word: str, sentence: str, *, scene: str = "", extra: 
     data = _parse_json(raw)
     aw = (data.get("audience_word") or "").strip()
     as_ = (data.get("audience_sentence") or "").strip()
+    from services.content_quality import issues
+    if data.get("quality_ok") is not True or data.get("image_fit") is not True:
+        raise ValueError("Translation or shared-image suitability was not approved")
+    errors = issues(word, sentence, aw + " " + as_, spec.source_language)
+    if errors:
+        raise ValueError("Translation quality: " + "; ".join(errors))
     if not aw or not as_:
         raise ValueError("stage 2 returned empty audience fields")
     return {
@@ -624,7 +630,9 @@ def _shrink_to_fit(spec, template: str, word: str, sentence: str, s2: dict, cefr
             "Stay a faithful translation."))
         cand = _assemble(spec, template, word, sentence, s2b, cefr, rotation)
         if x_weighted_len(cand) < x_weighted_len(full):
-            full, s2 = cand, s2b
+            full = cand
+            s2.clear()
+            s2.update(s2b)
         if x_weighted_len(full) <= cap:
             return full
     except Exception as exc:
@@ -664,8 +672,10 @@ def transcreate(spec, base: dict, cycle: int = 0, verbose: bool = True) -> dict:
     records = safe_json_read(spec.history_file, default=[])
     if not isinstance(records, list):
         records = []
-    avoid_all = {(r.get("source_word") or "").strip().lower()
-                 for r in records if (r.get("source_word") or "").strip()}
+    from services.content_quality import used_words
+    import os
+    review_days = max(0, int(os.getenv("VOCAB_REVIEW_DAYS", "0"))) or None
+    avoid_all = used_words(records, spec.source_language, review_days)
     avoid_prompt = _recent_words(records, 30)
     cefr_hint = next_cefr_level(records) if getattr(config, "CEFR_ROTATION", False) else ""
     scene = _clean_scene(base.get("midjourney_prompt") or "")
@@ -690,6 +700,9 @@ def transcreate(spec, base: dict, cycle: int = 0, verbose: bool = True) -> dict:
         s2 = _stage2_audience(spec, word, sentence, scene=scene,
                               extra=f"The audience_sentence MUST be written in {spec.script} characters.")
 
+    from services.content_quality import verified_cefr
+    cefr_target = cefr
+    cefr = verified_cefr(word, spec.source_language)
     _name, template = scaffold_at(len(records))
     template = _fix_quotes(spec, template)
     full_tweet = _shrink_to_fit(spec, template, word, sentence, s2, cefr, scene=scene,
@@ -702,6 +715,7 @@ def transcreate(spec, base: dict, cycle: int = 0, verbose: bool = True) -> dict:
         "audience_word": s2["audience_word"],
         "audience_sentence": s2["audience_sentence"],
         "cefr": cefr,
+        "cefr_target": cefr_target,
     }
     if verbose:
         ui_info(f"{spec.source_language}: {word} — {sentence}")

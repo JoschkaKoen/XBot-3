@@ -15,6 +15,7 @@ class BotState(TypedDict, total=False):
     # ── Content ───────────────────────────────────────────────────────────────
     source_word: str                  # raw word selected by LLM, e.g. "Führerschein"
     article: str                      # grammatical article, e.g. "der" / "la" / "no known noun"
+    cefr_target: str                  # requested rotation, not a verified label
     cefr_level: str                   # "A1" … "C2"
     example_sentence_source: str      # example sentence in the source language
     example_sentence_target: str      # translation of the example sentence in the target language

@@ -83,7 +83,7 @@ def _upload_video(api_v1, video_path: str) -> int:
     return media.media_id
 
 
-@with_retry(max_attempts=6, base_delay=15.0, label="post_tweet")
+@with_retry(max_attempts=1, base_delay=15.0, label="post_tweet")
 def _create_tweet(client_v2, text: str, media_id: int) -> tuple:
     """Post the tweet with the already-uploaded media_id."""
     response = client_v2.create_tweet(text=text, media_ids=[media_id])
@@ -131,7 +131,11 @@ def publish(state: dict) -> dict:
         logger.warning("publish: full_tweet missing — tweet not posted this cycle.")
         return {**state, "tweet_id": "", "tweet_url": ""}
 
-    tweet_id, tweet_url = post_tweet_with_video(text, video_path)
+    from services.delivery import publish_once
+    tweet_id, tweet_url = publish_once("primary", state.get("cycle", 0), text,
+                                       video_path, post_tweet_with_video, record={key: state.get(key) for key in
+                                           ("cycle", "source_word", "article", "cefr_level", "cefr_target",
+                                            "full_tweet", "example_sentence_source", "example_sentence_target")})
     ok(f"Tweet posted → {tweet_url}")
 
     return {**state, "tweet_id": tweet_id, "tweet_url": tweet_url}

@@ -5,7 +5,7 @@ Runs at the START of every cycle, before content generation.
 
 For every tweet in post_history.json (only when a strategy update can run — see below):
   - Fetch current public metrics from the X API
-  - If the tweet no longer exists (deleted / not found): remove it from history
+  - If the tweet no longer exists (deleted / not found): retain its learned-word history
   - If the tweet still exists: update its metrics and recompute its score
 
 Metrics are **not** fetched unless both (1) the throttle interval has elapsed and
@@ -134,56 +134,30 @@ def _fetch_one(client: tweepy.Client, tweet_id: str) -> dict:
 
 # ── per-cycle lightweight refresh ─────────────────────────────────────────────
 
-def _fetch_cycle_metrics(n: int) -> None:
-    """
-    Refresh metrics for the *n* most-recent tweets in history every cycle.
+def _refresh_age_records(client, history, n):
+    from services.age_metrics import due_records, snapshot
+    selected = {str(r.get("tweet_id")) for r in due_records(history, n)}
+    out = []
+    for row in history:
+        if str(row.get("tweet_id")) in selected:
+            try:
+                metrics = _fetch_one(client, row["tweet_id"])
+                row = snapshot(row, metrics)
+                row["engagement_score"] = compute_score(metrics)
+            except Exception as exc:
+                if _tweet_is_gone(exc):
+                    row = {**row, "deleted_on_x": True}
+                # Preserve the word ledger even when a tweet is gone. Deletion
+                # never turns a taught word into a fresh word again.
+                logger.warning("Age metrics unavailable for %s: %s", row.get("tweet_id"), type(exc).__name__)
+        out.append(row)
+    return out
 
-    Runs unconditionally — no throttle gate, no strategy trigger.
-    Deleted tweets are pruned from post_history.json.
-    Called at the start of fetch_all_metrics when METRICS_FETCH_PER_CYCLE > 0
-    (the caller passes the live value as *n*).
-    """
+
+def _fetch_cycle_metrics(n):
     history = load_history()
-    if not history:
-        return
-
-    cap      = min(n, len(history))
-    skip     = len(history) - cap
-    client   = _client()
-    updated  = deleted = 0
-
-    ui_info(f"Per-cycle metrics refresh: last {cap} tweet(s) …")
-    logger.info("_fetch_cycle_metrics: refreshing %d most-recent tweet(s).", cap)
-
-    new_history = list(history[:skip])
-    for record in history[skip:]:
-        tweet_id = record.get("tweet_id", "")
-        if not tweet_id:
-            new_history.append(record)
-            continue
-        try:
-            metrics = _fetch_one(client, tweet_id)
-            score   = compute_score(metrics)
-            new_history.append({**record, "metrics": metrics, "engagement_score": score})
-            updated += 1
-        except _TweetGoneError:
-            logger.info("Per-cycle refresh: tweet %s gone — removed from history.", tweet_id)
-            deleted += 1
-        except Exception as exc:
-            if _tweet_is_gone(exc):
-                logger.info("Per-cycle refresh: tweet %s gone (%s) — removed.", tweet_id, exc)
-                deleted += 1
-            else:
-                logger.warning("Per-cycle refresh: could not fetch %s (%s) — kept.", tweet_id, exc)
-                new_history.append(record)
-
-    save_history(new_history)
-
-    parts = []
-    if updated: parts.append(f"{updated} updated")
-    if deleted: parts.append(f"{deleted} deleted")
-    ok(f"Per-cycle metrics: {',  '.join(parts) if parts else 'nothing changed'}  ({len(new_history)} records total)")
-    logger.info("_fetch_cycle_metrics done: %d updated, %d deleted.", updated, deleted)
+    if history:
+        save_history(_refresh_age_records(_client(), history, n))
 
 
 # ── secondary targets ─────────────────────────────────────────────────────────
@@ -200,58 +174,13 @@ def _target_client(spec) -> tweepy.Client:
     )
 
 
-def _fetch_target_metrics(spec, n: int) -> None:
-    """Refresh metrics for the *n* most-recent posts of one secondary target.
-
-    Mirrors _fetch_cycle_metrics but is bound to *spec* rather than the primary:
-    it uses the target's own credentials and its own history file, read and
-    written through utils.io the way nodes/fanout_targets._record_history does.
-    services.history is deliberately NOT used here — its HISTORY_FILE is bound at
-    import time to the primary's path, so it cannot be redirected per target.
-
-    Until this existed the zh account had never had a single metric fetched: 191
-    posts with no idea whether anyone saw them.
-    """
+def _fetch_target_metrics(spec, n):
     from utils.io import safe_json_read, atomic_json_write
-
-    if not spec.account.is_complete():
-        logger.info("Metrics [%s]: incomplete credentials — skipping.", spec.id)
-        return
-    history = safe_json_read(spec.history_file, default=[], logger=logger)
-    if not isinstance(history, list) or not history:
-        return
-
-    cap = min(n, len(history))
-    skip = len(history) - cap
-    client = _target_client(spec)
-    updated = deleted = 0
-
-    ui_info(f"Per-cycle metrics refresh [{spec.id}]: last {cap} tweet(s) …")
-    new_history = list(history[:skip])
-    for record in history[skip:]:
-        tweet_id = (record.get("tweet_id") or "").strip()
-        if not tweet_id:
-            new_history.append(record)
-            continue
-        try:
-            metrics = _fetch_one(client, tweet_id)
-            new_history.append({**record, "metrics": metrics,
-                                "engagement_score": compute_score(metrics)})
-            updated += 1
-        except _TweetGoneError:
-            logger.info("Metrics [%s]: tweet %s gone — removed.", spec.id, tweet_id)
-            deleted += 1
-        except Exception as exc:
-            if _tweet_is_gone(exc):
-                logger.info("Metrics [%s]: tweet %s gone (%s) — removed.", spec.id, tweet_id, exc)
-                deleted += 1
-            else:
-                logger.warning("Metrics [%s]: could not fetch %s (%s) — kept.",
-                               spec.id, tweet_id, exc)
-                new_history.append(record)
-
-    atomic_json_write(spec.history_file, new_history, ensure_ascii=False, indent=2)
-    logger.info("Metrics [%s]: %d updated, %d deleted.", spec.id, updated, deleted)
+    history = safe_json_read(spec.history_file, default=[])
+    if history and spec.account.is_complete():
+        atomic_json_write(spec.history_file,
+                          _refresh_age_records(_target_client(spec), history, n),
+                          ensure_ascii=False, indent=2)
 
 
 def _refresh_secondary_metrics(n: int) -> None:
@@ -391,13 +320,15 @@ def fetch_all_metrics(state: dict) -> dict:
             )
 
         except _TweetGoneError as exc:
-            logger.info("Tweet %s no longer exists — removing from history. (%s)", tweet_id, exc)
+            logger.info("Tweet %s no longer exists — retaining word history. (%s)", tweet_id, exc)
             deleted += 1
+            new_history.append({**record, "deleted_on_x": True})
 
         except Exception as exc:
             if _tweet_is_gone(exc):
-                logger.info("Tweet %s appears deleted — removing. (%s)", tweet_id, exc)
+                logger.info("Tweet %s appears deleted — retaining word history. (%s)", tweet_id, exc)
                 deleted += 1
+                new_history.append({**record, "deleted_on_x": True})
             else:
                 # API error (rate limit, network, etc.) — keep record, don't update
                 logger.warning(

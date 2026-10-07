@@ -351,9 +351,12 @@ def generate_image(state: dict) -> dict:
     # ── 3. Rank images and pick the best ──────────────────────────────────────
     print(f"  ⏳  Ranking {len(image_paths)} image(s) with ImageReward …", flush=True)
 
+    concept = (f"An image clearly illustrating {state.get('source_word', '')}: "
+               f"{state.get('example_sentence_source', '')}. "
+               "The central subject and concrete situation must be visible.")
     if config.INDIVIDUAL_IMAGE_PROMPTS and n > 1:
         # Score each image against the prompt it was generated from.
-        scored = [(score_image(prompt, path), prompt, path) for prompt, path in prompt_image_pairs]
+        scored = [(score_image(concept + " " + prompt, path), prompt, path) for prompt, path in prompt_image_pairs]
         scored.sort(key=lambda x: x[0], reverse=True)
         best_score, best_prompt, chosen = scored[0]
         idx = (image_paths.index(chosen) + 1) if chosen in image_paths else 0
@@ -363,7 +366,7 @@ def generate_image(state: dict) -> dict:
         # Use the winning image's prompt as the canonical prompt for downstream steps.
         image_prompt = best_prompt
     else:
-        chosen = pick_best_image(image_prompt, image_paths)
+        chosen = pick_best_image(concept + " " + image_prompt, image_paths)
         idx = (image_paths.index(chosen) + 1) if chosen in image_paths else 0
         ok(f"Best image: #{idx}/{len(image_paths)} → {os.path.basename(chosen)}")
         logger.info("Best image selected: %s (from %d options)", chosen, len(image_paths))

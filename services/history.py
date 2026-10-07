@@ -87,7 +87,7 @@ def next_cefr_level(records: list) -> str:
     (services.transcreate over a target's own history) share one rotation rule.
     """
     for record in reversed(records):
-        last = (record.get("cefr_level") or "").strip().upper()
+        last = (record.get("cefr_target") or record.get("cefr_level") or "").strip().upper()
         if last in VALID_CEFR:
             return CEFR_SEQUENCE[(CEFR_SEQUENCE.index(last) + 1) % len(CEFR_SEQUENCE)]
     return CEFR_SEQUENCE[0]

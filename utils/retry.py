@@ -51,6 +51,9 @@ def with_retry(
                 try:
                     return fn(*args, **kwargs)
                 except exceptions as exc:
+                    from utils.runtime import terminal_http_error
+                    if terminal_http_error(exc):
+                        raise
                     if attempt == attempts:
                         logger.error(
                             "%s failed after %d attempts: %s", name, attempts, exc

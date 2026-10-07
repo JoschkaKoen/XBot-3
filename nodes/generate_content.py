@@ -354,107 +354,22 @@ def _call_tweet_ai(
     return [candidates_map[i] for i in sorted(candidates_map)]
 
 
-def _select_best_tweet(candidates: list, source_word: str, cefr_level: str, funny: bool = True) -> dict:
-    """
-    Print all candidates to the terminal, use the configured TWEET_PICKER_MODEL to pick
-    the best one, and highlight the winner. Falls back to the first candidate if selection fails.
-    """
-
-    _R    = "\033[0m"
-    _BOLD = "\033[1m"
-    _GRAY = "\033[90m"
-    _GREEN = "\033[92m"
-
+def _select_best_tweet(candidates, source_word, cefr_level, funny=True):
+    from services.content_quality import QUALITY_INSTRUCTION, issues, reviewed_choice
+    candidates = [c for c in candidates if not issues(
+        source_word, c.get("example_sentence_source", ""),
+        c.get("example_sentence_target", ""), config.SOURCE_LANGUAGE)]
     if not candidates:
-        raise ValueError("No tweet candidates succeeded; all 3 generations failed or returned invalid JSON. Check logs and try again.")
-    if len(candidates) == 1:
-        print(f"\n  {_GREEN}✔  Only one candidate — selected automatically.{_R}\n", flush=True)
-        return candidates[0]
-
-    numbered = "\n\n".join(
-        f"Candidate {i + 1}:\n{c.get('tweet', '')}"
-        for i, c in enumerate(candidates)
-    )
-
-    _fmt_instruction = (
-        "Your entire response must be exactly this format and nothing else:\n"
-        "<N> — <reason up to 12 words>\n"
-        "where <N> is the candidate number (1, 2 or 3). "
-        "Do NOT write 'Candidate', do NOT add any text before the number. "
-        "Example: 2 — sharpest punchline, warm and instantly relatable"
-    )
-
-    src = config.SOURCE_LANGUAGE
-    tgt = config.TARGET_LANGUAGE
-    if funny:
-        selection_prompt = (
-            f"You are evaluating {len(candidates)} {src} vocabulary tweet candidates for the word "
-            f"'{source_word}' (CEFR: {cefr_level or 'unknown'}).\n\n"
-            f"{numbered}\n\n"
-            "Pick the BEST tweet using these criteria:\n"
-            "1. FUNNINESS (primary): Which sentence has the sharpest punchline, the best ironic twist, "
-            "or the most absurd contrast? Would a real person laugh or smirk? "
-            "A genuinely funny tweet always beats a merely pleasant one.\n"
-            "2. POSITIVITY (tiebreaker): If two candidates are equally funny, pick the one that feels "
-            "warm, uplifting, and good-natured. Avoid anything that feels mean, cynical, or negative.\n\n"
-            f"{_fmt_instruction}\n\n"
-            "Your answer:"
-        )
-        system_prompt_selector = (
-            f"You are a comedy editor selecting the funniest {src} vocabulary tweet. "
-            "Your two criteria are: (1) funniness — always pick the sharpest joke, "
-            "(2) positivity as tiebreaker — warm beats cynical. "
-            "Reply with ONLY a number (1, 2 or 3) followed by a short reason — nothing else before the number."
-        )
-    else:
-        selection_prompt = (
-            f"You are evaluating {len(candidates)} {src} vocabulary tweet candidates for the word "
-            f"'{source_word}' (CEFR: {cefr_level or 'unknown'}).\n\n"
-            f"{numbered}\n\n"
-            "Score each candidate on these criteria and pick the BEST overall:\n"
-            "- Warmth & authenticity: Is the example sentence natural and relatable?\n"
-            f"- Engagement potential: Would a native {tgt} speaker stop scrolling and interact with this tweet?\n"
-            "- Shareability: Is it quotable, relatable, or surprising enough to share?\n"
-            f"- Learning effect: Does the example sentence make the {src} word memorable and easy to understand?\n"
-            f"- Sentence quality: Is the {src} sentence natural, correctly matched to the CEFR level, and short enough to read at a glance?\n\n"
-            f"{_fmt_instruction}\n\n"
-            "Your answer:"
-        )
-        system_prompt_selector = (
-            f"You are a social media expert and {src} teacher evaluating tweet quality. "
-            "Reply with ONLY a number (1, 2 or 3) followed by a short reason — nothing else before the number."
-        )
-
-    chosen_idx = 0
-    reason = ""
-    try:
-        import re as _re
-        raw = get_ai_response(
-            config.TWEET_PICKER_MODEL,
-            selection_prompt,
-            system_prompt_selector,
-            max_tokens=60,
-            temperature=0.0,
-            retry_label="select_tweet",
-        )
-        raw = raw.strip()
-        m = _re.search(r'\b([123])\b', raw)
-        if m:
-            idx = int(m.group(1)) - 1
-            reason = raw[m.end():].strip(" —-") if m.end() < len(raw) else ""
-            if 0 <= idx < len(candidates):
-                chosen_idx = idx
-                logger.info("Tweet selection: picked candidate %d — %s", idx + 1, reason)
-            else:
-                logger.warning("Tweet selection: parsed index %d out of range — using first candidate.", idx + 1)
-        else:
-            logger.warning("Tweet selection: could not parse a candidate number from %r — using first candidate.", raw)
-    except Exception as exc:
-        logger.warning("Tweet selection failed (%s) — using first candidate.", exc)
-
-    reason_str = f"  {_GRAY}{reason}{_R}" if reason else ""
-    print(f"\n  {_GREEN}{_BOLD}✔  Selected: Candidate {chosen_idx + 1}{_R}{reason_str}\n", flush=True)
-    return candidates[chosen_idx]
+        raise ValueError("No candidate passed the free grammar checks")
+    # The normal path already has a selector call. It now reviews correctness
+    # before choosing humor, and fails closed instead of publishing on parse error.
+    prompt = (QUALITY_INSTRUCTION + "\n" + json.dumps(candidates, ensure_ascii=False)
+              + '\nSelect a correct, natural, faithful candidate, then prefer humor.'
+                '\nReturn JSON: {"approved": true|false, "best_index": <zero-based int>, "reason": "..."}')
+    raw = get_ai_response(config.TWEET_PICKER_MODEL, prompt,
+                          "You are a language editor. Reject all candidates when none are correct.",
+                          max_tokens=160, temperature=0.0, retry_label="select_tweet")
+    return reviewed_choice(raw, candidates)
 
 
 # ── trend-based word selection ─────────────────────────────────────────────────
@@ -677,10 +592,13 @@ def _is_word_too_similar(word: str, avoid_words: list) -> tuple[bool, str]:
     if not avoid_words:
         return False, ""
 
-    normalized = word.strip().lower()
+    from services.content_quality import lemma
+    normalized = lemma(word, config.SOURCE_LANGUAGE)
+    if not normalized:
+        return False, ""
     if normalized:
         for previous in avoid_words:
-            if (previous or "").strip().lower() == normalized:
+            if lemma(previous, config.SOURCE_LANGUAGE) == normalized:
                 return True, previous
 
     recent = avoid_words[-50:]
@@ -884,6 +802,10 @@ def generate_content(state: dict) -> dict:
             if not config.CEFR_ROTATION:
                 word_cefr = ""
 
+    from services.content_quality import lemma
+    if not german_word or lemma(german_word, config.SOURCE_LANGUAGE) in {
+        lemma(w, config.SOURCE_LANGUAGE) for w in avoid_words}:
+        raise ValueError("Word selection exhausted without a fresh word")
     cefr_display = f" [{word_cefr}]" if word_cefr else ""
     ok(f"Word selected: {german_word}{cefr_display}")
     logger.info("Picked word: %s  CEFR: %s", german_word, word_cefr or "unknown")
@@ -950,6 +872,17 @@ def generate_content(state: dict) -> dict:
             if len(result["full_tweet"]) > config.MAX_TWEET_LENGTH:
                 result["full_tweet"] = result["full_tweet"][: config.MAX_TWEET_LENGTH - 3].rstrip() + "…"
 
+    from services.content_quality import issues, verified_cefr
+    errors = issues(german_word, result.get("example_sentence_source", ""),
+                    result.get("example_sentence_target", ""), config.SOURCE_LANGUAGE)
+    if errors or len(result["full_tweet"]) > config.MAX_TWEET_LENGTH:
+        raise ValueError("Lesson failed final quality checks: " + "; ".join(errors))
+    actual_cefr = verified_cefr(german_word, config.SOURCE_LANGUAGE)
+    for level in _VALID_CEFR:
+        # Scaffold levels have whitespace boundaries; preserve ordinary words.
+        import re
+        result["full_tweet"] = re.sub(r"\b" + level + r"\b", actual_cefr, result["full_tweet"])
+    result["cefr_level"] = actual_cefr
     full_tweet = result["full_tweet"]
     tweet_box(full_tweet)
     logger.info("Full tweet assembled (%d chars):\n%s", len(full_tweet), full_tweet)
@@ -964,6 +897,7 @@ def generate_content(state: dict) -> dict:
         "source_word":             result.get("source_word", german_word),
         "article":                 result.get("article", "no known noun"),
         "cefr_level":              result.get("cefr_level", ""),
+        "cefr_target":             word_cefr,
         "example_sentence_source": result.get("example_sentence_source", ""),
         "example_sentence_target": result.get("example_sentence_target", ""),
         "full_tweet":              full_tweet,

@@ -28,6 +28,7 @@ from langgraph.graph import StateGraph, END
 from langgraph.checkpoint.sqlite import SqliteSaver
 
 from state import BotState
+from utils.runtime import Health, category
 import config
 from config import CHECKPOINT_DB
 from nodes import (
@@ -255,12 +256,19 @@ def wait_node(state: dict) -> dict:
             except (subprocess.SubprocessError, OSError, RuntimeError) as exc:
                 logger.warning("Self-improvement failed: %s", exc)
 
+    from utils.schedule import next_due_at
     remaining = _seconds_until_next_post(improvement_duration)
+    health = Health("data/health.json")
+    health.update(stage="waiting", next_post_at=time.time() + remaining,
+                  cycle=_cycle_num, cycle_seconds=_elapsed_sec, cycle_cost_rmb=_total_rmb)
+
     logger.info("Waiting %ds before next cycle …", remaining)
     wait_countdown(remaining)
     logger.info("Wait complete.")
 
-    _check_for_update()
+    from utils.runtime import STOP
+    if not STOP.is_set():
+        _check_for_update()
 
     return state
 
@@ -272,17 +280,28 @@ def wait_node(state: dict) -> dict:
 def build_graph(checkpointer=None):
     builder = StateGraph(BotState)
 
-    builder.add_node("fetch_all_metrics",   fetch_all_metrics)
-    builder.add_node("analyze_and_improve", analyze_and_improve)
-    builder.add_node("generate_content",    generate_content)
-    builder.add_node("generate_image",      generate_image)
-    builder.add_node("generate_audio",      generate_audio)
-    builder.add_node("create_video",        create_video)
-    builder.add_node("interpolate_video",   interpolate_video)
-    builder.add_node("publish",             publish)
-    builder.add_node("score_and_store",     score_and_store)
-    builder.add_node("fanout_targets",      fanout_targets)
-    builder.add_node("wait",                wait_node)
+    def add_node(name, fn):
+        def monitored(state):
+            health = Health("data/health.json")
+            health.update(stage=name)
+            try:
+                return fn(state)
+            except Exception as exc:
+                health.update(failure={"category": category(exc), "type": type(exc).__name__})
+                raise
+        builder.add_node(name, monitored)
+
+    add_node("fetch_all_metrics",   fetch_all_metrics)
+    add_node("analyze_and_improve", analyze_and_improve)
+    add_node("generate_content",    generate_content)
+    add_node("generate_image",      generate_image)
+    add_node("generate_audio",      generate_audio)
+    add_node("create_video",        create_video)
+    add_node("interpolate_video",   interpolate_video)
+    add_node("publish",             publish)
+    add_node("score_and_store",     score_and_store)
+    add_node("fanout_targets",      fanout_targets)
+    add_node("wait",                wait_node)
 
     builder.set_entry_point("fetch_all_metrics")
     builder.add_edge("fetch_all_metrics",   "analyze_and_improve")

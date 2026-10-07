@@ -141,6 +141,13 @@ def tweet_box(tweet_text: str):
 
 def wait_countdown(seconds: int):
     """Live countdown bar during the wait period."""
+    if not sys.stdout.isatty():
+        from utils.runtime import STOP, Health
+        deadline = time.monotonic() + seconds
+        while not STOP.is_set() and time.monotonic() < deadline:
+            Health("data/health.json").update(stage="waiting")
+            STOP.wait(min(300, max(0, deadline - time.monotonic())))
+        return
     h_total = seconds // 3600
     m_total = (seconds % 3600) // 60
     bar_width = 28
@@ -211,6 +218,10 @@ def progress(label: str, *, dots: int = 4, interval: float = 0.5):
     Prints "  ⏳  <label>...." with animated dots while the block runs, then
     clears the line on exit. Stays out of the log file (uses print).
     """
+    if not sys.stdout.isatty():
+        print(f"  {label} …", flush=True)
+        yield
+        return
     stop = threading.Event()
 
     def _spin() -> None:

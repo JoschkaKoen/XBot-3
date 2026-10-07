@@ -63,3 +63,39 @@ def seconds_until_next_slot(slots: list, now: datetime | None = None,
                 return int(delta)
     # Unreachable for a non-empty slot list, but never return a negative sleep.
     return min_seconds
+
+
+def next_due_at(enabled, times, interval, now=None):
+    """Persistable epoch for the next cycle, shared by startup and normal waits."""
+    now = now or datetime.now(timezone.utc)
+    slots = parse_slots(times) if enabled else []
+    delay = seconds_until_next_slot(slots, now) if slots else max(60, interval)
+    return now.timestamp() + delay
+
+
+def startup_due_at(runtime, history, enabled, times, interval, now=None):
+    now = now or datetime.now(timezone.utc)
+    epoch = now.timestamp()
+    stored = runtime.get('next_post_at')
+    if enabled and parse_slots(times):
+        if isinstance(stored, (int, float)) and stored > epoch:
+            return stored
+        # Reboots between slots never produce an extra immediate post. Allow a
+        # persisted missed slot only within its one-minute dispatch grace period.
+        if isinstance(stored, (int, float)) and 0 <= epoch - stored < 60:
+            return epoch
+        return next_due_at(enabled, times, interval, now)
+    posted = []
+    for row in history:
+        if not row.get('tweet_id'):
+            continue
+        try:
+            date = datetime.fromisoformat(row['timestamp'])
+            if date.tzinfo is None:
+                date = date.replace(tzinfo=timezone.utc)
+            posted.append(date.timestamp())
+        except (ValueError, TypeError, KeyError):
+            continue
+    last = max(posted + [runtime.get('last_success_at', 0) or 0])
+    due = max(epoch, last + max(60, interval)) if last else epoch
+    return max(due, stored) if isinstance(stored, (int, float)) else due

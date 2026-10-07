@@ -68,6 +68,7 @@ def score_and_store(state: dict) -> dict:
         "source_word": state.get("source_word", ""),
         "article": state.get("article", ""),
         "cefr_level": state.get("cefr_level", ""),
+        "cefr_target": state.get("cefr_target", ""),
         "example_sentence_source": state.get("example_sentence_source", ""),
         "example_sentence_target": state.get("example_sentence_target", ""),
         "used_trend": state.get("used_trend", ""),

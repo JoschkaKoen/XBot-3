@@ -73,6 +73,7 @@ def _record_history(spec, state: dict, tc: dict, tweet_id: str, tweet_url: str,
         "audience_word": tc.get("audience_word", ""),
         "audience_sentence": tc.get("audience_sentence", ""),
         "cefr_level": tc.get("cefr", ""),
+        "cefr_target": tc.get("cefr_target", ""),
         "video_file": os.path.basename(video_path) if video_path else "",
         "video_path": video_path or "",
         "image_file": os.path.basename(image_path) if image_path else "",
@@ -172,7 +173,10 @@ def _run_one_target(spec, state: dict) -> dict:
         )
     else:
         try:
-            tweet_id, tweet_url = post_tweet_with_video(tc["full_tweet"], video_path, creds=spec.account)
+            from services.delivery import publish_once
+            tweet_id, tweet_url = publish_once(
+                spec.id, state.get("cycle", 0), tc["full_tweet"], video_path,
+                lambda text, video: post_tweet_with_video(text, video, creds=spec.account))
             ok(f"[{spec.id}] posted → {tweet_url}")
         except Exception as exc:
             logger.exception("X post failed for '%s': %s", spec.id, exc)
@@ -244,7 +248,13 @@ def fanout_targets(state: dict) -> dict:
         from services.website_publish import sync as website_sync
         ui_info("🌐 eXercise website mirror:")
         for spec in targets:
-            res = website_sync(spec)               # prints ✓/✗ per pushed record
+            res = website_sync(spec)
+            from utils.runtime import Health
+            Health("data/health.json").delivery(
+                f"website:{spec.id}", "skipped" if res.get("skipped") else
+                ("failed" if res.get("error") or res.get("failed") or res.get("pending") else "ok"),
+                pending=res.get("pending", 0), failed=res.get("failed", 0))
+            #               # prints ✓/✗ per pushed record
             if not res.get("error") and not res.get("pending"):
                 ui_info(f"   [{spec.id}] up to date")
 

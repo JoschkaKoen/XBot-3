@@ -356,7 +356,7 @@ def _gui_to_api(gui_wf: dict, comfyui_url: str, comfyui_dir: Path) -> dict:
         if ntype in _DISPLAY_TYPES or ntype == "Reroute":
             continue
         if _should_bypass_lora(node):
-            logger.info("ZIT gui→api: bypassing LoraLoader %s (LoRA '%s' not found)",
+            logger.warning("ZIT gui→api: bypassing LoraLoader %s (LoRA '%s' not found)",
                         nid, node.get("widgets_values", ["?"])[0])
             continue
 
