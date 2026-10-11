@@ -154,23 +154,23 @@ class TranscreateTests(unittest.TestCase):
         self.assertIn("witty one-line truth", user)
         self.assertIn("bare physical objects with no social meaning", user)
 
-    def test_stage1_explains_meaning_with_a_plain_example(self):
-        """Concrete meaning clues override the old epigram/punchline instructions."""
+    def test_stage1_requires_concrete_meaning_and_comic_turn(self):
+        """Meaning clues and a visible detail must support the comic turn."""
         ai = self._standard_ai()
         T.get_ai_response = ai
         T.transcreate(self.spec, {"midjourney_prompt": _SCENE}, verbose=False)
         user, _ = ai.prompts_for("_src_")[0]
         self.assertIn("show the word's meaning through a concrete everyday example", user)
         self.assertNotIn("Put a turn in it", user)
-        self.assertIn("Avoid clever general truths", user)
+        self.assertIn("Add a small comic turn using basic words", user)
 
-    def test_plain_examples_apply_on_normal_cycles_too(self):
+    def test_image_grounding_applies_on_normal_cycles_too(self):
         config.resolve_tweet_style = lambda cycle: "normal"
         ai = self._standard_ai()
         T.get_ai_response = ai
         T.transcreate(self.spec, {"midjourney_prompt": _SCENE}, verbose=False)
         user, _ = ai.prompts_for("_src_")[0]
-        self.assertIn("A plain description or one simple action is fine", user)
+        self.assertIn("Do not invent a different scene", user)
 
     def test_word_prompt_rejects_mood_and_depiction_words(self):
         """The funniness fix: mood/atmosphere and 'describe the picture' words are
@@ -281,8 +281,8 @@ class TranscreateTests(unittest.TestCase):
         user, system = ai.prompts_for("_src_")[0]
         blob = user + " " + system
         self.assertIn("raise a smile", blob)
-        self.assertIn("literal example is welcome", blob)
-        self.assertIn("Optional variation, ONLY if it helps a clear example:", user)      # angles apply on normal too
+        self.assertIn("A plain caption is not enough", blob)
+        self.assertIn("Try this comic angle using easy words:", user)      # angles apply on normal too
         self.assertIn("clear, simple and natural", user)
 
     def test_funny_style_keeps_the_strong_tone(self):
@@ -291,8 +291,8 @@ class TranscreateTests(unittest.TestCase):
         T.get_ai_response = ai
         T.transcreate(self.spec, {"midjourney_prompt": _SCENE}, verbose=False)
         user, system = ai.prompts_for("_src_")[0]
-        self.assertIn("gentle everyday joke is optional", user + " " + system)
-        self.assertIn("plain, concrete teaching sentence is better", user)
+        self.assertIn("Include a clear, gentle everyday joke using easy words", user + " " + system)
+        self.assertIn("rewrite the joke more simply instead of removing it", user)
 
     # ── faithful Chinese, not a reinvented joke ────────────────────────────────
 
@@ -529,6 +529,22 @@ class TranscreateTests(unittest.TestCase):
         self.assertEqual(result["source_sentence"], "I procrastinate.")
         self.assertEqual(ai.count("_review"), 2)
         self.assertLessEqual(T.x_weighted_len(result["full_tweet"]), 280)
+
+    def test_scene_and_humor_rejections_retry_before_translation(self):
+        for problem in ("No humor: plain caption", "Picture shows a man holding beer, not people gathering"):
+            with self.subTest(problem=problem):
+                ai = self._standard_ai(_review=json.dumps({"approved_indexes": [], "feedback": problem}))
+                T.get_ai_response = ai
+                with self.assertRaisesRegex(ValueError, "within 3 attempts"):
+                    T.transcreate(self.spec, {"midjourney_prompt": _SCENE}, verbose=False)
+                self.assertEqual(ai.count("_review"), 3)
+                self.assertEqual(ai.count("pick"), 0)
+                self.assertEqual(ai.count("audience"), 0)
+                self.assertIn(problem, ai.prompts_for("_src_")[-1][0])
+                review, _ = ai.prompts_for("_review")[0]
+                self.assertIn(_SCENE, review)
+                self.assertIn("recognizable gentle joke", review)
+                self.assertIn("Reject generic setting-only", review)
 
     def test_polyphonic_pinyin_preserved_and_context_requested(self):
         data = json.loads(_audience("银行", "我去银行。"))
