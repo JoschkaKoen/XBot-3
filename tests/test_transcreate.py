@@ -146,23 +146,23 @@ class TranscreateTests(unittest.TestCase):
         self.assertIn("witty one-line truth", user)
         self.assertIn("bare physical objects with no social meaning", user)
 
-    def test_stage1_asks_for_a_truth_not_an_event(self):
-        """The epigram shape is what separates the German jokes from flat reports."""
+    def test_stage1_explains_meaning_with_a_plain_example(self):
+        """Concrete meaning clues override the old epigram/punchline instructions."""
         ai = self._standard_ai()
         T.get_ai_response = ai
         T.transcreate(self.spec, {"midjourney_prompt": _SCENE}, verbose=False)
         user, _ = ai.prompts_for("_src_")[0]
-        self.assertIn("write a little TRUTH about life, not a report of one event", user)
-        self.assertIn("Put a turn in it", user)
-        self.assertIn('do NOT start every sentence with "Every"', user)
+        self.assertIn("show the word's meaning through a concrete everyday example", user)
+        self.assertNotIn("Put a turn in it", user)
+        self.assertIn("Avoid clever general truths", user)
 
-    def test_joke_shape_applies_on_normal_cycles_too(self):
+    def test_plain_examples_apply_on_normal_cycles_too(self):
         config.resolve_tweet_style = lambda cycle: "normal"
         ai = self._standard_ai()
         T.get_ai_response = ai
         T.transcreate(self.spec, {"midjourney_prompt": _SCENE}, verbose=False)
         user, _ = ai.prompts_for("_src_")[0]
-        self.assertIn("write a little TRUTH about life", user)
+        self.assertIn("A plain description or one simple action is fine", user)
 
     def test_word_prompt_rejects_mood_and_depiction_words(self):
         """The funniness fix: mood/atmosphere and 'describe the picture' words are
@@ -274,8 +274,8 @@ class TranscreateTests(unittest.TestCase):
         blob = user + " " + system
         self.assertIn("raise a smile", blob)
         self.assertIn("literal example is welcome", blob)
-        self.assertIn("Build the humor on:", user)      # angles apply on normal too
-        self.assertIn("lightly witty", user)
+        self.assertIn("Optional variation, ONLY if it helps a clear example:", user)      # angles apply on normal too
+        self.assertIn("clear, simple and natural", user)
 
     def test_funny_style_keeps_the_strong_tone(self):
         config.resolve_tweet_style = lambda cycle: "funny"
@@ -283,8 +283,8 @@ class TranscreateTests(unittest.TestCase):
         T.get_ai_response = ai
         T.transcreate(self.spec, {"midjourney_prompt": _SCENE}, verbose=False)
         user, system = ai.prompts_for("_src_")[0]
-        self.assertIn("genuinely very funny", user + " " + system)
-        self.assertIn("genuinely funny", user)
+        self.assertIn("gentle everyday joke is optional", user + " " + system)
+        self.assertIn("plain, concrete teaching sentence is better", user)
 
     # ── faithful Chinese, not a reinvented joke ────────────────────────────────
 
@@ -426,11 +426,13 @@ class TranscreateTests(unittest.TestCase):
 
     def test_failed_review_regenerates_and_reviews_again(self):
         def review(ai):
-            return json.dumps({"approved_indexes": [] if ai.count("_review") == 1 else [0]})
+            return json.dumps({"approved_indexes": [] if ai.count("_review") == 1 else [0],
+                               "feedback": "Use a concrete place to explain the meaning"})
         ai = self._standard_ai(_review=review)
         T.get_ai_response = ai
         T.transcreate(self.spec, {"midjourney_prompt": _SCENE}, verbose=False)
         self.assertEqual(ai.count("_review"), 2)
+        self.assertIn("Use a concrete place", ai.prompts_for("_src_")[3][0])
 
     def test_review_failure_never_falls_back_to_unreviewed_sentence(self):
         for response in ('{}', '{"approved_indexes": [true]}',

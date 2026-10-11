@@ -65,13 +65,9 @@ class LessonTooLong(ValueError):
 
 # Humor stays optional when it would compromise learner comprehension.
 _FUNNY_TONE = (
-    "Aim for genuinely very funny examples when that is possible with simple words and grammar. "
-    "The sentence can make the reader laugh and smirk, "
-    "and stay positive and uplifting, not cynical. CRITICAL: it must be REALISTIC and make "
-    "logical sense — the humor comes from a relatable everyday situation, an ironic twist, or "
-    "a witty observation, NEVER from surreal nonsense. A native speaker should read it and "
-    "think 'ha, that's so true'. Use a SPECIFIC, concrete, vivid detail — never a bland, "
-    "generic description."
+    "A gentle everyday joke is optional. Use it only if every surrounding word and the grammar "
+    "remain easy and the taught meaning is clear. A plain, concrete teaching sentence is better "
+    "than a clever observation. Keep the situation realistic, positive and familiar."
 )
 
 # Per-content-policy steering for JOKE GENERATION, applied only when the target
@@ -92,9 +88,8 @@ _POLICY_GUIDANCE = {
 
 # Normal cycles aim for light humor only when it helps a simple teaching example.
 _LIGHT_TONE = (
-    "The sentence should still raise a smile — a warm, witty little observation from everyday "
-    "life. It does not need a punchline. A clear, simple literal example is welcome when humor "
-    "would make learning harder. Keep it realistic, positive and specific."
+    "A clear, simple literal example is welcome. A warm detail may raise a smile, but humor is "
+    "optional and must never make learning harder. Keep it realistic, positive and specific."
 )
 
 # What actually separates a wooden line from a funny one here. The German bot's
@@ -104,14 +99,11 @@ _LIGHT_TONE = (
 # tone instructions are. Applies on funny AND light cycles: a wry truth is the
 # house voice, only its strength varies.
 _JOKE_SHAPE = (
-    "SHAPE — write a little TRUTH about life, not a report of one event.\n"
-    "- Prefer a general observation (\"always\", \"every time\", \"until\", \"never\") over "
-    "narrating what one person did.\n"
-    "- Put a turn in it: a contrast, an unexpected pairing, or a reversal at the very end. Two "
-    "things that clash in one short line is the strongest form.\n"
-    "- These humor suggestions are optional: a plain, concrete sentence wins if it teaches more clearly.\n"
-    "- Vary how you open — do NOT start every sentence with \"Every\".\n"
-    "- It is a teaching example, so write a complete sentence and end it with punctuation.\n"
+    "SHAPE — show the word's meaning through a concrete everyday example.\n"
+    "- Name a familiar person, place, object or action that helps explain the meaning.\n"
+    "- Avoid clever general truths, vague praise, metaphors, slogans and punchlines.\n"
+    "- A plain description or one simple action is fine.\n"
+    "- Write a complete, natural sentence and end it with punctuation.\n"
 )
 
 # The taught word is the lesson; everything around it must be easy or the learner
@@ -366,7 +358,7 @@ def _pick_word(spec, scene: str, avoid_prompt: list, avoid_all: set,
 # ── Step 2: N diverse funny sentences for the fixed word ───────────────────────
 
 def _stage1_candidates(spec, word: str, scene: str, funny: bool, n: int, verbose: bool,
-                       cefr: str = "", max_words: int | None = None) -> list:
+                       cefr: str = "", max_words: int | None = None, feedback: str = "") -> list:
     import threading
     from concurrent.futures import ThreadPoolExecutor
 
@@ -384,7 +376,7 @@ def _stage1_candidates(spec, word: str, scene: str, funny: bool, n: int, verbose
     # The joke is written in the TAUGHT language but read by the AUDIENCE: it must
     # land for them, and (faithful-translation design) survive the {tgt} render.
     audience_line = (
-        f"Your readers are {tgt} speakers learning {src} — the joke must land for THEM: build it "
+        f"Your readers are {tgt} speakers learning {src}. If you include humor, build it "
         f"on universally relatable everyday situations rather than {src}-language wordplay or "
         f"Western pop-culture references they may not know, and prefer humor that stays funny in "
         f"a faithful {tgt} translation. "
@@ -405,14 +397,15 @@ def _stage1_candidates(spec, word: str, scene: str, funny: bool, n: int, verbose
         # only the strength of the humor differs between the two tones.
         angle = _ANGLES[i % len(_ANGLES)]
         user = (
-            f'Write ONE natural, idiomatic{" and genuinely funny" if funny else " and lightly witty"} '
+            'Write ONE clear, simple and natural '
             f'{src} example sentence (≤ {max_words} words) that teaches the word '
             f'"{word}".\n'
             f'- The sentence MUST contain the word "{word}".\n'
             + scene_line
-            + f"- Build the humor on: {angle}\n"
+            + f"- Optional variation, ONLY if it helps a clear example: {angle}\n"
             + "\n" + _JOKE_SHAPE
             + "\n" + vocab_rule
+            + (f"\nPrevious attempt was rejected: {feedback}. Write a NEW, simpler example.\n" if feedback else "")
             + f"\n{tone}\n"
             + '\nReturn ONLY this JSON object:\n'
             '{"sentence": "<the example sentence>"}'
@@ -420,7 +413,7 @@ def _stage1_candidates(spec, word: str, scene: str, funny: bool, n: int, verbose
         try:
             raw = get_ai_response(
                 config.TRANSCREATION_MODEL, user, system,
-                max_tokens=300, temperature=0.95,
+                max_tokens=300, temperature=0.7,
                 retry_label=f"transcreate_{spec.id}_src_{i + 1}",
             )
             sentence = (_parse_json(raw).get("sentence") or "").strip()
@@ -465,7 +458,9 @@ def _review_candidates(spec, word: str, cands: list) -> list:
         'words are common beginner (A1–A2) vocabulary. For beginner target words, require the '
         'easiest natural context. Reject unnecessary difficult words, idioms, obscure references, '
         'wordplay, and confusing grammar. Ignore humor and do not infer approval from the generator. '
-        'Return ONLY JSON: {"approved_indexes": [0, ...]}. Return [] if none pass.'
+        'Return ONLY JSON: {"approved_indexes": [0, ...], "feedback": "specific problems to fix"}. '
+        'Return an empty approved_indexes list if none pass. Explain difficult surrounding words '
+        'or missing meaning clues in feedback so the next attempt can improve.'
     )
     data = _parse_json(get_ai_response(
         config.TWEET_PICKER_MODEL, prompt,
@@ -478,7 +473,9 @@ def _review_candidates(spec, word: str, cands: list) -> list:
         raise ValueError("Invalid simplicity review")
     approved = [c for i, c in enumerate(cands) if i in indexes]
     if not approved:
-        raise ValueError("No candidate passed the simplicity review")
+        feedback = data.get("feedback", "")
+        raise ValueError("No candidate passed the simplicity review" +
+                         (f": {feedback[:600]}" if isinstance(feedback, str) and feedback else ""))
     return approved
 
 
@@ -750,12 +747,13 @@ def transcreate(spec, base: dict, cycle: int = 0, verbose: bool = True) -> dict:
     # Bounded regeneration handles failed reviews, bad translations/pronunciation,
     # and lessons too long for X. Every replacement goes through the same gates.
     max_words = config.MAX_EXAMPLE_WORDS
+    feedback = ""
     for attempt in range(3):
         try:
             if verbose:
                 ui_info(f"Step 2/3 — {n} simple candidate(s) for '{word}', attempt {attempt + 1}/3 …")
             cands = _stage1_candidates(spec, word, scene, funny, n, verbose,
-                                       cefr=cefr_target, max_words=max_words)
+                                       cefr=cefr_target, max_words=max_words, feedback=feedback)
             cands = _review_candidates(spec, word, cands)
             best = _pick_funniest(spec, cands, funny, verbose)
             sentence = best["sentence"]
@@ -771,6 +769,7 @@ def transcreate(spec, base: dict, cycle: int = 0, verbose: bool = True) -> dict:
                 raise ValueError("No complete, simple lesson passed review within 3 attempts") from exc
             if isinstance(exc, LessonTooLong):
                 max_words = max(min(4, max_words), max_words - 2)
+            feedback = str(exc)[:600]
 
     result = {
         "full_tweet": full_tweet,
