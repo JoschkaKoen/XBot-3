@@ -122,6 +122,14 @@ class TranscreateTests(unittest.TestCase):
         res = T.transcreate(self.spec, {"midjourney_prompt": _SCENE + _STYLE_SUFFIX}, verbose=False)
         self.assertEqual(res["source_word"], "procrastinate")
 
+    def test_word_picker_sees_older_history_too(self):
+        self._write_history([{"source_word": "oldestword"}] +
+                            [{"source_word": f"recentword{i}"} for i in range(35)])
+        ai = self._standard_ai()
+        T.get_ai_response = ai
+        T.transcreate(self.spec, {}, verbose=False)
+        self.assertIn("oldestword", ai.prompts_for("word")[0][0])
+
     def test_word_prompt_has_scene_avoid_cefr_and_strips_style_suffix(self):
         config.CEFR_ROTATION = True   # last level A1 → rotation asks for A2
         self._write_history([{"source_word": "notebook", "cefr_level": "A1"}])

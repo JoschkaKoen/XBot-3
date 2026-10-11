@@ -334,6 +334,9 @@ def _pick_word(spec, scene: str, avoid_prompt: list, avoid_all: set,
                cefr_hint: str, verbose: bool) -> dict:
     """Pick one word not in *avoid_all*, from a ranked shortlist; one re-pick if
     every suggestion collides, then take the best anyway."""
+    # The gate excludes the full history, so show the picker that same history.
+    # A short recent-only list lets it repeatedly propose older, forbidden words.
+    avoid_prompt = list(dict.fromkeys(avoid_prompt + sorted(avoid_all)))
     seen_reject: list = []
     for attempt in range(2):
         try:
