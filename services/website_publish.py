@@ -59,6 +59,8 @@ def _meta_for(rec: dict) -> str:
             "audience_word": rec.get("audience_word", ""),
             "source_sentence": rec.get("source_sentence", ""),
             "audience_sentence": rec.get("audience_sentence", ""),
+            "audience_word_pinyin": rec.get("audience_word_pinyin", ""),
+            "audience_sentence_pinyin": rec.get("audience_sentence_pinyin", ""),
             "cefr": rec.get("cefr_level", ""),
             "full_tweet": rec.get("full_tweet", ""),
             "tweet_url": rec.get("tweet_url", ""),

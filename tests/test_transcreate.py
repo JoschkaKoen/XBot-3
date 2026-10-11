@@ -64,7 +64,9 @@ def _sentence(text):
 
 def _audience(word_zh, sentence_zh, e1="😅", e2="⏳"):
     return json.dumps({"audience_word": word_zh, "audience_sentence": sentence_zh,
-                       "emoji1": e1, "emoji2": e2, "quality_ok": True, "image_fit": True})
+                       "emoji1": e1, "emoji2": e2, "quality_ok": True, "image_fit": True,
+                       "audience_word_pinyin": "tuōyán",
+                       "audience_sentence_pinyin": "Tā yìzhí tuōyán, chíchí bù kěn kāishǐ.", "pinyin_ok": True})
 
 
 @unittest.skipIf(T is None, f"transcreate import unavailable: {_IMPORT_ERR}")
@@ -102,6 +104,7 @@ class TranscreateTests(unittest.TestCase):
             "word": _word([{"word": "procrastinate", "cefr": "B1"}]),
             "_src_": _sentence("She keeps procrastinating instead of starting."),
             "pick": "1 — relatable",
+            "_review": json.dumps({"approved_indexes": [0]}),
             "audience": _audience("拖延", "她一直拖延，迟迟不肯开始。"),
         }
         handlers.update(overrides)
@@ -270,7 +273,7 @@ class TranscreateTests(unittest.TestCase):
         user, system = ai.prompts_for("_src_")[0]
         blob = user + " " + system
         self.assertIn("raise a smile", blob)
-        self.assertIn("never be a flat statement", blob)
+        self.assertIn("literal example is welcome", blob)
         self.assertIn("Build the humor on:", user)      # angles apply on normal too
         self.assertIn("lightly witty", user)
 
@@ -329,12 +332,13 @@ class TranscreateTests(unittest.TestCase):
 
     def test_over_length_degrades_without_truncating_chinese(self):
         long_zh = "这是一句非常非常非常非常非常非常非常非常非常长的中文句子。" * 4
-        ai = self._standard_ai(audience=_audience("忙碌", long_zh, "🍳", "🔥"))
+        ai = self._standard_ai(audience=_audience("忙碌", long_zh, "🍳", "🔥"),
+                               _src_=_sentence("I procrastinate every day."))
         T.get_ai_response = ai
-        res = T.transcreate(self.spec, {"midjourney_prompt": "A kitchen"}, verbose=False)
-        self.assertIn(long_zh, res["full_tweet"])                 # never sliced
-        self.assertNotIn("🍳", res["full_tweet"])                 # emoji dropped
-        self.assertEqual(res["full_tweet"].count("#"), 1)        # hashtags shortened
+        with self.assertRaisesRegex(ValueError, "within 3 attempts"):
+            T.transcreate(self.spec, {"midjourney_prompt": "A kitchen"}, verbose=False)
+        self.assertEqual(ai.count("_review"), 3)
+        self.assertEqual(ai.count("audience"), 6)  # each attempt tries a shorter translation
 
     def test_in_budget_tweet_keeps_emoji_and_hashtags(self):
         ai = self._standard_ai()
@@ -397,7 +401,8 @@ class TranscreateTests(unittest.TestCase):
         T.get_ai_response = ai
         res = T.transcreate(self.spec, {"midjourney_prompt": _SCENE}, verbose=False)
         self.assertEqual(set(res), {"full_tweet", "source_word", "source_sentence",
-                                    "audience_word", "audience_sentence", "cefr", "cefr_target"})
+                                    "audience_word", "audience_sentence", "cefr", "cefr_target",
+                                    "audience_word_pinyin", "audience_sentence_pinyin"})
         self.assertIn(res["source_sentence"], res["full_tweet"])
         self.assertIn(res["source_word"], res["full_tweet"])
         self.assertIn(res["audience_sentence"], res["full_tweet"])
@@ -408,6 +413,121 @@ class TranscreateTests(unittest.TestCase):
         T.get_ai_response = ai
         T.transcreate(self.spec, {"midjourney_prompt": _SCENE}, verbose=False)
         self.assertEqual(ai.count("_src_"), 2)
+
+    def test_difficult_candidate_never_reaches_picker(self):
+        cands = [{"word": "generous", "sentence": "Her generous benefaction alleviates destitution."},
+                 {"word": "generous", "sentence": "She is generous and gives us food."}]
+        ai = self._standard_ai(_review=json.dumps({"approved_indexes": [1]}))
+        T.get_ai_response = ai
+        approved = T._review_candidates(self.spec, "generous", cands)
+        self.assertEqual(approved, [cands[1]])
+        self.assertEqual(T._pick_funniest(self.spec, approved, True, False), cands[1])
+        self.assertEqual(ai.count("pick"), 0)
+
+    def test_failed_review_regenerates_and_reviews_again(self):
+        def review(ai):
+            return json.dumps({"approved_indexes": [] if ai.count("_review") == 1 else [0]})
+        ai = self._standard_ai(_review=review)
+        T.get_ai_response = ai
+        T.transcreate(self.spec, {"midjourney_prompt": _SCENE}, verbose=False)
+        self.assertEqual(ai.count("_review"), 2)
+
+    def test_review_failure_never_falls_back_to_unreviewed_sentence(self):
+        for response in ('{}', '{"approved_indexes": [true]}',
+                         '{"approved_indexes": [99]}', '{"approved_indexes": []}', 'not JSON'):
+            with self.subTest(response=response):
+                ai = self._standard_ai(_review=response)
+                T.get_ai_response = ai
+                with self.assertRaisesRegex(ValueError, "within 3 attempts"):
+                    T.transcreate(self.spec, {}, verbose=False)
+                self.assertEqual(ai.count("audience"), 0)
+                self.assertEqual(ai.count("_review"), 3)
+
+    def test_pinyin_layout_in_every_scaffold(self):
+        from scaffolds import _load_pool
+        s2 = json.loads(_audience("拖延", "她一直拖延，迟迟不肯开始。"))
+        for name, template in _load_pool():
+            with self.subTest(scaffold=name):
+                tweet = T._assemble(self.spec, template, "procrastinate", "I procrastinate.", s2, "")
+                self.assertIn("拖延 (tuōyán)", tweet)
+                lines = tweet.splitlines()
+                chinese_line = next(i for i, line in enumerate(lines) if s2["audience_sentence"] in line)
+                self.assertEqual(lines[chinese_line + 1], s2["audience_sentence_pinyin"])
+
+    def test_missing_unapproved_or_numbered_pinyin_rejected(self):
+        for field, value in (("audience_word_pinyin", ""), ("pinyin_ok", False),
+                             ("audience_sentence_pinyin", "ta1 tuo1 yan2"),
+                             ("audience_sentence_pinyin", "她拖延")):
+            with self.subTest(field=field, value=value):
+                data = json.loads(_audience("拖延", "她一直拖延，迟迟不肯开始。"))
+                data[field] = value
+                T.get_ai_response = self._standard_ai(audience=json.dumps(data))
+                with self.assertRaises(ValueError):
+                    T._stage2_audience(self.spec, "procrastinate", "I procrastinate.")
+
+    def test_shorter_translation_replaces_pinyin_together(self):
+        long = json.loads(_audience("拖延", "她一直拖延，迟迟不肯开始。" * 20))
+        short = json.loads(_audience("拖延", "我拖延。"))
+        short["audience_sentence_pinyin"] = "Wǒ tuōyán."
+        T.get_ai_response = self._standard_ai(audience=json.dumps(short))
+        from scaffolds import scaffold_at
+        tweet = T._shrink_to_fit(self.spec, scaffold_at(0)[1], "procrastinate",
+                                "I procrastinate.", long, "")
+        self.assertEqual(long["audience_sentence"], short["audience_sentence"])
+        self.assertEqual(long["audience_sentence_pinyin"], short["audience_sentence_pinyin"])
+        self.assertIn("我拖延。", tweet)
+        self.assertIn("Wǒ tuōyán.", tweet)
+        self.assertLessEqual(T.x_weighted_len(tweet), 280)
+
+    def test_website_metadata_preserves_pinyin_and_supports_legacy_records(self):
+        from services.website_publish import _meta_for
+        record = json.loads(_audience("拖延", "她一直拖延，迟迟不肯开始。"))
+        meta = json.loads(_meta_for(record))
+        self.assertEqual(meta["audience_word_pinyin"], record["audience_word_pinyin"])
+        self.assertEqual(meta["audience_sentence_pinyin"], record["audience_sentence_pinyin"])
+        self.assertEqual(json.loads(_meta_for({}))["audience_sentence_pinyin"], "")
+
+    def test_history_saves_pronunciation_with_chinese(self):
+        # Load the node directly: nodes/__init__.py imports optional media/X clients.
+        import runpy
+        from pathlib import Path
+        _record_history = runpy.run_path(str(Path(__file__).resolve().parents[1] /
+                                             "nodes/fanout_targets.py"))["_record_history"]
+        T.get_ai_response = self._standard_ai()
+        result = T.transcreate(self.spec, {}, verbose=False)
+        record = _record_history(self.spec, {"cycle": 1}, result, "test-id", "", "", "")
+        with open(self.spec.history_file, encoding="utf-8") as f:
+            saved = json.load(f)[0]
+        for field in ("audience_word", "audience_sentence", "audience_word_pinyin", "audience_sentence_pinyin"):
+            self.assertEqual(saved[field], result[field])
+            self.assertEqual(record[field], result[field])
+
+    def test_overlong_example_is_regenerated_and_reviewed(self):
+        def sentence(ai):
+            text = "I procrastinate every day." if ai.count("_review") == 0 else "I procrastinate."
+            return json.dumps({"sentence": text})
+        def audience(ai):
+            # Both the first translation and its shorter re-render are too long.
+            if ai.count("audience") <= 2:
+                return _audience("拖延", "她一直拖延，迟迟不肯开始。" * 20)
+            data = json.loads(_audience("拖延", "我拖延。"))
+            data["audience_sentence_pinyin"] = "Wǒ tuōyán."
+            return json.dumps(data)
+        ai = self._standard_ai(_src_=sentence, audience=audience)
+        T.get_ai_response = ai
+        result = T.transcreate(self.spec, {}, verbose=False)
+        self.assertEqual(result["source_sentence"], "I procrastinate.")
+        self.assertEqual(ai.count("_review"), 2)
+        self.assertLessEqual(T.x_weighted_len(result["full_tweet"]), 280)
+
+    def test_polyphonic_pinyin_preserved_and_context_requested(self):
+        data = json.loads(_audience("银行", "我去银行。"))
+        data.update(audience_word_pinyin="yínháng", audience_sentence_pinyin="Wǒ qù yínháng.")
+        ai = self._standard_ai(audience=json.dumps(data))
+        T.get_ai_response = ai
+        result = T._stage2_audience(self.spec, "bank", "I go to the bank.")
+        self.assertEqual(result["audience_word_pinyin"], "yínháng")
+        self.assertIn("polyphonic", ai.prompts_for("audience")[0][0])
 
 
 @unittest.skipIf(T is None, f"transcreate import unavailable: {_IMPORT_ERR}")

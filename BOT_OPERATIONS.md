@@ -29,6 +29,17 @@ Quality and cadence
 - Existing selection/translation calls now require a positive language-quality
   verdict before expensive media. Free rules reject the audited grammar/sense
   errors. They cannot prove every sentence correct.
+- Secondary examples receive a separate simplicity review before selection:
+  common beginner words around the taught word, simple grammar, and a concrete
+  context that makes its meaning clear. Clarity outranks humor. Up to three
+  lesson attempts are allowed; exhausted or malformed reviews skip this target.
+- Chinese posts put tone-marked pinyin beside the Chinese word meaning and below
+  the Chinese sentence. Pronunciation is generated and checked by the model,
+  with local format checks; it is not a dictionary-based pronunciation guarantee.
+  Shorter translations replace Chinese and pinyin together. Optional decoration
+  goes first; oversized lessons get shorter, reviewed examples, never text slices.
+  History and website metadata preserve audience_word_pinyin and
+  audience_sentence_pinyin as separate fields. Existing posts are not backfilled.
 - CEFR rotation is a generation target, not learner-facing evidence. The initial
   content/cefr_lexicon.json is intentionally empty: no unverified CEFR label is
   displayed. BOT_CEFR_LEXICON can select a reviewed dictionary with language keys
